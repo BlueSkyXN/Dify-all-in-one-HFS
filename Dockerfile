@@ -129,6 +129,8 @@ RUN apt-get update \
     && npm install -g corepack@latest \
     && corepack enable \
     && pip install --no-cache-dir uv==${UV_VERSION} \
+    && python3 -m pip install --no-cache-dir \
+       "httpx[socks]==0.27.2" requests==2.32.3 jinja2==3.1.6 PySocks \
     && rm -rf /var/lib/apt/lists/*
 
 # Compile and install pgvector for PostgreSQL 15.
@@ -166,7 +168,6 @@ COPY --from=web-builder --chown=user:user --chmod=755 /src/web/docker/entrypoint
 # Copy official Plugin Daemon and Sandbox runtime artifacts.
 COPY --from=plugin-daemon-image --chown=user:user /app /opt/dify/plugin-daemon
 COPY --from=sandbox-image --chown=user:user /main /opt/dify/sandbox/main
-COPY --from=sandbox-image --chown=user:user /env /opt/dify/sandbox/env
 COPY --from=sandbox-image --chown=user:user /conf /conf
 COPY --from=sandbox-image --chown=user:user /dependencies /dependencies
 
@@ -196,7 +197,8 @@ RUN chmod +x \
     && mkdir -p \
       /data/postgres /data/redis /data/dify/storage /data/plugin_daemon /data/config /data/logs /data/run/postgresql \
       /data/run/nginx/client_body /data/run/nginx/proxy /data/run/nginx/fastcgi /data/run/nginx/uwsgi /data/run/nginx/scgi \
-    && chown -R user:user /opt/dify /app /data /conf /dependencies \
+      /var/sandbox \
+    && chown -R user:user /opt/dify /app /data /conf /dependencies /var/sandbox \
     && chmod -R 777 /data \
     && rm -f /etc/nginx/sites-enabled/default
 

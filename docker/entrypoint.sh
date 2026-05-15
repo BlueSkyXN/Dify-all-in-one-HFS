@@ -143,6 +143,9 @@ render_sandbox_config() {
   source_runtime_env
   local api_key=${SANDBOX_API_KEY:-${CODE_EXECUTION_API_KEY:-}}
   local enable_network=${SANDBOX_ENABLE_NETWORK:-false}
+  local python_path=${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}
+  local nodejs_path=${SANDBOX_NODEJS_PATH:-/usr/bin/node}
+  local python_lib_paths=${SANDBOX_PYTHON_LIB_PATH:-/usr/local/lib/python3.12,/usr/local/lib/python3.12/lib-dynload,/usr/local/lib/python3.12/site-packages,/usr/lib/x86_64-linux-gnu,/lib/x86_64-linux-gnu,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone}
   local debug=false
   if [ "${SANDBOX_GIN_MODE:-release}" != "release" ]; then
     debug=true
@@ -153,14 +156,27 @@ app:
   port: ${SANDBOX_PORT:-8194}
   debug: ${debug}
   key: "${api_key}"
-  max_workers: 4
-  max_requests: 50
-  worker_timeout: ${SANDBOX_WORKER_TIMEOUT:-15}
-  python_path: /usr/local/bin/python3
-  enable_network: ${enable_network}
-  enable_preload: false
-  log_path: "/data/logs"
-  allowed_syscalls: []
+max_workers: ${SANDBOX_MAX_WORKERS:-4}
+max_requests: ${SANDBOX_MAX_REQUESTS:-50}
+worker_timeout: ${SANDBOX_WORKER_TIMEOUT:-15}
+python_path: "${python_path}"
+nodejs_path: "${nodejs_path}"
+python_pip_mirror_url: "${PIP_MIRROR_URL:-}"
+python_deps_update_interval: "${SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL:-30m}"
+enable_network: ${enable_network}
+enable_preload: false
+log_path: "/data/logs"
+allowed_syscalls: []
+python_lib_path:
+EOF_SANDBOX
+  if [ -n "$python_lib_paths" ]; then
+    IFS=',' read -r -a lib_paths <<< "$python_lib_paths"
+    for lib_path in "${lib_paths[@]}"; do
+      [ -n "$lib_path" ] || continue
+      printf '  - "%s"\n' "$lib_path" >> /conf/config.yaml
+    done
+  fi
+  cat >> /conf/config.yaml <<EOF_SANDBOX
 proxy:
   socks5: ''
   http: '${SANDBOX_HTTP_PROXY:-}'
