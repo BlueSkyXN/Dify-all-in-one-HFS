@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set -a
+# shellcheck disable=SC1091
+. /etc/dify/dify.env.runtime
+if [ -f /data/config/generated.env ]; then
+  # shellcheck disable=SC1091
+  . /data/config/generated.env
+elif [ -f /etc/dify/generated.env ]; then
+  # legacy fallback
+  # shellcheck disable=SC1091
+  . /etc/dify/generated.env
+fi
+export API_KEY="${SANDBOX_API_KEY:-${CODE_EXECUTION_API_KEY}}"
+export GIN_MODE="${SANDBOX_GIN_MODE:-release}"
+export WORKER_TIMEOUT="${SANDBOX_WORKER_TIMEOUT:-15}"
+export ENABLE_NETWORK="${SANDBOX_ENABLE_NETWORK:-false}"
+export SANDBOX_PORT="${SANDBOX_PORT:-8194}"
+export HTTP_PROXY="${SANDBOX_HTTP_PROXY:-}"
+export HTTPS_PROXY="${SANDBOX_HTTPS_PROXY:-}"
+export PIP_MIRROR_URL="${PIP_MIRROR_URL:-}"
+set +a
+exec "$@"

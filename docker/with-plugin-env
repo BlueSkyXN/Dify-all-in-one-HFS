@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set -a
+# shellcheck disable=SC1091
+. /etc/dify/dify.env.runtime
+if [ -f /data/config/generated.env ]; then
+  # shellcheck disable=SC1091
+  . /data/config/generated.env
+elif [ -f /etc/dify/generated.env ]; then
+  # legacy fallback
+  # shellcheck disable=SC1091
+  . /etc/dify/generated.env
+fi
+# Plugin daemon expects unprefixed service variables.
+export DB_DATABASE="${DB_PLUGIN_DATABASE:-dify_plugin}"
+export DB_HOST="${DB_HOST:-127.0.0.1}"
+export DB_PORT="${DB_PORT:-5432}"
+export DB_USERNAME="${DB_USERNAME:-dify}"
+export DB_PASSWORD="${DB_PASSWORD:-dify_demo_password}"
+export DB_SSL_MODE="${DB_SSL_MODE:-disable}"
+
+export SERVER_HOST="${PLUGIN_DAEMON_HOST:-0.0.0.0}"
+export SERVER_PORT="${PLUGIN_DAEMON_PORT:-5002}"
+export SERVER_KEY="${PLUGIN_DAEMON_KEY}"
+export SERVER_TZ="${TZ:-UTC}"
+export PLATFORM="local"
+export DIFY_INNER_API_URL="${PLUGIN_DIFY_INNER_API_URL:-http://127.0.0.1:5001}"
+export DIFY_INNER_API_KEY="${PLUGIN_DIFY_INNER_API_KEY}"
+
+export PLUGIN_REMOTE_INSTALLING_ENABLED="true"
+export PLUGIN_REMOTE_INSTALLING_HOST="${PLUGIN_DEBUGGING_HOST:-0.0.0.0}"
+export PLUGIN_REMOTE_INSTALLING_PORT="${PLUGIN_DEBUGGING_PORT:-5003}"
+export MAX_PLUGIN_PACKAGE_SIZE="${PLUGIN_MAX_PACKAGE_SIZE:-52428800}"
+export PPROF_ENABLED="${PLUGIN_PPROF_ENABLED:-false}"
+
+export PLUGIN_STORAGE_TYPE="${PLUGIN_STORAGE_TYPE:-local}"
+export PLUGIN_STORAGE_LOCAL_ROOT="${PLUGIN_STORAGE_LOCAL_ROOT:-/data/plugin_daemon}"
+export PLUGIN_WORKING_PATH="${PLUGIN_WORKING_PATH:-/data/plugin_daemon/cwd}"
+export PLUGIN_INSTALLED_PATH="${PLUGIN_INSTALLED_PATH:-plugin}"
+export PLUGIN_PACKAGE_CACHE_PATH="${PLUGIN_PACKAGE_CACHE_PATH:-plugin_packages}"
+export PLUGIN_MEDIA_CACHE_PATH="${PLUGIN_MEDIA_CACHE_PATH:-assets}"
+
+export REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
+export REDIS_PORT="${REDIS_PORT:-6379}"
+export REDIS_PASSWORD="${REDIS_PASSWORD:-dify_redis_password}"
+export REDIS_DB="${REDIS_DB:-0}"
+export REDIS_USE_SSL="${REDIS_USE_SSL:-false}"
+export REDIS_SSL_CERT_REQS="${REDIS_SSL_CERT_REQS:-CERT_NONE}"
+export REDIS_KEY_PREFIX="${REDIS_KEY_PREFIX:-plugin_daemon}"
+
+export PYTHON_INTERPRETER_PATH="${PYTHON_INTERPRETER_PATH:-/usr/local/bin/python3}"
+export UV_PATH="${UV_PATH:-/usr/local/bin/uv}"
+export PYTHON_ENV_INIT_TIMEOUT="${PLUGIN_PYTHON_ENV_INIT_TIMEOUT:-120}"
+export PLUGIN_MAX_EXECUTION_TIMEOUT="${PLUGIN_MAX_EXECUTION_TIMEOUT:-600}"
+export PLUGIN_STDIO_BUFFER_SIZE="${PLUGIN_STDIO_BUFFER_SIZE:-1024}"
+export PLUGIN_STDIO_MAX_BUFFER_SIZE="${PLUGIN_STDIO_MAX_BUFFER_SIZE:-5242880}"
+export FORCE_VERIFYING_SIGNATURE="${FORCE_VERIFYING_SIGNATURE:-false}"
+export THIRD_PARTY_SIGNATURE_VERIFICATION_ENABLED="${THIRD_PARTY_SIGNATURE_VERIFICATION_ENABLED:-false}"
+export THIRD_PARTY_SIGNATURE_VERIFICATION_PUBLIC_KEYS="${THIRD_PARTY_SIGNATURE_VERIFICATION_PUBLIC_KEYS:-}"
+export ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES="${ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES:-true}"
+export PIP_MIRROR_URL="${PIP_MIRROR_URL:-}"
+export PLUGIN_IGNORE_UV_LOCK="${PLUGIN_IGNORE_UV_LOCK:-false}"
+export PYTHON_COMPILE_ALL_EXTRA_ARGS="${PYTHON_COMPILE_ALL_EXTRA_ARGS:--x \.venv}"
+set +a
+exec "$@"
