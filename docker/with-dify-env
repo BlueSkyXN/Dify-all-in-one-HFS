@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set -a
+# shellcheck disable=SC1091
+. /etc/dify/dify.env.runtime
+if [ -f /data/config/generated.env ]; then
+  # shellcheck disable=SC1091
+  . /data/config/generated.env
+elif [ -f /etc/dify/generated.env ]; then
+  # legacy fallback
+  # shellcheck disable=SC1091
+  . /etc/dify/generated.env
+fi
+set +a
+exec "$@"

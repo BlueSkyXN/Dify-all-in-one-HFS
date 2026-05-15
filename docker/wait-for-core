@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set -a
+# shellcheck disable=SC1091
+. /etc/dify/dify.env.runtime
+if [ -f /data/config/generated.env ]; then
+  # shellcheck disable=SC1091
+  . /data/config/generated.env
+elif [ -f /etc/dify/generated.env ]; then
+  # legacy fallback
+  # shellcheck disable=SC1091
+  . /etc/dify/generated.env
+fi
+set +a
+
+wait_postgres() {
+  until pg_isready -h "${DB_HOST:-127.0.0.1}" -p "${DB_PORT:-5432}" -U "${DB_USERNAME:-dify}" >/dev/null 2>&1; do
+    sleep 1
+  done
+}
+
+wait_redis() {
+  local args=(-h "${REDIS_HOST:-127.0.0.1}" -p "${REDIS_PORT:-6379}")
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    args+=(-a "${REDIS_PASSWORD}")
+  fi
+  until redis-cli "${args[@]}" ping 2>/dev/null | grep -q PONG; do
+    sleep 1
+  done
+}
+
+wait_api() {
+  until curl -fsS http://127.0.0.1:5001/health >/dev/null 2>&1; do
+    sleep 1
+  done
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    postgres) wait_postgres ;;
+    redis) wait_redis ;;
+    api) wait_api ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+  shift
+done
+
+exec "$@"

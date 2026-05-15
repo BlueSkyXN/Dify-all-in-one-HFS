@@ -1,0 +1,6 @@
+.git
+.gitignore
+README.md
+README.hf-space.md
+*.zip
+.DS_Store
