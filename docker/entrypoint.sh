@@ -182,7 +182,7 @@ render_sandbox_config() {
   local enable_network=${SANDBOX_ENABLE_NETWORK:-false}
   local python_path=${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}
   local nodejs_path=${SANDBOX_NODEJS_PATH:-/usr/bin/node}
-  local python_lib_paths=${SANDBOX_PYTHON_LIB_PATH:-/usr/local/lib/python3.12,/usr/local/lib/python3.12/lib-dynload,/usr/local/lib/python3.12/site-packages,/usr/lib/x86_64-linux-gnu,/lib/x86_64-linux-gnu,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone}
+  local python_lib_paths=${SANDBOX_PYTHON_LIB_PATH:-/usr/local/lib/python3.12,/usr/lib/x86_64-linux-gnu,/lib/x86_64-linux-gnu,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone}
   local debug=false
   if [ "${SANDBOX_GIN_MODE:-release}" != "release" ]; then
     debug=true
