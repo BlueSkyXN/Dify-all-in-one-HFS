@@ -16,6 +16,7 @@
 
 ARG DIFY_VERSION=1.14.1
 ARG UV_VERSION=0.8.9
+ARG DIFY_API_IMAGE=langgenius/dify-api
 ARG DIFY_WEB_IMAGE=langgenius/dify-web
 ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
 ARG SANDBOX_IMAGE=langgenius/dify-sandbox:0.2.15
@@ -31,30 +32,13 @@ RUN touch /tmp/web-builder.done
 
 
 # -----------------------------
-# Build Dify API virtualenv from source
+# Use official prebuilt Dify API source and virtualenv
 # -----------------------------
-FROM python:3.12-slim-bookworm AS api-builder
+FROM ${DIFY_API_IMAGE}:${DIFY_VERSION} AS api-image
 COPY --from=web-builder /tmp/web-builder.done /tmp/web-builder.done
-ARG DIFY_VERSION
-ARG UV_VERSION
-
-ENV PYTHONUNBUFFERED=1
-ENV PIP_NO_CACHE_DIR=1
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       git ca-certificates curl \
-       g++ build-essential pkg-config \
-       libmpfr-dev libmpc-dev libgmp-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir uv==${UV_VERSION}
-
-WORKDIR /src
-RUN git clone --depth 1 --branch ${DIFY_VERSION} https://github.com/langgenius/dify.git .
-
-WORKDIR /src/api
-RUN uv sync --locked --no-dev
+RUN test -d /app/api/.venv \
+    && test -x /app/api/.venv/bin/flask \
+    && test -x /app/api/docker/entrypoint.sh
 RUN touch /tmp/api-builder.done
 
 
@@ -69,7 +53,7 @@ FROM ${SANDBOX_IMAGE} AS sandbox-image
 # Final runtime image
 # -----------------------------
 FROM python:3.12-slim-bookworm AS runtime
-COPY --from=api-builder /tmp/api-builder.done /tmp/api-builder.done
+COPY --from=api-image /tmp/api-builder.done /tmp/api-builder.done
 
 ARG DIFY_VERSION
 ARG UV_VERSION
@@ -85,10 +69,10 @@ ENV TZ=UTC
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV PYTHONIOENCODING=utf-8
-ENV VIRTUAL_ENV=/opt/dify/api/.venv
-ENV PATH="/opt/dify/api/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV VIRTUAL_ENV=/app/api/.venv
+ENV PATH="/app/api/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ENV NLTK_DATA=/usr/local/share/nltk_data
-ENV TIKTOKEN_CACHE_DIR=/opt/dify/api/.tiktoken_cache
+ENV TIKTOKEN_CACHE_DIR=/app/api/.tiktoken_cache
 
 # BuildKit can otherwise run the web, API, and runtime stages concurrently on
 # Hugging Face. Keep the heavyweight stages ordered to reduce peak memory.
@@ -130,8 +114,9 @@ ENV HOME=/home/user
 ENV HF_HOME=/data/.huggingface
 ENV HF_HUB_CACHE=/data/.huggingface/hub
 
-# Copy Dify API source + venv.
-COPY --from=api-builder --chown=user:user /src/api /opt/dify/api
+# Copy Dify API source + venv. Keep the official /app/api path because console
+# script shebangs inside .venv point there.
+COPY --from=api-image --chown=user:user /app/api /app/api
 
 # Download NLTK/tiktoken caches during image build, mirroring Dify's official API image behavior.
 RUN mkdir -p /usr/local/share/nltk_data ${TIKTOKEN_CACHE_DIR} \
@@ -170,7 +155,7 @@ RUN chmod +x \
       /usr/local/bin/with-sandbox-env \
       /usr/local/bin/dify-demo-healthcheck \
       /usr/local/bin/wait-for-core \
-      /opt/dify/api/docker/entrypoint.sh \
+      /app/api/docker/entrypoint.sh \
       /app/entrypoint.sh \
       /opt/dify/plugin-daemon/main \
       /opt/dify/sandbox/main \

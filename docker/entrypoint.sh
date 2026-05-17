@@ -282,7 +282,7 @@ run_dify_migration() {
 
   log "Running Dify API database migration..."
   /usr/local/bin/with-dify-env bash -lc \
-    'cd /opt/dify/api && MODE=migration MIGRATION_ENABLED=true ./docker/entrypoint.sh'
+    'cd /app/api && MODE=migration MIGRATION_ENABLED=true ./docker/entrypoint.sh'
 }
 
 main() {
