@@ -19,7 +19,6 @@ ARG NODE_VERSION=22
 ARG UV_VERSION=0.8.9
 ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
 ARG SANDBOX_IMAGE=langgenius/dify-sandbox:0.2.15
-ARG PGVECTOR_VERSION=0.8.2
 
 # -----------------------------
 # Build Dify Web from source
@@ -43,12 +42,14 @@ RUN VITE_GIT_HOOKS=0 pnpm install --frozen-lockfile
 
 WORKDIR /src/web
 RUN pnpm build && pnpm build:vinext
+RUN touch /tmp/web-builder.done
 
 
 # -----------------------------
 # Build Dify API virtualenv from source
 # -----------------------------
 FROM python:3.12-slim-bookworm AS api-builder
+COPY --from=web-builder /tmp/web-builder.done /tmp/web-builder.done
 ARG DIFY_VERSION
 ARG UV_VERSION
 
@@ -69,6 +70,7 @@ RUN git clone --depth 1 --branch ${DIFY_VERSION} https://github.com/langgenius/d
 
 WORKDIR /src/api
 RUN uv sync --locked --no-dev
+RUN touch /tmp/api-builder.done
 
 
 # -----------------------------
@@ -82,10 +84,10 @@ FROM ${SANDBOX_IMAGE} AS sandbox-image
 # Final runtime image
 # -----------------------------
 FROM python:3.12-slim-bookworm AS runtime
+COPY --from=api-builder /tmp/api-builder.done /tmp/api-builder.done
 
 ARG DIFY_VERSION
 ARG UV_VERSION
-ARG PGVECTOR_VERSION
 
 ENV DIFY_VERSION=${DIFY_VERSION}
 ENV PYTHONUNBUFFERED=1
@@ -103,10 +105,13 @@ ENV PATH="/opt/dify/api/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/
 ENV NLTK_DATA=/usr/local/share/nltk_data
 ENV TIKTOKEN_CACHE_DIR=/opt/dify/api/.tiktoken_cache
 
-# System packages, Node.js, PostgreSQL 15, and runtime tools.
+# BuildKit can otherwise run the web, API, and runtime stages concurrently on
+# Hugging Face. Keep the heavyweight stages ordered to reduce peak memory.
+
+# System packages, Node.js, PostgreSQL 15 + pgvector, and runtime tools.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates curl gnupg lsb-release git make gcc g++ pkg-config \
+       ca-certificates curl gnupg lsb-release git \
        openssl tini procps netcat-openbsd \
        nginx supervisor redis-server \
        libgmp-dev libmpfr-dev libmpc-dev \
@@ -125,20 +130,13 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
        nodejs \
-       postgresql-15 postgresql-client-15 postgresql-server-dev-15 \
+       postgresql-15 postgresql-client-15 postgresql-15-pgvector \
     && npm install -g corepack@latest \
     && corepack enable \
     && pip install --no-cache-dir uv==${UV_VERSION} \
     && python3 -m pip install --no-cache-dir \
        "httpx[socks]==0.27.2" requests==2.32.3 jinja2==3.1.6 PySocks \
     && rm -rf /var/lib/apt/lists/*
-
-# Compile and install pgvector for PostgreSQL 15.
-RUN git clone --depth 1 --branch v${PGVECTOR_VERSION} https://github.com/pgvector/pgvector.git /tmp/pgvector \
-    && cd /tmp/pgvector \
-    && make \
-    && make install \
-    && rm -rf /tmp/pgvector
 
 # Dedicated non-root runtime user. Hugging Face Docker Spaces run containers as UID 1000.
 RUN groupadd --gid 1000 user \
