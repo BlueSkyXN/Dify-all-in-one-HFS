@@ -139,6 +139,43 @@ EOF_REDIS
   chmod 600 /data/run/redis.conf || true
 }
 
+redis_cli_args() {
+  source_runtime_env
+  printf -- '-h\n127.0.0.1\n-p\n%s\n' "${REDIS_PORT}"
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    printf -- '--no-auth-warning\n-a\n%s\n' "${REDIS_PASSWORD}"
+  fi
+}
+
+start_temp_redis() {
+  source_runtime_env
+  log "Starting temporary Redis for initialization..."
+  /usr/bin/redis-server /data/run/redis.conf \
+    --daemonize yes \
+    --pidfile /data/run/redis-init.pid \
+    --logfile /data/logs/redis-init.log
+
+  local -a args
+  mapfile -t args < <(redis_cli_args)
+  for _ in $(seq 1 30); do
+    if redis-cli "${args[@]}" ping 2>/dev/null | grep -q PONG; then
+      return
+    fi
+    sleep 1
+  done
+
+  log "Temporary Redis did not become ready."
+  exit 1
+}
+
+stop_temp_redis() {
+  source_runtime_env
+  log "Stopping temporary Redis..."
+  local -a args
+  mapfile -t args < <(redis_cli_args)
+  redis-cli "${args[@]}" shutdown nosave >/data/logs/redis-init-stop.log 2>&1 || true
+}
+
 render_sandbox_config() {
   source_runtime_env
   local api_key=${SANDBOX_API_KEY:-${CODE_EXECUTION_API_KEY:-}}
@@ -293,7 +330,9 @@ main() {
   render_redis_config
   render_sandbox_config
   init_postgres
+  start_temp_redis
   run_dify_migration
+  stop_temp_redis
   stop_temp_postgres
 
   log "Starting all services with supervisord."
