@@ -109,7 +109,9 @@ RUN apt-get update \
 
 # Dedicated non-root runtime user. Hugging Face Docker Spaces run containers as UID 1000.
 RUN groupadd --gid 1000 user \
-    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash user
+    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash user \
+    && groupadd --gid 65537 sandbox \
+    && useradd --uid 65537 --gid 65537 --no-create-home --shell /usr/sbin/nologin sandbox
 ENV HOME=/home/user
 ENV HF_HOME=/data/.huggingface
 ENV HF_HUB_CACHE=/data/.huggingface/hub
