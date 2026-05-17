@@ -15,33 +15,18 @@
 #     dify-all-in-one-hf-space:1.14.1
 
 ARG DIFY_VERSION=1.14.1
-ARG NODE_VERSION=22
 ARG UV_VERSION=0.8.9
+ARG DIFY_WEB_IMAGE=langgenius/dify-web
 ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
 ARG SANDBOX_IMAGE=langgenius/dify-sandbox:0.2.15
 
 # -----------------------------
-# Build Dify Web from source
+# Use official prebuilt Dify Web assets
 # -----------------------------
-FROM node:${NODE_VERSION}-bookworm AS web-builder
-ARG DIFY_VERSION
-
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-ENV pnpm_config_verify_deps_before_run=false
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /src
-RUN git clone --depth 1 --branch ${DIFY_VERSION} https://github.com/langgenius/dify.git .
-
-RUN corepack enable && corepack install
-RUN VITE_GIT_HOOKS=0 pnpm install --frozen-lockfile
-
-WORKDIR /src/web
-RUN pnpm build && pnpm build:vinext
+FROM ${DIFY_WEB_IMAGE}:${DIFY_VERSION} AS web-builder
+RUN test -d /app/targets/next \
+    && test -d /app/targets/vinext \
+    && test -x /app/entrypoint.sh
 RUN touch /tmp/web-builder.done
 
 
@@ -156,12 +141,9 @@ RUN mkdir -p /usr/local/share/nltk_data ${TIKTOKEN_CACHE_DIR} \
     && chown -R user:user ${TIKTOKEN_CACHE_DIR}
 
 # Copy Dify Web standalone build in the same layout expected by Dify's official web entrypoint.
-RUN mkdir -p /app/targets/next/web /app/targets/vinext
-COPY --from=web-builder --chown=user:user /src/web/public /app/targets/next/web/public
-COPY --from=web-builder --chown=user:user /src/web/.next/standalone /app/targets/next/
-COPY --from=web-builder --chown=user:user /src/web/.next/static /app/targets/next/web/.next/static
-COPY --from=web-builder --chown=user:user /src/web/dist/standalone /app/targets/vinext
-COPY --from=web-builder --chown=user:user --chmod=755 /src/web/docker/entrypoint.sh /app/entrypoint.sh
+RUN mkdir -p /app
+COPY --from=web-builder --chown=user:user /app/targets/ /app/targets/
+COPY --from=web-builder --chown=user:user --chmod=755 /app/entrypoint.sh /app/entrypoint.sh
 
 # Copy official Plugin Daemon and Sandbox runtime artifacts.
 COPY --from=plugin-daemon-image --chown=user:user /app /opt/dify/plugin-daemon
