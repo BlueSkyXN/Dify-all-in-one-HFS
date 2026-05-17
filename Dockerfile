@@ -132,7 +132,7 @@ COPY --from=web-builder --chown=user:user --chmod=755 /app/entrypoint.sh /app/en
 
 # Copy official Plugin Daemon and Sandbox runtime artifacts.
 COPY --from=plugin-daemon-image --chown=user:user /app /opt/dify/plugin-daemon
-COPY --from=sandbox-image --chown=user:user /main /opt/dify/sandbox/main
+COPY --from=sandbox-image /main /opt/dify/sandbox/main
 COPY --from=sandbox-image --chown=user:user /conf /conf
 COPY --from=sandbox-image --chown=user:user /dependencies /dependencies
 
@@ -163,7 +163,9 @@ RUN chmod +x \
       /data/postgres /data/redis /data/dify/storage /data/plugin_daemon /data/config /data/logs /data/run/postgresql \
       /data/run/nginx/client_body /data/run/nginx/proxy /data/run/nginx/fastcgi /data/run/nginx/uwsgi /data/run/nginx/scgi \
       /var/sandbox \
-    && chown -R user:user /opt/dify /app /data /conf /dependencies /var/sandbox \
+    && chown -R user:user /opt/dify/plugin-daemon /app /data /conf /dependencies /var/sandbox \
+    && chown root:root /opt/dify/sandbox/main \
+    && chmod 4755 /opt/dify/sandbox/main \
     && chmod -R 777 /data \
     && rm -f /etc/nginx/sites-enabled/default
 
