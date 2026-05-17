@@ -24,4 +24,11 @@ export HTTP_PROXY="${SANDBOX_HTTP_PROXY:-}"
 export HTTPS_PROXY="${SANDBOX_HTTPS_PROXY:-}"
 export PIP_MIRROR_URL="${PIP_MIRROR_URL:-}"
 set +a
+
+# Dify Sandbox marks copied Python files read-only. Under the HF rootless
+# wrapper, a restarted sandbox cannot overwrite leftovers from a failed init.
+rm -rf /var/sandbox/sandbox-python
+mkdir -p /var/sandbox/sandbox-python
+chmod 755 /var/sandbox /var/sandbox/sandbox-python || true
+
 exec "$@"
