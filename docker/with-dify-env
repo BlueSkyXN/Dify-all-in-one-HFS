@@ -12,4 +12,9 @@ elif [ -f /etc/dify/generated.env ]; then
   . /etc/dify/generated.env
 fi
 set +a
+export VIRTUAL_ENV="${VIRTUAL_ENV:-/app/api/.venv}"
+case ":${PATH:-}:" in
+  *":${VIRTUAL_ENV}/bin:"*) ;;
+  *) export PATH="${VIRTUAL_ENV}/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}" ;;
+esac
 exec "$@"
