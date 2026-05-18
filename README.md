@@ -171,7 +171,7 @@ docker exec -it dify-aio-hf supervisorctl status
 /data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
 ```
 
-`/persist/postgres-backups/latest.sql.gz` 会由 `postgres-backup` 进程定期生成，作为 live PostgreSQL data directory 的普通文件备份。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
+`/persist/postgres-backups/latest.sql.gz` 会由 `postgres-backup` 进程定期生成，作为 live PostgreSQL data directory 的普通文件备份。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，然后把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并在有 dump 时先从 `latest.sql.gz` 恢复。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
 
 ## 运维与可观测入口
 

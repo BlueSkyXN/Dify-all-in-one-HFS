@@ -76,6 +76,7 @@ SANDBOX_API_KEY=<fixed-random-secret>
 | `RUNTIME_ROOT` | `/tmp/dify-aio` | 日志、run、cache、Redis 默认 scratch 根目录 |
 | `REDIS_PERSISTENCE` | `false` | `true` 时 `/data/redis` 映射到 `/persist/redis`；默认放 `/tmp` 节省 bucket |
 | `PLUGIN_CWD_PERSISTENCE` | `false` | `true` 时插件工作目录 `cwd` 也持久化；默认只持久化已安装插件和 assets |
+| `POSTGRES_BUCKET_FAILURE_MODE` | `fallback-to-runtime` | `/persist/postgres` 启动失败时切到 `${RUNTIME_ROOT}/postgres`；设为 `exit` 可强制失败并只保留诊断日志 |
 | `POSTGRES_BACKUP_ENABLED` | `auto` | bucket-lite 启用时自动启动 `pg_dumpall` 备份；可设 `true`/`false` |
 | `POSTGRES_BACKUP_DIR` | `${PERSIST_ROOT}/postgres-backups` | `latest.sql.gz` 和时间戳写入目录 |
 | `POSTGRES_BACKUP_INTERVAL_SECONDS` | `3600` | 周期备份间隔，最小有效值 60 秒 |
@@ -97,7 +98,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 /data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
 ```
 
-`/persist/postgres` 是 live PostgreSQL data directory，适合 HF Space demo/个人服务先实测；`/persist/postgres-backups/latest.sql.gz` 是普通文件备份，用于降低 bucket mount 文件系统语义风险。
+`/persist/postgres` 会先作为 live PostgreSQL data directory 实测；`/persist/postgres-backups/latest.sql.gz` 是普通文件备份，用于降低 bucket mount 文件系统语义风险。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在有 dump 时先恢复 dump。
 
 ## URL 变量
 
