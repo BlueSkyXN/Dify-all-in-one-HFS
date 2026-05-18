@@ -57,4 +57,4 @@ OPS_TOKEN=<fixed-random-token> \
 
 `/_ops/` 是只读诊断入口，主要用于查看 supervisor 状态、内部健康探针、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 建议设置为 Private 或 Protected。
 
-完整的运维、502 排障、日志入口和发布后验收流程见 [运维与可观测 Runbook](./docs/ops-runbook.md)。
+完整工程文档见 [docs/README.md](./docs/README.md)。其中 [Deployment Guide](./docs/deployment.md) 覆盖部署流程，[Operations Runbook](./docs/ops-runbook.md) 覆盖运维、502 排障、日志入口和发布后验收。

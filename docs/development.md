@@ -1,0 +1,228 @@
+# Development Guide
+
+本文档说明如何在本仓库做开发、修改和验证。
+
+## 开发原则
+
+- 优先复用官方 Dify 镜像资产，不复制或 fork 大量上游源码。
+- 修改保持在 Dockerfile、runtime scripts、Nginx、Supervisor、ops-service 和 docs 范围内。
+- 改配置前先确认对应服务是否真的读取该变量。
+- 不把演示环境默认值误写成生产安全建议。
+- 每次改 runtime 启动链路后必须做线上或本地 smoke。
+
+## 主要改动区域
+
+| 区域 | 文件 | 典型改动 |
+| --- | --- | --- |
+| 镜像构建 | `Dockerfile` | 版本升级、系统依赖、复制 runtime assets |
+| 初始化 | `docker/entrypoint.sh` | `/data` 准备、secret 生成、DB 初始化、迁移 |
+| 环境变量 | `docker/dify.env.runtime`, `docker/dify.env.demo` | 默认值、demo env-file |
+| 进程编排 | `docker/supervisord.conf` | 新增/调整进程、启动顺序、日志路径 |
+| 路由 | `docker/nginx.conf` | 路径代理、健康探针、access log |
+| 运维服务 | `docker/ops_service.py` | `/_ops` endpoint、健康检查、日志白名单 |
+| 辅助脚本 | `docker/with-*`, `docker/wait-for-core`, `docker/healthcheck.sh` | 环境转换、依赖等待、Docker healthcheck |
+| 本地/线上脚本 | `scripts/*.sh` | build/run/smoke |
+| 文档 | `README*.md`, `docs/*.md` | 用户说明和运维 runbook |
+
+## 本地静态检查
+
+Shell 语法：
+
+```bash
+bash -n \
+  docker/entrypoint.sh \
+  docker/with-dify-env \
+  docker/with-plugin-env \
+  docker/with-sandbox-env \
+  docker/wait-for-core \
+  docker/healthcheck.sh \
+  scripts/build.sh \
+  scripts/run-demo.sh \
+  scripts/hf-space-smoke.sh
+```
+
+Python 语法：
+
+```bash
+python3 -m py_compile docker/ops_service.py
+```
+
+Git whitespace：
+
+```bash
+git diff --check
+```
+
+## Nginx 配置检查
+
+如果本机装了 Nginx，可以用临时替换方式验证语法。因为仓库配置引用容器内路径 `/etc/nginx/mime.types` 和 `/data/...`，本机直接 `nginx -t -c docker/nginx.conf` 可能失败。
+
+推荐做法是在临时文件中替换 mime path 和 `/data` 路径，再执行 `nginx -t`。不要把临时替换写回仓库。
+
+## 本地 Docker 验证
+
+构建：
+
+```bash
+scripts/build.sh
+```
+
+运行：
+
+```bash
+scripts/run-demo.sh
+```
+
+Smoke：
+
+```bash
+OPS_TOKEN=dify_ops_demo_token \
+  scripts/hf-space-smoke.sh http://localhost:8080
+```
+
+查看 supervisor：
+
+```bash
+docker exec -it dify-aio-hf-demo \
+  supervisorctl -c /etc/supervisor/conf.d/supervisord.conf status
+```
+
+查看日志：
+
+```bash
+docker logs -f dify-aio-hf-demo
+```
+
+## Hugging Face 验证
+
+推送后：
+
+```bash
+git push origin main
+```
+
+轮询：
+
+```bash
+hf spaces info BlueSkyXN/dify-all-in-one
+```
+
+确认：
+
+```text
+runtime.stage = RUNNING
+runtime.raw.sha = <expected commit sha>
+```
+
+线上 smoke：
+
+```bash
+OPS_TOKEN=dify_ops_demo_token \
+  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+```
+
+错误摘要：
+
+```bash
+curl -H "X-Ops-Token: dify_ops_demo_token" \
+  https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
+```
+
+## 修改 Plugin Daemon 相关逻辑
+
+必须保留 migration：
+
+```bash
+/opt/dify/plugin-daemon/commandline migrate && exec /opt/dify/plugin-daemon/main
+```
+
+验证点：
+
+- build 日志中 `/opt/dify/plugin-daemon/commandline` 可执行检查通过。
+- `plugin-daemon.log` 出现 `database migration completed successfully`。
+- `/_ops/errors` 不出现 `install_tasks` 缺表错误。
+
+## 修改 Nginx 路由
+
+每次修改 `docker/nginx.conf` 后检查：
+
+- `/nginx-health` 是否返回 `ok`。
+- `/healthz` 是否代理到 ops-service。
+- `/console/api/setup` 和 `/console/api/init` 是否为 200。
+- `/socket.io/` 是否保留 Upgrade / Connection header。
+- `/e/` 是否保留 `Dify-Hook-Url`。
+- `/` 是否仍代理 Dify Web。
+
+## 修改 ops-service
+
+修改 `docker/ops_service.py` 后检查：
+
+```bash
+python3 -m py_compile docker/ops_service.py
+```
+
+线上或本地验证：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/health
+curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/status
+curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/config
+curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/errors
+curl -H "X-Ops-Token: $OPS_TOKEN" "<base>/_ops/logs?service=dify-api&lines=80"
+```
+
+安全要求：
+
+- 不返回 secret 原文。
+- 日志 service 必须白名单。
+- 只读接口不要执行破坏性命令。
+- query token 不应进入 ops-service 自身日志。
+
+## 修改配置变量
+
+增加变量时需要同步：
+
+1. `docker/dify.env.runtime`
+2. `docker/dify.env.demo`，如果本地 demo 需要暴露
+3. 对应 wrapper，如 `with-plugin-env` 或 `with-sandbox-env`
+4. [Configuration Reference](./configuration.md)
+5. smoke 或 ops-service 检查，如果变量影响健康状态
+
+## 提交前检查清单
+
+```bash
+bash -n \
+  docker/entrypoint.sh \
+  docker/with-dify-env \
+  docker/with-plugin-env \
+  docker/with-sandbox-env \
+  docker/wait-for-core \
+  docker/healthcheck.sh \
+  scripts/build.sh \
+  scripts/run-demo.sh \
+  scripts/hf-space-smoke.sh
+python3 -m py_compile docker/ops_service.py
+git diff --check
+```
+
+如果本机有 Docker：
+
+```bash
+scripts/build.sh
+scripts/run-demo.sh
+OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
+```
+
+如果部署到 Hugging Face：
+
+```bash
+OPS_TOKEN=dify_ops_demo_token \
+  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+```
+
+## 当前已知限制
+
+- 本仓库没有单元测试框架，主要依赖 shell/Python 静态检查和 Docker/HF smoke。
+- 本地没有 Docker daemon 时，无法完整验证镜像构建，只能依赖 HF build。
+- `dify-web` 直接输出到容器 stdout/stderr，`/_ops/logs` 不暴露专用文件。
+- Nginx port/body size 变量目前不是动态模板。

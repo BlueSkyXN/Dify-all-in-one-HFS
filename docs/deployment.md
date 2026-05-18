@@ -1,0 +1,245 @@
+# Deployment Guide
+
+本文档说明如何部署到 Hugging Face Docker Space、如何本地构建运行，以及如何确认发布结果。
+
+## Hugging Face Space 部署
+
+1. 创建 Hugging Face Space。
+2. SDK 选择 `Docker`。
+3. 将仓库根目录内容推送到 Space 仓库。
+4. 确认 `README.md` 顶部包含：
+
+```yaml
+sdk: docker
+app_port: 7860
+```
+
+5. 建议启用：
+
+```text
+Hardware: CPU Upgrade 或更高
+Storage: Persistent Storage
+Visibility: Private 或 Protected
+```
+
+6. 建议设置 Variables / Secrets，详见 [Configuration Reference](./configuration.md)。
+
+## 推送到当前 Space
+
+当前远端：
+
+```bash
+git remote -v
+```
+
+预期包含：
+
+```text
+https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one
+```
+
+推送：
+
+```bash
+git push origin main
+```
+
+Hugging Face 会自动触发 Docker build 和 runtime restart。
+
+## 查看 build / runtime
+
+查看 Space 状态：
+
+```bash
+hf spaces info BlueSkyXN/dify-all-in-one
+```
+
+关键字段：
+
+```text
+sha
+runtime.stage
+runtime.raw.sha
+runtime.raw.hardware.current
+runtime.raw.domains[].stage
+```
+
+查看 build logs：
+
+```bash
+hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220
+```
+
+查看 app logs：
+
+```bash
+hf spaces logs BlueSkyXN/dify-all-in-one -n 220
+```
+
+注意：刚推送后，顶层 `sha` 可能已经是新提交，但 `runtime.raw.sha` 仍是旧提交。只有 `runtime.stage=RUNNING` 且 `runtime.raw.sha` 等于目标提交，才代表新镜像已接管流量。
+
+## 发布后 smoke
+
+```bash
+OPS_TOKEN=dify_ops_demo_token \
+  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+```
+
+脚本检查：
+
+```text
+web-root
+nginx-health
+ops-healthz
+setup-api
+init-api
+ops-health
+ops-errors
+```
+
+默认重试：
+
+```env
+SMOKE_RETRIES=30
+SMOKE_DELAY=5
+```
+
+可以调整：
+
+```bash
+OPS_TOKEN=dify_ops_demo_token \
+SMOKE_RETRIES=60 \
+SMOKE_DELAY=5 \
+scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+```
+
+## 手工验证
+
+基础健康：
+
+```bash
+curl https://blueskyxn-dify-all-in-one.hf.space/nginx-health
+curl https://blueskyxn-dify-all-in-one.hf.space/healthz
+```
+
+只读运维：
+
+```bash
+curl -H "X-Ops-Token: dify_ops_demo_token" \
+  https://blueskyxn-dify-all-in-one.hf.space/_ops/health
+
+curl -H "X-Ops-Token: dify_ops_demo_token" \
+  https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
+```
+
+浏览器：
+
+```text
+https://blueskyxn-dify-all-in-one.hf.space/
+```
+
+未初始化实例会跳转到 `/install` 并显示管理员账户设置页。
+
+## 本地构建
+
+要求本机有 Docker daemon。
+
+```bash
+scripts/build.sh
+```
+
+等价于：
+
+```bash
+docker build -t dify-all-in-one-hf-space:1.14.1 .
+```
+
+自定义 tag：
+
+```bash
+scripts/build.sh my-dify-aio:dev
+```
+
+## 本地运行
+
+```bash
+scripts/run-demo.sh
+```
+
+默认：
+
+```text
+container name: dify-aio-hf-demo
+host port: 8080
+container port: 7860
+volume: dify-hf-demo-data:/data
+PUBLIC_URL=http://localhost:8080
+env-file: docker/dify.env.demo
+```
+
+打开：
+
+```text
+http://localhost:8080
+```
+
+查看日志：
+
+```bash
+docker logs -f dify-aio-hf-demo
+```
+
+查看 supervisor：
+
+```bash
+docker exec -it dify-aio-hf-demo supervisorctl -c /etc/supervisor/conf.d/supervisord.conf status
+```
+
+停止并删除：
+
+```bash
+docker rm -f dify-aio-hf-demo
+```
+
+删除本地数据 volume：
+
+```bash
+docker volume rm dify-hf-demo-data
+```
+
+## 常见部署问题
+
+### Space 502
+
+先看：
+
+```bash
+curl https://blueskyxn-dify-all-in-one.hf.space/nginx-health
+curl https://blueskyxn-dify-all-in-one.hf.space/healthz
+curl -H "X-Ops-Token: dify_ops_demo_token" \
+  https://blueskyxn-dify-all-in-one.hf.space/_ops/health
+```
+
+完整流程见 [Operations Runbook](./ops-runbook.md)。
+
+### build 通过但 runtime 仍是旧 SHA
+
+等待 `runtime.raw.sha` 切换到目标提交。Hugging Face 有时会先更新仓库 `sha`，再切换 runtime。
+
+### App logs 没有输出
+
+先确认 stage：
+
+```bash
+hf spaces info BlueSkyXN/dify-all-in-one
+```
+
+如果仍在 build，查看 build logs：
+
+```bash
+hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220
+```
+
+### 初始化后账号丢失
+
+没有启用 Persistent Storage，或 `/data` 没有保留。启用 Storage 后重新初始化。
