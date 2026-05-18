@@ -15,6 +15,11 @@ pinned: false
 
 > 该工程不是生产部署方案。生产环境应回到官方 Docker Compose、Kubernetes，或企业内网的拆分式部署。
 
+## 文档入口
+
+- [Hugging Face Space 部署说明](./README.hf-space.md)
+- [运维与可观测 Runbook](./docs/ops-runbook.md)
+
 ## 组件布局
 
 容器内由 `supervisord` 启动多个进程，并由 Nginx 在单一外部端口 `7860` 反向代理：
@@ -214,6 +219,8 @@ Nginx access log 使用 JSON 格式输出到 stdout，包含 `request_id`、`uri
 OPS_TOKEN=dify_ops_demo_token \
   scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
+
+更完整的 endpoint 说明、502 排障流程、Plugin Daemon migration 说明和发布后验收步骤见 [运维与可观测 Runbook](./docs/ops-runbook.md)。
 
 ## 运行限制
 
