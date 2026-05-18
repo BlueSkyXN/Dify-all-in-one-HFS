@@ -109,6 +109,8 @@ bucket-lite 模式下关键映射为：
 /data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
 ```
 
+PostgreSQL 会先尝试使用 `/persist/postgres`。如果 bucket mount 不满足 PostgreSQL live data directory 需要的权限、锁或同步语义，默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并继续把 dump 备份写到 `/persist/postgres-backups`。
+
 并验证 `/data` 对 UID `1000` 可写。如果 `PERSIST_MODE=bucket` 但 `/persist` 不可写，容器会直接退出。
 
 ### write_generated_env

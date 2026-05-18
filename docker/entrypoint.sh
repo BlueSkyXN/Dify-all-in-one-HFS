@@ -364,6 +364,8 @@ EOF_SANDBOX
 
 configure_postgres_files() {
   source_runtime_env
+  chmod 700 /data/postgres 2>/dev/null || true
+
   if ! grep -q "dify all-in-one hf demo" /data/postgres/postgresql.conf 2>/dev/null; then
     cat >> /data/postgres/postgresql.conf <<EOF_PGCONF
 
@@ -389,6 +391,33 @@ host    all             all             ::1/128                 md5
 EOF_PGHBA
   fi
   chmod 600 /data/postgres/postgresql.conf /data/postgres/pg_hba.conf || true
+}
+
+print_postgres_failure_context() {
+  source_runtime_env
+  log "Temporary PostgreSQL failed to start. Last postgres-init.log lines:"
+  tail -n 120 /data/logs/postgres-init.log || true
+  log "PostgreSQL data directory details:"
+  ls -ld /data/postgres "$(readlink -f /data/postgres 2>/dev/null || printf '%s' /data/postgres)" || true
+  stat -c 'mode=%a owner=%u group=%g path=%n' /data/postgres "$(readlink -f /data/postgres 2>/dev/null || printf '%s' /data/postgres)" 2>/dev/null || true
+  log "PostgreSQL data directory top-level files:"
+  find /data/postgres -maxdepth 1 -mindepth 1 -printf '%M %u %g %s %p\n' 2>/dev/null | sort | sed -n '1,80p' || true
+  if [ -s /data/postgres/postmaster.pid ]; then
+    log "postmaster.pid contents:"
+    sed -n '1,20p' /data/postgres/postmaster.pid || true
+  fi
+  if [ -s /data/postgres/postmaster.opts ]; then
+    log "postmaster.opts contents:"
+    sed -n '1,20p' /data/postgres/postmaster.opts || true
+  fi
+  if command -v df >/dev/null 2>&1; then
+    log "Filesystem details:"
+    df -hT /data/postgres /data/run /persist 2>/dev/null || df -h /data/postgres /data/run /persist 2>/dev/null || true
+  fi
+  if [ -x /usr/lib/postgresql/15/bin/pg_controldata ] && [ -s /data/postgres/global/pg_control ]; then
+    log "pg_controldata summary:"
+    /usr/lib/postgresql/15/bin/pg_controldata /data/postgres 2>&1 | sed -n '1,80p' || true
+  fi
 }
 
 clear_stale_postgres_runtime_files() {
@@ -424,8 +453,63 @@ start_temp_postgres() {
     -D /data/postgres \
     -o "-c listen_addresses='127.0.0.1' -c port=${DB_PORT} -c unix_socket_directories='/data/run/postgresql'" \
     -w start >/data/logs/postgres-init.log 2>&1; then
-    log "Temporary PostgreSQL failed to start. Last postgres-init.log lines:"
-    tail -n 80 /data/logs/postgres-init.log || true
+    print_postgres_failure_context
+    return 1
+  fi
+}
+
+postgres_on_bucket_path() {
+  local persist_pg="${PERSIST_ROOT:-/persist}/postgres"
+  local actual=
+  actual=$(readlink -f /data/postgres 2>/dev/null || printf '%s' /data/postgres)
+  [ "$actual" = "$persist_pg" ]
+}
+
+postgres_bucket_fallback_enabled() {
+  case "${POSTGRES_BUCKET_FAILURE_MODE:-fallback-to-runtime}" in
+    fallback-to-runtime|runtime|fallback)
+      return 0
+      ;;
+    exit|fail|disabled|false|FALSE|0)
+      return 1
+      ;;
+    *)
+      log "Invalid POSTGRES_BUCKET_FAILURE_MODE=${POSTGRES_BUCKET_FAILURE_MODE}. Use fallback-to-runtime or exit."
+      exit 1
+      ;;
+  esac
+}
+
+switch_postgres_to_runtime_fallback() {
+  source_runtime_env
+  local runtime_pg="${RUNTIME_ROOT:-/tmp/dify-aio}/postgres"
+  log "Falling back to runtime PostgreSQL data directory at ${runtime_pg}; bucket dump backups remain under ${POSTGRES_BACKUP_DIR}."
+  mkdir -p "$runtime_pg"
+  if [ -L /data/postgres ]; then
+    rm -f /data/postgres
+  elif [ -e /data/postgres ]; then
+    log "Cannot switch PostgreSQL fallback: /data/postgres exists and is not a symlink."
+    exit 1
+  fi
+  ln -s "$runtime_pg" /data/postgres
+}
+
+restore_postgres_backup_if_needed() {
+  source_runtime_env
+  local backup="${POSTGRES_BACKUP_DIR}/latest.sql.gz"
+  if [ ! -s "$backup" ]; then
+    return
+  fi
+  if psql -h /data/run/postgresql -p "$DB_PORT" -U user -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_DATABASE}'" | grep -q 1; then
+    return
+  fi
+
+  log "Restoring PostgreSQL dump from ${backup} before creating demo databases."
+  if ! gzip -dc "$backup" \
+    | sed -E '/^(CREATE|ALTER) ROLE "user"/d' \
+    | psql -h /data/run/postgresql -p "$DB_PORT" -U user -d postgres -v ON_ERROR_STOP=1 >/data/logs/postgres-restore.log 2>&1; then
+    log "PostgreSQL dump restore failed. Last postgres-restore.log lines:"
+    tail -n 120 /data/logs/postgres-restore.log || true
     exit 1
   fi
 }
@@ -453,7 +537,29 @@ init_postgres() {
 
   configure_postgres_files
   clear_stale_postgres_runtime_files
-  start_temp_postgres
+  if ! start_temp_postgres; then
+    if postgres_on_bucket_path && postgres_bucket_fallback_enabled; then
+      switch_postgres_to_runtime_fallback
+      if [ ! -s /data/postgres/PG_VERSION ]; then
+        log "Initializing fallback PostgreSQL data directory at /data/postgres"
+        if ! /usr/lib/postgresql/15/bin/initdb \
+          -D /data/postgres \
+          --encoding=UTF8 \
+          --locale=C.UTF-8 >/data/logs/postgres-initdb.log 2>&1; then
+          log "Fallback PostgreSQL initdb failed. Last postgres-initdb.log lines:"
+          tail -n 120 /data/logs/postgres-initdb.log || true
+          exit 1
+        fi
+      fi
+      configure_postgres_files
+      clear_stale_postgres_runtime_files
+      start_temp_postgres || exit 1
+    else
+      exit 1
+    fi
+  fi
+
+  restore_postgres_backup_if_needed
 
   local pass_sql
   pass_sql=$(sql_escape_literal "$DB_PASSWORD")
