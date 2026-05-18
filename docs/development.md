@@ -166,8 +166,10 @@ python3 -m py_compile docker/ops_service.py
 ```bash
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/health
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/status
+curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/system
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/config
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/errors
+curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/metrics
 curl -H "X-Ops-Token: $OPS_TOKEN" "<base>/_ops/logs?service=dify-api&lines=80"
 ```
 
@@ -175,7 +177,10 @@ curl -H "X-Ops-Token: $OPS_TOKEN" "<base>/_ops/logs?service=dify-api&lines=80"
 
 - 不返回 secret 原文。
 - 日志 service 必须白名单。
+- `OPS_LOG_SERVICES_JSON` 只接受相对日志文件名，不允许绝对路径或 `..`。
+- `OPS_EXTRA_COMMAND_CHECKS_JSON` 只配置只读命令；不要把写操作、迁移、清理数据放进健康检查。
 - 只读接口不要执行破坏性命令。
+- `ops-service` 本体不要依赖可写 `/data`；自身日志走 stdout/stderr，`/_ops/logs` 只读读取 `OPS_LOG_DIR`。
 - query token 不应进入 ops-service 自身日志。
 
 ## 修改配置变量
@@ -224,5 +229,5 @@ OPS_TOKEN=dify_ops_demo_token \
 
 - 本仓库没有单元测试框架，主要依赖 shell/Python 静态检查和 Docker/HF smoke。
 - 本地没有 Docker daemon 时，无法完整验证镜像构建，只能依赖 HF build。
-- `dify-web` 直接输出到容器 stdout/stderr，`/_ops/logs` 不暴露专用文件。
+- `dify-web` 和 `ops-service` 直接输出到容器 stdout/stderr，`/_ops/logs` 不暴露它们的专用文件。
 - Nginx port/body size 变量目前不是动态模板。

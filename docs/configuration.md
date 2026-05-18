@@ -17,8 +17,9 @@ docker/dify.env.demo
 1. Docker / Hugging Face Space 注入的环境变量已经存在。
 2. wrapper 脚本 source `/etc/dify/dify.env.runtime`。
 3. `dify.env.runtime` 使用 `${VAR:-default}`，所以已有环境变量优先。
-4. 如果存在 `/data/config/generated.env`，再 source 这个文件，补齐自动生成的 secret。
-5. 部分 wrapper 会把通用变量转换成上游服务期望的变量名。
+4. `entrypoint.sh` 先准备存储布局；bucket-lite 模式下 `/data/config` 会映射到 `/persist/config`。
+5. 如果存在 `/data/config/generated.env`，再 source 这个文件，补齐自动生成的 secret。
+6. 部分 wrapper 会把通用变量转换成上游服务期望的变量名。
 
 `entrypoint.sh` 写入 `generated.env` 时会特殊处理 secrets：
 
@@ -64,7 +65,39 @@ CODE_EXECUTION_API_KEY=<fixed-random-secret>
 SANDBOX_API_KEY=<fixed-random-secret>
 ```
 
-如果启用了 Persistent Storage，可以让 `entrypoint.sh` 自动生成并保存在 `/data/config/generated.env`。如果没有 Persistent Storage，每次重启都会重新生成，登录状态、签名、插件通信和文件 URL 可能失效。
+如果挂载了 `/persist`，可以让 `entrypoint.sh` 自动生成并保存在 `/persist/config/generated.env`。如果没有持久化目录，每次重启都会重新生成，登录状态、签名、插件通信和文件 URL 可能失效。
+
+## Persistence Layout
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PERSIST_MODE` | `auto` | `auto` 会在 `/persist` 可写时启用 bucket-lite；也可设为 `bucket` 强制要求 `/persist` 可写，或 `legacy` 保持旧 `/data` 布局 |
+| `PERSIST_ROOT` | `/persist` | Hugging Face Storage Bucket 推荐挂载点 |
+| `RUNTIME_ROOT` | `/tmp/dify-aio` | 日志、run、cache、Redis 默认 scratch 根目录 |
+| `REDIS_PERSISTENCE` | `false` | `true` 时 `/data/redis` 映射到 `/persist/redis`；默认放 `/tmp` 节省 bucket |
+| `PLUGIN_CWD_PERSISTENCE` | `false` | `true` 时插件工作目录 `cwd` 也持久化；默认只持久化已安装插件和 assets |
+| `POSTGRES_BACKUP_ENABLED` | `auto` | bucket-lite 启用时自动启动 `pg_dumpall` 备份；可设 `true`/`false` |
+| `POSTGRES_BACKUP_DIR` | `${PERSIST_ROOT}/postgres-backups` | `latest.sql.gz` 和时间戳写入目录 |
+| `POSTGRES_BACKUP_INTERVAL_SECONDS` | `3600` | 周期备份间隔，最小有效值 60 秒 |
+| `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` | `600` | supervisor 启动后首次备份延迟 |
+| `HF_HOME` | `${RUNTIME_ROOT}/hf-cache` | Hugging Face cache 根目录，默认不进 bucket |
+| `HF_HUB_CACHE` | `${HF_HOME}/hub` | Hugging Face Hub cache |
+
+bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际映射为：
+
+```text
+/data/postgres                 -> /persist/postgres
+/data/dify/storage             -> /persist/dify/storage
+/data/config                   -> /persist/config
+/data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
+/data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/logs                     -> /tmp/dify-aio/logs
+/data/run                      -> /tmp/dify-aio/run
+/data/redis                    -> /tmp/dify-aio/redis
+/data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
+```
+
+`/persist/postgres` 是 live PostgreSQL data directory，适合 HF Space demo/个人服务先实测；`/persist/postgres-backups/latest.sql.gz` 是普通文件备份，用于降低 bucket mount 文件系统语义风险。
 
 ## URL 变量
 
@@ -221,6 +254,12 @@ SANDBOX_API_KEY=<fixed-random-secret>
 | `OPS_HOST` | `127.0.0.1` | ops-service bind host |
 | `OPS_PORT` | `8081` | ops-service port |
 | `OPS_TOKEN` | `dify_ops_demo_token` | `/_ops` 认证 token |
+| `OPS_DEFAULT_CHECKS_ENABLED` | `true` | 是否启用内置 Dify 健康探针 |
+| `OPS_EXTRA_HTTP_CHECKS_JSON` | empty | 额外 HTTP 探针 JSON list |
+| `OPS_EXTRA_TCP_CHECKS_JSON` | empty | 额外 TCP 探针 JSON list |
+| `OPS_EXTRA_COMMAND_CHECKS_JSON` | empty | 额外只读 command 探针 JSON list |
+| `OPS_LOG_DIR` | `/data/logs` | `/_ops/logs` 只读日志目录 |
+| `OPS_LOG_SERVICES_JSON` | empty | 额外日志白名单 JSON map，例如 `{"my-api":"my-api.log"}` |
 | `OPS_LOG_LINES_MAX` | `1000` | 单次日志 tail 最大行数 |
 
 `/_ops` 认证支持：
@@ -232,3 +271,17 @@ Authorization: Bearer <token>
 ```
 
 CLI 和自动化优先使用 header，不建议长期使用 query token。
+
+迁移到非 Dify 程序时，可以关闭内置探针，只保留通用探针：
+
+```env
+OPS_DEFAULT_CHECKS_ENABLED=false
+OPS_EXTRA_HTTP_CHECKS_JSON=[{"name":"api","url":"http://127.0.0.1:8000/health","expected_status":200,"timeout":2}]
+OPS_EXTRA_TCP_CHECKS_JSON=[{"name":"queue","host":"127.0.0.1","port":5672,"timeout":1}]
+OPS_EXTRA_COMMAND_CHECKS_JSON=[{"name":"worker","args":["/usr/local/bin/workerctl","status"],"expect":"running","timeout":2}]
+```
+
+`OPS_EXTRA_COMMAND_CHECKS_JSON` 只应配置只读命令。它不会从请求参数接收命令，但会在每次健康检查时执行部署时配置的 `args`。
+自定义探针最多执行 32 个；HTTP 探针未设置 `expected_status` 时沿用内置语义，即 HTTP `<500` 代表 upstream 可达。
+如果关闭内置探针又没有配置任何额外探针，`/healthz` 会返回不健康，避免空检查被误判为正常。
+`/_ops/config` 不返回这些 JSON 的原文，只返回解析出的检查名称，避免误把 URL 或 command args 中的敏感片段暴露成配置摘要。

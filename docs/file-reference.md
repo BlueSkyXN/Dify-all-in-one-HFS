@@ -93,7 +93,7 @@ Git 属性配置。
 
 职责：
 
-- 准备 `/data`、`/conf`、`/dependencies`。
+- 准备 `/data`、`/conf`、`/dependencies`，并在 `/persist` 可写时启用 bucket-lite 映射。
 - 生成或复用 `/data/config/generated.env`。
 - 渲染 Redis 和 Sandbox 配置。
 - 初始化 PostgreSQL、数据库、role 和 pgvector。
@@ -105,6 +105,7 @@ Git 属性配置。
 
 ```text
 prepare_dirs
+configure_bucket_layout
 write_generated_env
 render_redis_config
 render_sandbox_config
@@ -119,7 +120,7 @@ main
 
 职责：
 
-- 定义 postgres、redis、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、nginx。
+- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、nginx。
 - 设置启动 priority、autorestart、日志路径。
 - 暴露 supervisor unix socket：`/data/run/supervisor.sock`。
 
@@ -141,10 +142,15 @@ Nginx 路由和日志配置。
 职责：
 
 - 监听 `OPS_HOST:OPS_PORT`，默认 `127.0.0.1:8081`。
-- 提供 `/healthz`、`/readyz`、`/health`、`/status`、`/config`、`/version`、`/logs`、`/errors`。
+- 提供 `/healthz`、`/readyz`、`/health`、`/status`、`/system`、`/config`、`/version`、`/logs`、`/errors`、`/metrics`。
 - 使用 `OPS_TOKEN` 鉴权保护非公开 endpoint。
-- 读取白名单日志，不暴露任意文件。
+- 首页是单文件 HTML/CSS/原生 JS dashboard，不需要前端构建。
+- 支持通过 `OPS_EXTRA_*_CHECKS_JSON` 增加 HTTP、TCP 和只读 command 健康探针。
+- 返回 CPU load、memory、disk、uptime 和 process count 的只读系统摘要。
+- 返回 Prometheus-style text metrics。
+- 通过 `OPS_LOG_DIR` 只读读取白名单日志，并允许用 `OPS_LOG_SERVICES_JSON` 扩展相对日志文件映射。
 - 只返回 secret presence，不返回 secret 原文。
+- 按 service 分组错误摘要，显示匹配 pattern，并限制扫描与返回行数。
 - 过滤已知启动期 benign error pattern，避免把短暂 warmup 误报成当前异常。
 
 ### `docker/with-dify-env`
@@ -233,7 +239,7 @@ dify-all-in-one-hf-space:1.14.1
 ```text
 CONTAINER_NAME=dify-aio-hf-demo
 PUBLIC_URL=http://localhost:8080
-volume=dify-hf-demo-data:/data
+volume=dify-hf-demo-persist:/persist
 env-file=docker/dify.env.demo
 ```
 
@@ -257,6 +263,8 @@ env-file=docker/dify.env.demo
 /console/api/setup
 /console/api/init
 /_ops/health
+/_ops/system
+/_ops/metrics
 /_ops/errors
 ```
 

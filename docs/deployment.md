@@ -18,7 +18,7 @@ app_port: 7860
 
 ```text
 Hardware: CPU Upgrade 或更高
-Storage: Persistent Storage
+Storage Bucket: mount 到 /persist
 Visibility: Private 或 Protected
 ```
 
@@ -94,6 +94,8 @@ ops-healthz
 setup-api
 init-api
 ops-health
+ops-system
+ops-metrics
 ops-errors
 ```
 
@@ -172,7 +174,7 @@ scripts/run-demo.sh
 container name: dify-aio-hf-demo
 host port: 8080
 container port: 7860
-volume: dify-hf-demo-data:/data
+volume: dify-hf-demo-persist:/persist
 PUBLIC_URL=http://localhost:8080
 env-file: docker/dify.env.demo
 ```
@@ -204,7 +206,7 @@ docker rm -f dify-aio-hf-demo
 删除本地数据 volume：
 
 ```bash
-docker volume rm dify-hf-demo-data
+docker volume rm dify-hf-demo-persist
 ```
 
 ## 常见部署问题
@@ -242,4 +244,4 @@ hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220
 
 ### 初始化后账号丢失
 
-没有启用 Persistent Storage，或 `/data` 没有保留。启用 Storage 后重新初始化。
+没有挂载 `/persist`，或 `PERSIST_MODE=legacy` 且 `/data` 没有保留。挂载 Storage Bucket 到 `/persist` 后重新初始化。

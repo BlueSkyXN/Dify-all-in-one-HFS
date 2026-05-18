@@ -86,7 +86,138 @@ sql_escape_literal() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
 
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+dir_has_entries() {
+  [ -d "$1" ] && find "$1" -mindepth 1 -maxdepth 1 -print -quit | grep -q .
+}
+
+persist_writable() {
+  local root=${PERSIST_ROOT:-/persist}
+  [ -d "$root" ] || return 1
+  touch "${root}/.dify-aio-writable-test" 2>/dev/null || return 1
+  rm -f "${root}/.dify-aio-writable-test"
+}
+
+detect_persist_mode() {
+  source_defaults_env
+  case "${PERSIST_MODE:-auto}" in
+    auto)
+      if persist_writable; then
+        printf 'bucket\n'
+      else
+        printf 'legacy\n'
+      fi
+      ;;
+    bucket|persist)
+      mkdir -p "${PERSIST_ROOT:-/persist}"
+      if ! persist_writable; then
+        log "PERSIST_MODE=${PERSIST_MODE} requires writable PERSIST_ROOT=${PERSIST_ROOT:-/persist}."
+        exit 1
+      fi
+      printf 'bucket\n'
+      ;;
+    none|legacy|data)
+      printf 'legacy\n'
+      ;;
+    *)
+      log "Invalid PERSIST_MODE=${PERSIST_MODE}. Use auto, bucket, or legacy."
+      exit 1
+      ;;
+  esac
+}
+
+link_dir() {
+  local source=$1
+  local target=$2
+  mkdir -p "$(dirname "$source")" "$target"
+
+  if [ -L "$source" ]; then
+    if [ "$(readlink "$source")" = "$target" ]; then
+      return
+    fi
+    rm -f "$source"
+  fi
+
+  if [ -e "$source" ]; then
+    if [ ! -d "$source" ]; then
+      log "Cannot map ${source}: path exists and is not a directory."
+      exit 1
+    fi
+    if dir_has_entries "$source" && ! dir_has_entries "$target"; then
+      cp -a "${source}/." "$target/"
+    elif dir_has_entries "$source" && dir_has_entries "$target"; then
+      log "Both ${source} and ${target} contain files; using ${target} for persistence."
+    fi
+    rm -rf "$source"
+  fi
+
+  ln -s "$target" "$source"
+}
+
+configure_bucket_layout() {
+  local persist_root=${PERSIST_ROOT:-/persist}
+  local runtime_root=${RUNTIME_ROOT:-/tmp/dify-aio}
+  mkdir -p \
+    "$persist_root/postgres" \
+    "$persist_root/config" \
+    "$persist_root/dify/storage" \
+    "$persist_root/plugin_daemon/plugin" \
+    "$persist_root/plugin_daemon/assets" \
+    "$persist_root/postgres-backups" \
+    "$runtime_root/logs" \
+    "$runtime_root/run" \
+    "$runtime_root/redis" \
+    "$runtime_root/hf-cache" \
+    "$runtime_root/plugin_packages" \
+    "$runtime_root/plugin_cwd"
+
+  mkdir -p /data /data/dify /data/plugin_daemon
+  link_dir /data/postgres "$persist_root/postgres"
+  link_dir /data/config "$persist_root/config"
+  link_dir /data/dify/storage "$persist_root/dify/storage"
+  link_dir /data/plugin_daemon/plugin "$persist_root/plugin_daemon/plugin"
+  link_dir /data/plugin_daemon/assets "$persist_root/plugin_daemon/assets"
+  link_dir /data/plugin_daemon/plugin_packages "$runtime_root/plugin_packages"
+  if is_true "${PLUGIN_CWD_PERSISTENCE:-false}"; then
+    link_dir /data/plugin_daemon/cwd "$persist_root/plugin_daemon/cwd"
+  else
+    link_dir /data/plugin_daemon/cwd "$runtime_root/plugin_cwd"
+  fi
+  if is_true "${REDIS_PERSISTENCE:-false}"; then
+    link_dir /data/redis "$persist_root/redis"
+  else
+    link_dir /data/redis "$runtime_root/redis"
+  fi
+  link_dir /data/logs "$runtime_root/logs"
+  link_dir /data/run "$runtime_root/run"
+
+  mkdir -p "$(dirname "${PERSIST_ACTIVE_FILE:-${runtime_root}/persist-active}")"
+  printf 'bucket\n' > "${PERSIST_ACTIVE_FILE:-${runtime_root}/persist-active}"
+  log "Using bucket-lite persistence: core state under ${persist_root}, scratch under ${runtime_root}."
+}
+
+configure_legacy_layout() {
+  local runtime_root=${RUNTIME_ROOT:-/tmp/dify-aio}
+  rm -f "${PERSIST_ACTIVE_FILE:-${runtime_root}/persist-active}" 2>/dev/null || true
+}
+
 prepare_dirs() {
+  source_defaults_env
+  mkdir -p /data "${RUNTIME_ROOT:-/tmp/dify-aio}" /conf /dependencies
+  local mode
+  mode=$(detect_persist_mode)
+  if [ "$mode" = "bucket" ]; then
+    configure_bucket_layout
+  else
+    configure_legacy_layout
+  fi
+
   if ! mkdir -p \
     /data/postgres \
     /data/redis \
@@ -105,16 +236,17 @@ prepare_dirs() {
     /data/run/nginx/scgi \
     /conf \
     /dependencies; then
-    log "Cannot create runtime directories. In Hugging Face Space, attach writable storage to /data or ensure /data is writable."
+    log "Cannot create runtime directories. Check /data, /tmp, or the /persist bucket mount."
     exit 1
   fi
 
   if ! touch /data/.writable-test 2>/dev/null; then
-    log "/data is not writable by UID $(id -u). Check Hugging Face Storage settings or run locally with -v dify-demo-data:/data."
+    log "/data is not writable by UID $(id -u). Check the image permissions or volume settings."
     exit 1
   fi
   rm -f /data/.writable-test
 
+  mkdir -p "${HF_HOME:-${RUNTIME_ROOT:-/tmp/dify-aio}/hf-cache}" "${HF_HUB_CACHE:-${HF_HOME:-${RUNTIME_ROOT:-/tmp/dify-aio}/hf-cache}/hub}"
   touch /dependencies/python-requirements.txt /dependencies/nodejs-requirements.txt || true
   chmod 700 /data/config || true
   chmod 755 /data/logs /data/run /data/dify /data/plugin_daemon || true

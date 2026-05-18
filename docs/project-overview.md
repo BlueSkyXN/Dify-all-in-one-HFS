@@ -6,7 +6,7 @@
 
 - 在 Hugging Face Docker Space 中用一个公开端口运行 Dify。
 - 避免 `docker compose`，因为 Hugging Face Space 只运行一个应用容器。
-- 使用 `/data` 承载全部运行时数据，适配 Hugging Face Persistent Storage。
+- 使用 bucket-lite 布局：程序仍访问 `/data`，核心状态映射到 `/persist`，日志/cache/run 映射到 `/tmp/dify-aio`。
 - 保留官方 Dify 镜像中的预构建 Web/API/Plugin/Sandbox 资产，减少自维护代码。
 - 内置只读运维诊断入口，帮助定位 502、启动慢、迁移缺失、日志报错和进程状态问题。
 
@@ -26,8 +26,8 @@
 | 进程管理 | `supervisord` | 需要同时管理 Web/API/Worker/Postgres/Redis 等多个进程 |
 | 外部入口 | Nginx `7860` | 对外单端口，内部按路径转发 |
 | 向量库 | PostgreSQL + pgvector | 减少 Weaviate 等额外服务 |
-| 文件存储 | 本地 `/data/dify/storage` | 适配 Space 持久化目录 |
-| Plugin 存储 | 本地 `/data/plugin_daemon` | 同容器本地插件运行和缓存 |
+| 文件存储 | `/data/dify/storage`，bucket-lite 下指向 `/persist/dify/storage` | 适配 Space Bucket 持久化 |
+| Plugin 存储 | `/data/plugin_daemon`，核心插件文件指向 `/persist` | 插件保留，包缓存不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认关闭 | 降低外部依赖和演示不确定性 |
 | 运维入口 | 只读 `ops-service` | 便于诊断，不提供破坏性操作 |
@@ -93,6 +93,8 @@ https://<space>.hf.space/
 
 ```text
 /_ops/
+/_ops/system
+/_ops/metrics
 ```
 
 完整排障流程见 [Operations Runbook](./ops-runbook.md)。

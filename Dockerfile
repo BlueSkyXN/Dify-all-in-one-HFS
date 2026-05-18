@@ -10,7 +10,7 @@
 # Run example:
 #   docker run --rm -it \
 #     -p 8080:7860 \
-#     -v dify-hf-demo-data:/data \
+#     -v dify-hf-demo-persist:/persist \
 #     --env-file docker/dify.env.demo \
 #     dify-all-in-one-hf-space:1.14.1
 
@@ -113,8 +113,8 @@ RUN groupadd --gid 1000 user \
     && groupadd --gid 65537 sandbox \
     && useradd --uid 65537 --gid 65537 --no-create-home --shell /usr/sbin/nologin sandbox
 ENV HOME=/home/user
-ENV HF_HOME=/data/.huggingface
-ENV HF_HUB_CACHE=/data/.huggingface/hub
+ENV HF_HOME=/tmp/dify-aio/hf-cache
+ENV HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub
 
 # Copy Dify API source + venv. Keep the official /app/api path because console
 # script shebangs inside .venv point there.
@@ -145,6 +145,7 @@ COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
+COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/nginx.conf /etc/nginx/nginx.conf
@@ -156,6 +157,7 @@ RUN chmod +x \
       /usr/local/bin/with-dify-env \
       /usr/local/bin/with-plugin-env \
       /usr/local/bin/with-sandbox-env \
+      /usr/local/bin/postgres-backup-loop \
       /usr/local/bin/dify-ops-service \
       /usr/local/bin/dify-demo-healthcheck \
       /usr/local/bin/wait-for-core \
@@ -168,8 +170,9 @@ RUN chmod +x \
     && mkdir -p \
       /data/postgres /data/redis /data/dify/storage /data/plugin_daemon /data/config /data/logs /data/run/postgresql \
       /data/run/nginx/client_body /data/run/nginx/proxy /data/run/nginx/fastcgi /data/run/nginx/uwsgi /data/run/nginx/scgi \
+      /tmp/dify-aio/logs /tmp/dify-aio/run /tmp/dify-aio/redis /tmp/dify-aio/hf-cache /tmp/dify-aio/plugin_packages /tmp/dify-aio/plugin_cwd \
       /var/sandbox/sandbox-python /var/sandbox/sandbox-nodejs \
-    && chown -R user:user /opt/dify/plugin-daemon /app /data /conf /dependencies /var/sandbox \
+    && chown -R user:user /opt/dify/plugin-daemon /app /data /tmp/dify-aio /conf /dependencies /var/sandbox \
     && chown root:root /opt/dify/sandbox/main \
     && chmod 4755 /opt/dify/sandbox/main \
     && chmod -R 755 /var/sandbox \
