@@ -23,6 +23,7 @@ Visibility: Private 或 Protected
 MARKETPLACE_ENABLED=false
 SANDBOX_ENABLE_NETWORK=false
 FORCE_VERIFYING_SIGNATURE=false
+OPS_TOKEN=<fixed-random-token>
 ```
 
 建议 Secrets：
@@ -36,3 +37,22 @@ SANDBOX_API_KEY=<固定强随机值>
 ```
 
 如果只做一次性公开演示，可以不设置 Secret；如果要多次重启后保持登录、文件 URL、插件凭据一致，必须设置固定 Secret 或启用持久化 Storage。
+
+## 运维诊断
+
+部署成功后可以用：
+
+```bash
+curl https://your-space.hf.space/nginx-health
+curl https://your-space.hf.space/healthz
+curl -H "X-Ops-Token: $OPS_TOKEN" https://your-space.hf.space/_ops/health
+```
+
+也可以运行仓库脚本：
+
+```bash
+OPS_TOKEN=<fixed-random-token> \
+  scripts/hf-space-smoke.sh https://your-space.hf.space
+```
+
+`/_ops/` 是只读诊断入口，主要用于查看 supervisor 状态、内部健康探针、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 建议设置为 Private 或 Protected。
