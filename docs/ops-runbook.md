@@ -56,10 +56,12 @@ nginx:7860
 /_ops/
 /_ops/health
 /_ops/status
+/_ops/system
 /_ops/config
 /_ops/version
 /_ops/errors
 /_ops/logs?service=<service>&lines=<n>
+/_ops/metrics
 ```
 
 认证方式支持三种：
@@ -86,6 +88,12 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 OPS_HOST=127.0.0.1
 OPS_PORT=8081
 OPS_TOKEN=dify_ops_demo_token
+OPS_DEFAULT_CHECKS_ENABLED=true
+OPS_EXTRA_HTTP_CHECKS_JSON=
+OPS_EXTRA_TCP_CHECKS_JSON=
+OPS_EXTRA_COMMAND_CHECKS_JSON=
+OPS_LOG_DIR=/data/logs
+OPS_LOG_SERVICES_JSON=
 OPS_LOG_LINES_MAX=1000
 ```
 
@@ -119,7 +127,24 @@ dify-init         HTTP 127.0.0.1:5001/console/api/init
 - Dify / Space 版本摘要
 - 每个探针的耗时、HTTP 状态和短样本
 
+迁移到其他程序时，可以设置 `OPS_DEFAULT_CHECKS_ENABLED=false`，再用 `OPS_EXTRA_HTTP_CHECKS_JSON`、`OPS_EXTRA_TCP_CHECKS_JSON` 和 `OPS_EXTRA_COMMAND_CHECKS_JSON` 添加目标程序自己的只读探针。自定义探针最多执行 32 个；HTTP 探针可以用 `expected_status` 明确要求返回码。
+
 刚发布后，Dify Web 和 API 可能需要几十秒到数分钟 warmup。`scripts/hf-space-smoke.sh` 默认会重试，避免把短暂 502 或 timeout 当作最终失败。
+
+## 系统资源与 Metrics
+
+`/_ops/system` 返回只读系统摘要：
+
+```text
+CPU load
+memory total / available / used
+disk usage for /, /data, PERSIST_ROOT, RUNTIME_ROOT
+container uptime
+ops-service uptime
+process count
+```
+
+`/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
 ## 日志入口
 
@@ -146,6 +171,8 @@ postgres
 postgres.err
 redis
 redis.err
+postgres-backup
+postgres-backup.err
 plugin-daemon
 plugin-daemon.err
 dify-api
@@ -155,13 +182,29 @@ dify-worker.err
 dify-beat
 dify-beat.err
 nginx
-ops-service
-ops-service.err
 ```
 
-`dify-web` 当前由 supervisor 直接写到容器 stdout/stderr，主要通过 Hugging Face App logs 查看；`/_ops/logs` 暂不暴露 `dify-web` 专用文件。
+`dify-web` 和 `ops-service` 当前由 supervisor 直接写到容器 stdout/stderr，主要通过 Hugging Face App logs 查看；`/_ops/logs` 暂不暴露它们的专用文件。这样 `ops-service` 本体不需要写 `/data`，只通过 `OPS_LOG_DIR` 只读读取其他服务日志。
 
-`/_ops/errors` 会从白名单日志 tail 中匹配常见错误模式，同时过滤已知启动期 benign 日志，例如 PostgreSQL 刚启动时的 `FATAL: the database system is starting up`。因此它适合作为近期异常摘要，不是完整日志审计系统。
+迁移到其他程序时，可以保留默认白名单，也可以用 `OPS_LOG_SERVICES_JSON` 增加服务到相对日志文件名的映射：
+
+```env
+OPS_LOG_DIR=/var/log/my-app
+OPS_LOG_SERVICES_JSON={"api":"api.log","worker":"worker.log"}
+```
+
+`OPS_LOG_SERVICES_JSON` 里的文件名必须是相对路径，不能使用绝对路径或 `..`，避免把日志查看能力扩展成任意文件读取。
+`/_ops/config` 会展示日志 service 名和额外探针名称，但不会返回 `OPS_LOG_SERVICES_JSON` 或 `OPS_EXTRA_*_CHECKS_JSON` 的原始 JSON。
+
+`/_ops/errors` 会从白名单日志 tail 中匹配常见错误模式，同时过滤已知启动期 benign 日志，例如 PostgreSQL 刚启动时的 `FATAL: the database system is starting up`。返回内容会按 service 分组，包含匹配到的 pattern、pattern count、总匹配数和受限的最近行。可用 query 参数：
+
+```text
+lines=300              每个日志最多扫描的 tail 行数，受 OPS_LOG_LINES_MAX 和 1000 双重限制
+limit=200              全局返回 match 上限，最多 500
+per_service_limit=50   每个 service 返回 match 上限，最多 200
+```
+
+因此它适合作为近期异常摘要，不是完整日志审计系统。
 
 Nginx access log 使用 JSON 格式，包含：
 
@@ -336,6 +379,8 @@ ops-healthz
 setup-api
 init-api
 ops-health
+ops-system
+ops-metrics
 ops-errors
 ```
 
@@ -345,12 +390,9 @@ ops-errors
 
 当前运维能力是只读诊断层。后续如果要做管理面板，可以优先考虑：
 
-- 将 `/_ops/` HTML 首页改成更完整的状态面板。
 - 增加按 service / severity / keyword 过滤日志。
-- 将 `/_ops/errors` 按最近时间窗口聚合，而不是只按 tail 行匹配。
 - 增加 build/runtime SHA 展示和版本漂移提示。
 - 增加只读数据库 schema 检查，例如 plugin-daemon 必需表是否存在。
 - 增加显式 warmup 状态，区分启动中和真正失败。
-- 增加只读 Prometheus-style metrics endpoint，供外部监控抓取。
 
-涉及重启服务、修改配置、执行迁移、清理数据等写操作时，应单独设计鉴权、审计日志和操作确认，不要直接放进现有 `OPS_TOKEN` 诊断入口。
+涉及重启服务、修改配置、执行迁移、清理数据等写操作时，应单独放在 `/_admin/*`。Admin 应默认关闭，使用独立 `ADMIN_TOKEN`，只允许白名单 action，每个 action 需要 `confirm=true`、审计日志、action id / result，并且不允许请求传任意 shell command。WebSSH 或 interactive shell 只能作为最后阶段能力，默认关闭并与 OPS 权限隔离。

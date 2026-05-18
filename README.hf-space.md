@@ -5,7 +5,7 @@
 - 根目录 `README.md` 带 `sdk: docker` 和 `app_port: 7860` 元数据。
 - 根目录 `Dockerfile` 是 Space 的构建入口。
 - 容器运行时使用 UID 1000 的 `user` 用户。
-- 所有持久化数据写入 `/data`。
+- 推荐把 Hugging Face Storage Bucket 挂到 `/persist`；核心状态写入 `/persist`，日志、run、cache 写入 `/tmp/dify-aio`。
 - Nginx 对外监听 `7860`，内部转发到 Dify Web/API/Plugin Daemon。
 - 如果运行时存在 `SPACE_HOST` 且 `PUBLIC_URL` 未设置，会自动变成 `https://${SPACE_HOST}`。
 
@@ -13,7 +13,7 @@
 
 ```text
 Hardware: CPU Upgrade
-Storage: 启用持久化 Storage
+Storage Bucket: mount 到 /persist
 Visibility: Private 或 Protected
 ```
 
@@ -24,6 +24,9 @@ MARKETPLACE_ENABLED=false
 SANDBOX_ENABLE_NETWORK=false
 FORCE_VERIFYING_SIGNATURE=false
 OPS_TOKEN=<fixed-random-token>
+PERSIST_MODE=auto
+REDIS_PERSISTENCE=false
+POSTGRES_BACKUP_ENABLED=auto
 ```
 
 建议 Secrets：
@@ -36,7 +39,28 @@ CODE_EXECUTION_API_KEY=<固定强随机值>
 SANDBOX_API_KEY=<固定强随机值>
 ```
 
-如果只做一次性公开演示，可以不设置 Secret；如果要多次重启后保持登录、文件 URL、插件凭据一致，必须设置固定 Secret 或启用持久化 Storage。
+如果只做一次性公开演示，可以不设置 Secret；如果要多次重启后保持登录、文件 URL、插件凭据一致，必须设置固定 Secret 或把 bucket 挂到 `/persist`，让自动生成的 `/data/config/generated.env` 实际落到 `/persist/config/generated.env`。
+
+bucket-lite 模式下会持久化：
+
+```text
+/persist/postgres
+/persist/config/generated.env
+/persist/dify/storage
+/persist/plugin_daemon/plugin
+/persist/plugin_daemon/assets
+/persist/postgres-backups/latest.sql.gz
+```
+
+这些目录不会占用 bucket：
+
+```text
+/tmp/dify-aio/logs
+/tmp/dify-aio/run
+/tmp/dify-aio/redis
+/tmp/dify-aio/hf-cache
+/tmp/dify-aio/plugin_packages
+```
 
 ## 运维诊断
 
@@ -55,6 +79,6 @@ OPS_TOKEN=<fixed-random-token> \
   scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
-`/_ops/` 是只读诊断入口，主要用于查看 supervisor 状态、内部健康探针、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 建议设置为 Private 或 Protected。
+`/_ops/` 是只读诊断入口，主要用于查看 dashboard、supervisor 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 建议设置为 Private 或 Protected。
 
 完整工程文档见 [docs/README.md](./docs/README.md)。其中 [Deployment Guide](./docs/deployment.md) 覆盖部署流程，[Operations Runbook](./docs/ops-runbook.md) 覆盖运维、502 排障、日志入口和发布后验收。

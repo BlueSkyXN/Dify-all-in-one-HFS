@@ -72,7 +72,12 @@ exec supervisord
 
 ### prepare_dirs
 
-创建运行时目录：
+`prepare_dirs` 先读取 `PERSIST_MODE`。默认 `auto` 会检测 `/persist` 是否可写：
+
+- 可写：启用 bucket-lite，把核心状态映射到 `/persist`，把日志、run、cache 映射到 `/tmp/dify-aio`。
+- 不可写：回退旧 `/data` 布局。
+
+程序内部仍使用这些 `/data` 路径：
 
 ```text
 /data/postgres
@@ -90,7 +95,21 @@ exec supervisord
 /dependencies
 ```
 
-并验证 `/data` 对 UID `1000` 可写。如果不可写，容器会直接退出，提示检查 Hugging Face Storage 或本地 volume。
+bucket-lite 模式下关键映射为：
+
+```text
+/data/postgres                 -> /persist/postgres
+/data/dify/storage             -> /persist/dify/storage
+/data/config                   -> /persist/config
+/data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
+/data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/logs                     -> /tmp/dify-aio/logs
+/data/run                      -> /tmp/dify-aio/run
+/data/redis                    -> /tmp/dify-aio/redis
+/data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
+```
+
+并验证 `/data` 对 UID `1000` 可写。如果 `PERSIST_MODE=bucket` 但 `/persist` 不可写，容器会直接退出。
 
 ### write_generated_env
 
@@ -251,6 +270,8 @@ curl -fsS http://127.0.0.1:7860/
 
 有持久化 Storage 时：
 
-- `/data/postgres`、`/data/redis`、`/data/config/generated.env`、`/data/dify/storage`、`/data/plugin_daemon` 会保留。
+- bucket-lite 下 `/data/postgres`、`/data/config/generated.env`、`/data/dify/storage`、`/data/plugin_daemon/plugin`、`/data/plugin_daemon/assets` 会通过 `/persist` 保留。
+- `/data/redis`、`/data/logs`、`/data/run`、`/data/plugin_daemon/plugin_packages` 默认在 `/tmp/dify-aio`，重启后会重新生成。
+- `postgres-backup` 会定期写 `/persist/postgres-backups/latest.sql.gz`，作为 live PostgreSQL data directory 的普通文件兜底备份。
 - `entrypoint.sh` 会跳过 `initdb`，继续更新 role 密码和确保数据库存在。
 - Dify API migration 和 Plugin Daemon migration 仍会执行，应当保持幂等。

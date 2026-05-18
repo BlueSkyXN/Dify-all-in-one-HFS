@@ -99,7 +99,7 @@ CODE_EXECUTION_API_KEY=<固定强随机值>
 SANDBOX_API_KEY=<固定强随机值>
 ```
 
-如果不设置这些 Secret，入口脚本会自动生成并写入 `/data/config/generated.env`。只有在 Space 启用了持久化 Storage 时，这些自动生成值才能跨重启保留。
+如果不设置这些 Secret，入口脚本会自动生成并写入 `/data/config/generated.env`。在 bucket-lite 模式下，该路径会映射到 `/persist/config/generated.env`，因此可以跨重启保留。
 
 ## HF Space URL 处理
 
@@ -137,7 +137,7 @@ docker build -t dify-all-in-one-hf-space:1.14.1 .
 docker run -d \
   --name dify-aio-hf \
   -p 8080:7860 \
-  -v dify-hf-demo-data:/data \
+  -v dify-hf-demo-persist:/persist \
   --env-file docker/dify.env.demo \
   dify-all-in-one-hf-space:1.14.1
 ```
@@ -157,20 +157,21 @@ docker exec -it dify-aio-hf supervisorctl status
 
 ## 数据目录
 
-所有运行时数据都放在 `/data`：
+程序仍通过 `/data` 访问运行时目录；默认 `PERSIST_MODE=auto`。如果 `/persist` 可写，会启用 bucket-lite 布局：
 
 ```text
-/data/postgres          PostgreSQL 数据
-/data/redis             Redis AOF/RDB
-/data/dify/storage      Dify 文件存储
-/data/plugin_daemon     插件存储与运行目录
-/data/config            自动生成的密钥环境文件
-/data/logs              日志
-/data/run               pid / runtime config
-/data/run/nginx         Nginx 临时目录
+/data/postgres                 -> /persist/postgres
+/data/dify/storage             -> /persist/dify/storage
+/data/config                   -> /persist/config
+/data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
+/data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/logs                     -> /tmp/dify-aio/logs
+/data/run                      -> /tmp/dify-aio/run
+/data/redis                    -> /tmp/dify-aio/redis
+/data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
 ```
 
-在 Hugging Face Space 上，如果没有启用持久化 Storage，Space 重启后这些数据会丢失。
+`/persist/postgres-backups/latest.sql.gz` 会由 `postgres-backup` 进程定期生成，作为 live PostgreSQL data directory 的普通文件备份。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
 
 ## 运维与可观测入口
 
@@ -212,10 +213,12 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 ```text
 /_ops/health           综合健康、内部端口、API/Web 探针
 /_ops/status           supervisor 进程状态
+/_ops/system           CPU、memory、disk、/data、uptime、process count
 /_ops/config           非敏感配置摘要与密钥存在性
 /_ops/version          运行版本与 Space 元数据
-/_ops/errors           近期错误摘要
+/_ops/errors           按 service 分组的近期错误摘要
 /_ops/logs             白名单服务日志 tail
+/_ops/metrics          Prometheus-style text metrics
 ```
 
 Nginx access log 使用 JSON 格式输出到 stdout，包含 `request_id`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status` 和 `upstream_response_time`，便于从 Hugging Face App logs 里快速区分 Web/API/Plugin/Ops 的上游问题。

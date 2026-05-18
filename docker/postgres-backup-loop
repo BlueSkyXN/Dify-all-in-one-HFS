@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '[dify-aio-pg-backup] %s\n' "$*"
+}
+
+source_env() {
+  set -a
+  # shellcheck disable=SC1091
+  . /etc/dify/dify.env.runtime
+  if [ -f /data/config/generated.env ]; then
+    # shellcheck disable=SC1091
+    . /data/config/generated.env
+  elif [ -f /etc/dify/generated.env ]; then
+    # legacy fallback
+    # shellcheck disable=SC1091
+    . /etc/dify/generated.env
+  fi
+  set +a
+}
+
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+backup_enabled() {
+  source_env
+  case "${POSTGRES_BACKUP_ENABLED:-auto}" in
+    auto)
+      [ -f "${PERSIST_ACTIVE_FILE:-${RUNTIME_ROOT:-/tmp/dify-aio}/persist-active}" ]
+      ;;
+    1|true|TRUE|yes|YES|on|ON)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+wait_for_postgres() {
+  source_env
+  until pg_isready -h /data/run/postgresql -p "${DB_PORT:-5432}" -U user >/dev/null 2>&1; do
+    sleep 2
+  done
+}
+
+run_backup_once() {
+  source_env
+  mkdir -p "${POSTGRES_BACKUP_DIR}"
+  local target="${POSTGRES_BACKUP_DIR}/latest.sql.gz"
+  local tmp="${target}.tmp"
+  local stamp
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+
+  log "Writing PostgreSQL dump to ${target}"
+  pg_dumpall \
+    -h /data/run/postgresql \
+    -p "${DB_PORT:-5432}" \
+    -U user \
+    --no-role-passwords \
+    2>"${POSTGRES_BACKUP_DIR}/latest.err" \
+    | gzip -c > "$tmp"
+  mv "$tmp" "$target"
+  printf '%s\n' "$stamp" > "${POSTGRES_BACKUP_DIR}/latest.created_at"
+  rm -f "${POSTGRES_BACKUP_DIR}/latest.err"
+}
+
+main() {
+  source_env
+  if ! backup_enabled; then
+    log "PostgreSQL backup loop disabled."
+    exec sleep infinity
+  fi
+
+  wait_for_postgres
+  local initial_delay=${POSTGRES_BACKUP_INITIAL_DELAY_SECONDS:-600}
+  local interval=${POSTGRES_BACKUP_INTERVAL_SECONDS:-3600}
+  if ! [[ "$initial_delay" =~ ^[0-9]+$ ]]; then
+    initial_delay=600
+  fi
+  if ! [[ "$interval" =~ ^[0-9]+$ ]] || [ "$interval" -lt 60 ]; then
+    interval=3600
+  fi
+
+  log "PostgreSQL backup loop enabled; first backup in ${initial_delay}s, interval ${interval}s."
+  sleep "$initial_delay"
+  while backup_enabled; do
+    if ! run_backup_once; then
+      log "Backup failed; retrying after ${interval}s."
+    fi
+    sleep "$interval"
+  done
+  log "PostgreSQL backup loop disabled after runtime config reload."
+  exec sleep infinity
+}
+
+main "$@"

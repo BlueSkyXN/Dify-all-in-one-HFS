@@ -1,6 +1,8 @@
 .git
 .gitignore
+.playwright-mcp/
 README.md
 README.hf-space.md
 *.zip
 .DS_Store
+local/

@@ -29,7 +29,7 @@
 Visibility: Private 或 Protected
 OPS_TOKEN: 覆盖为固定随机值
 Secrets: 设置固定强随机值
-Storage: 启用 Persistent Storage
+Storage Bucket: mount 到 /persist
 ```
 
 ## Secrets
@@ -51,7 +51,7 @@ OPS_TOKEN=<fixed-random-token>
 /data/config/generated.env
 ```
 
-只有启用 Persistent Storage 时，这些自动生成值才能跨重启保存。
+bucket-lite 模式下 `/data/config` 会映射到 `/persist/config`，这些自动生成值才能跨重启保存。
 
 ## `/_ops` 边界
 
@@ -81,6 +81,19 @@ Authorization: Bearer
 - 没有 token rotation 机制。
 
 如果要扩展成管理面板，写操作必须单独设计更强鉴权和审计。
+
+## `/_admin` 设计边界
+
+`/_admin/*` 不应复用 `OPS_TOKEN`，也不应默认开启。建议的最低门槛：
+
+- `ADMIN_ENABLED=false` 作为默认值。
+- `ADMIN_TOKEN` 独立于 `OPS_TOKEN`。
+- 只允许白名单 action，例如 restart service、reload nginx、run migration、clear cache。
+- 每个 action 要求显式确认参数，例如 `confirm=true`。
+- 记录审计日志，返回 action id 和 result。
+- 不从请求参数接收任意 shell command。
+
+WebSSH 或 interactive shell 风险明显高于受控 action catalog，应作为最后阶段独立模块处理；只建议 Private/Protected 环境开启，并需要独立强 token、session timeout、审计日志和清晰的命令风险说明。
 
 ## Sandbox
 
