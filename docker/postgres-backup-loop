@@ -44,7 +44,7 @@ backup_enabled() {
 
 wait_for_postgres() {
   source_env
-  until pg_isready -h /data/run/postgresql -p "${DB_PORT:-5432}" -U user >/dev/null 2>&1; do
+  until pg_isready -h /data/run/postgresql -p "${DB_PORT:-5432}" -U user -d postgres >/dev/null 2>&1; do
     sleep 2
   done
 }
