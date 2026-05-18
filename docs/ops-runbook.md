@@ -161,6 +161,8 @@ ops-service.err
 
 `dify-web` 当前由 supervisor 直接写到容器 stdout/stderr，主要通过 Hugging Face App logs 查看；`/_ops/logs` 暂不暴露 `dify-web` 专用文件。
 
+`/_ops/errors` 会从白名单日志 tail 中匹配常见错误模式，同时过滤已知启动期 benign 日志，例如 PostgreSQL 刚启动时的 `FATAL: the database system is starting up`。因此它适合作为近期异常摘要，不是完整日志审计系统。
+
 Nginx access log 使用 JSON 格式，包含：
 
 ```text
