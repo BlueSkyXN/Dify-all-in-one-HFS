@@ -145,6 +145,7 @@ COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
+COPY docker/ops_service.py /usr/local/bin/dify-ops-service
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/healthcheck.sh /usr/local/bin/dify-demo-healthcheck
@@ -155,6 +156,7 @@ RUN chmod +x \
       /usr/local/bin/with-dify-env \
       /usr/local/bin/with-plugin-env \
       /usr/local/bin/with-sandbox-env \
+      /usr/local/bin/dify-ops-service \
       /usr/local/bin/dify-demo-healthcheck \
       /usr/local/bin/wait-for-core \
       /app/api/docker/entrypoint.sh \

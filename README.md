@@ -160,6 +160,61 @@ docker exec -it dify-aio-hf supervisorctl status
 
 在 Hugging Face Space 上，如果没有启用持久化 Storage，Space 重启后这些数据会丢失。
 
+## 运维与可观测入口
+
+本工程在 Dify 前面保留 Nginx 作为单一入口，并内置一个只读 `ops-service`。Nginx 会暴露：
+
+```text
+/nginx-health          Nginx 存活探针
+/healthz               综合健康探针
+/_ops/                 只读运维诊断入口
+```
+
+`/_ops/` 默认需要 `OPS_TOKEN`。Demo 默认值是：
+
+```env
+OPS_TOKEN=dify_ops_demo_token
+```
+
+如果 Space 是公开的，建议在 Space Settings → Variables 中覆盖成你自己的固定值：
+
+```env
+OPS_TOKEN=<fixed-random-token>
+```
+
+CLI 访问示例：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" \
+  https://your-space.hf.space/_ops/health
+```
+
+浏览器临时访问可使用：
+
+```text
+https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
+```
+
+只读接口包括：
+
+```text
+/_ops/health           综合健康、内部端口、API/Web 探针
+/_ops/status           supervisor 进程状态
+/_ops/config           非敏感配置摘要与密钥存在性
+/_ops/version          运行版本与 Space 元数据
+/_ops/errors           近期错误摘要
+/_ops/logs             白名单服务日志 tail
+```
+
+Nginx access log 使用 JSON 格式输出到 stdout，包含 `request_id`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status` 和 `upstream_response_time`，便于从 Hugging Face App logs 里快速区分 Web/API/Plugin/Ops 的上游问题。
+
+部署后 smoke：
+
+```bash
+OPS_TOKEN=dify_ops_demo_token \
+  scripts/hf-space-smoke.sh https://your-space.hf.space
+```
+
 ## 运行限制
 
 - Hugging Face Docker Space 不支持 `docker compose`；本工程用单容器多进程方式替代。
