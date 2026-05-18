@@ -391,13 +391,43 @@ EOF_PGHBA
   chmod 600 /data/postgres/postgresql.conf /data/postgres/pg_hba.conf || true
 }
 
+clear_stale_postgres_runtime_files() {
+  source_runtime_env
+  local pid_file=/data/postgres/postmaster.pid
+  local pid=
+  if [ -s "$pid_file" ]; then
+    pid=$(sed -n '1p' "$pid_file" | tr -dc '0-9')
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      local cmdline=
+      if [ -r "/proc/${pid}/cmdline" ]; then
+        cmdline=$(tr '\0' ' ' < "/proc/${pid}/cmdline")
+      fi
+      if printf '%s' "$cmdline" | grep -q 'postgres' \
+        && printf '%s' "$cmdline" | grep -q '/data/postgres'; then
+        log "PostgreSQL appears to be running for /data/postgres as PID ${pid}; leaving postmaster.pid in place."
+        return
+      fi
+    fi
+    log "Removing stale PostgreSQL postmaster.pid from a previous container."
+    rm -f "$pid_file"
+  fi
+
+  rm -f \
+    "/data/run/postgresql/.s.PGSQL.${DB_PORT}" \
+    "/data/run/postgresql/.s.PGSQL.${DB_PORT}.lock"
+}
+
 start_temp_postgres() {
   source_runtime_env
   log "Starting temporary PostgreSQL for initialization..."
-  /usr/lib/postgresql/15/bin/pg_ctl \
+  if ! /usr/lib/postgresql/15/bin/pg_ctl \
     -D /data/postgres \
     -o "-c listen_addresses='127.0.0.1' -c port=${DB_PORT} -c unix_socket_directories='/data/run/postgresql'" \
-    -w start >/data/logs/postgres-init.log 2>&1
+    -w start >/data/logs/postgres-init.log 2>&1; then
+    log "Temporary PostgreSQL failed to start. Last postgres-init.log lines:"
+    tail -n 80 /data/logs/postgres-init.log || true
+    exit 1
+  fi
 }
 
 stop_temp_postgres() {
@@ -422,6 +452,7 @@ init_postgres() {
   fi
 
   configure_postgres_files
+  clear_stale_postgres_runtime_files
   start_temp_postgres
 
   local pass_sql
