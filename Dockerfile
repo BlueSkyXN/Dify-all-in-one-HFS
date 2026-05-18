@@ -161,8 +161,10 @@ RUN chmod +x \
       /usr/local/bin/wait-for-core \
       /app/api/docker/entrypoint.sh \
       /app/entrypoint.sh \
+      /opt/dify/plugin-daemon/commandline \
       /opt/dify/plugin-daemon/main \
       /opt/dify/sandbox/main \
+    && test -x /opt/dify/plugin-daemon/commandline \
     && mkdir -p \
       /data/postgres /data/redis /data/dify/storage /data/plugin_daemon /data/config /data/logs /data/run/postgresql \
       /data/run/nginx/client_body /data/run/nginx/proxy /data/run/nginx/fastcgi /data/run/nginx/uwsgi /data/run/nginx/scgi \
