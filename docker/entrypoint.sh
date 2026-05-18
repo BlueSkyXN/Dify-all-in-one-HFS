@@ -485,6 +485,7 @@ switch_postgres_to_runtime_fallback() {
   local runtime_pg="${RUNTIME_ROOT:-/tmp/dify-aio}/postgres"
   log "Falling back to runtime PostgreSQL data directory at ${runtime_pg}; bucket dump backups remain under ${POSTGRES_BACKUP_DIR}."
   mkdir -p "$runtime_pg"
+  chmod 700 "$runtime_pg" || true
   if [ -L /data/postgres ]; then
     rm -f /data/postgres
   elif [ -e /data/postgres ]; then
