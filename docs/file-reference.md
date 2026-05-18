@@ -145,6 +145,7 @@ Nginx 路由和日志配置。
 - 使用 `OPS_TOKEN` 鉴权保护非公开 endpoint。
 - 读取白名单日志，不暴露任意文件。
 - 只返回 secret presence，不返回 secret 原文。
+- 过滤已知启动期 benign error pattern，避免把短暂 warmup 误报成当前异常。
 
 ### `docker/with-dify-env`
 

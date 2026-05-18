@@ -87,6 +87,10 @@ ERROR_PATTERNS = [
     "[error]",
 ]
 
+IGNORED_ERROR_PATTERNS = [
+    "FATAL:  the database system is starting up",
+]
+
 
 def env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
@@ -324,6 +328,8 @@ def errors_payload() -> dict[str, Any]:
         if not path.exists():
             continue
         for line in tail_file(path, 300).splitlines():
+            if any(pattern in line for pattern in IGNORED_ERROR_PATTERNS):
+                continue
             if any(pattern in line for pattern in ERROR_PATTERNS):
                 matches.append({"service": service, "line": line})
     return {"ok": not matches, "matches": matches[-200:]}
