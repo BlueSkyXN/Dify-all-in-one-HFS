@@ -17,8 +17,15 @@ pinned: false
 
 ## 文档入口
 
+- [完整工程文档](./docs/README.md)
 - [Hugging Face Space 部署说明](./README.hf-space.md)
+- [架构说明](./docs/architecture.md)
+- [配置参考](./docs/configuration.md)
+- [部署指南](./docs/deployment.md)
 - [运维与可观测 Runbook](./docs/ops-runbook.md)
+- [开发指南](./docs/development.md)
+- [文件职责说明](./docs/file-reference.md)
+- [安全说明](./docs/security.md)
 
 ## 组件布局
 
