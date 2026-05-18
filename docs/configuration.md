@@ -71,7 +71,7 @@ SANDBOX_API_KEY=<fixed-random-secret>
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `PERSIST_MODE` | `auto` | `auto` 会在 `/persist` 可写时启用 bucket-lite；也可设为 `bucket` 强制要求 `/persist` 可写，或 `legacy` 保持旧 `/data` 布局 |
+| `PERSIST_MODE` | `auto` | `auto` 会在 `/persist` 是挂载点且可写时启用 bucket-lite；也可设为 `bucket` 强制要求 `/persist` 可写，或 `legacy` 保持旧 `/data` 布局 |
 | `PERSIST_ROOT` | `/persist` | Hugging Face Storage Bucket 推荐挂载点 |
 | `RUNTIME_ROOT` | `/tmp/dify-aio` | 日志、run、cache、Redis 默认 scratch 根目录 |
 | `REDIS_PERSISTENCE` | `false` | `true` 时 `/data/redis` 映射到 `/persist/redis`；默认放 `/tmp` 节省 bucket |

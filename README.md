@@ -157,7 +157,7 @@ docker exec -it dify-aio-hf supervisorctl status
 
 ## 数据目录
 
-程序仍通过 `/data` 访问运行时目录；默认 `PERSIST_MODE=auto`。如果 `/persist` 可写，会启用 bucket-lite 布局：
+程序仍通过 `/data` 访问运行时目录；默认 `PERSIST_MODE=auto`。如果 `/persist` 是挂载点且可写，会启用 bucket-lite 布局：
 
 ```text
 /data/postgres                 -> /persist/postgres

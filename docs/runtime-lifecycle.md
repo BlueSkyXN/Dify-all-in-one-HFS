@@ -72,7 +72,7 @@ exec supervisord
 
 ### prepare_dirs
 
-`prepare_dirs` 先读取 `PERSIST_MODE`。默认 `auto` 会检测 `/persist` 是否可写：
+`prepare_dirs` 先读取 `PERSIST_MODE`。默认 `auto` 会检测 `/persist` 是否是挂载点且可写：
 
 - 可写：启用 bucket-lite，把核心状态映射到 `/persist`，把日志、run、cache 映射到 `/tmp/dify-aio`。
 - 不可写：回退旧 `/data` 布局。

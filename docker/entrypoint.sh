@@ -104,11 +104,16 @@ persist_writable() {
   rm -f "${root}/.dify-aio-writable-test"
 }
 
+persist_mounted() {
+  local root=${PERSIST_ROOT:-/persist}
+  awk -v target="$root" '$5 == target { found = 1 } END { exit found ? 0 : 1 }' /proc/self/mountinfo
+}
+
 detect_persist_mode() {
   source_defaults_env
   case "${PERSIST_MODE:-auto}" in
     auto)
-      if persist_writable; then
+      if persist_mounted && persist_writable; then
         printf 'bucket\n'
       else
         printf 'legacy\n'

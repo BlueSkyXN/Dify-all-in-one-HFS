@@ -153,7 +153,7 @@ Plugin Daemon 迁移在其 supervisor program 启动时执行：
 
 ## 持久化目录
 
-程序内路径仍保持 `/data/...`，但 `PERSIST_MODE=auto` 会在 `/persist` 可写时启用 bucket-lite：
+程序内路径仍保持 `/data/...`，但 `PERSIST_MODE=auto` 会在 `/persist` 是挂载点且可写时启用 bucket-lite：
 
 | program path | bucket-lite target | 内容 |
 | --- | --- | --- |
