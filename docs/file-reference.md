@@ -186,6 +186,7 @@ Sandbox 环境包装器。
 - source runtime defaults 和 generated secrets。
 - 设置 Sandbox 期望的 `API_KEY`、`GIN_MODE`、`WORKER_TIMEOUT` 等变量。
 - 清理并重建 `/var/sandbox/sandbox-python`，避免 rootless 重启时残留只读文件导致初始化失败。
+- 默认把 `PYTHON_DEPS_UPDATE_INTERVAL` 设为长间隔，避免上游 Sandbox 周期刷新重复覆盖只读 rootfs 文件。
 
 ### `docker/wait-for-core`
 
@@ -260,6 +261,7 @@ env-file=docker/dify.env.demo
 /
 /nginx-health
 /healthz
+/_admin/
 /console/api/setup
 /console/api/init
 /_ops/health

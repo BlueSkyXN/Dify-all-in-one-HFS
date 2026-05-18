@@ -91,6 +91,7 @@ OPS_TOKEN=dify_ops_demo_token \
 web-root
 nginx-health
 ops-healthz
+admin-disabled
 setup-api
 init-api
 ops-health

@@ -209,7 +209,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 | `SANDBOX_PORT` | `8194` | Sandbox port |
 | `SANDBOX_PYTHON_PATH` | `/usr/local/bin/python3` | Python path |
 | `SANDBOX_NODEJS_PATH` | `/usr/bin/node` | Node path |
-| `SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL` | `30m` | Python deps update interval |
+| `SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL` | `876000h` | Python deps update interval；HF rootless 环境默认等效禁用周期刷新，避免只读 sandbox rootfs 被重复覆盖 |
 
 ## Plugin Daemon
 

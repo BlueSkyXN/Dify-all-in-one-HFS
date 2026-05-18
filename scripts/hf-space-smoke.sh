@@ -67,6 +67,7 @@ check_ops() {
 check_status "web-root" "$BASE_URL/" "200"
 check_status "nginx-health" "$BASE_URL/nginx-health" "200"
 check_status "ops-healthz" "$BASE_URL/healthz" "200"
+check_status "admin-disabled" "$BASE_URL/_admin/" "404"
 check_status "setup-api" "$BASE_URL/console/api/setup" "200"
 check_status "init-api" "$BASE_URL/console/api/init" "200"
 check_ops "ops-health" "/_ops/health"
