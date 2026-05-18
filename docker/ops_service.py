@@ -14,6 +14,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -102,7 +104,7 @@ def parse_int(value: str, default: int, minimum: int | None = None, maximum: int
     return parsed
 
 
-def run_cmd(args: list[str], timeout: float = 3.0) -> dict[str, Any]:
+def run_cmd(args: list[str], timeout: float = 2.0) -> dict[str, Any]:
     started = time.time()
     try:
         completed = subprocess.run(
@@ -137,7 +139,7 @@ def run_cmd(args: list[str], timeout: float = 3.0) -> dict[str, Any]:
         }
 
 
-def http_check(name: str, url: str, timeout: float = 3.0) -> dict[str, Any]:
+def http_check(name: str, url: str, timeout: float = 2.0) -> dict[str, Any]:
     started = time.time()
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "dify-aio-ops/1.0"})
@@ -170,7 +172,7 @@ def http_check(name: str, url: str, timeout: float = 3.0) -> dict[str, Any]:
         }
 
 
-def tcp_check(name: str, host: str, port: int, timeout: float = 2.0) -> dict[str, Any]:
+def tcp_check(name: str, host: str, port: int, timeout: float = 1.0) -> dict[str, Any]:
     started = time.time()
     try:
         with socket.create_connection((host, port), timeout=timeout):
@@ -185,7 +187,7 @@ def tcp_check(name: str, host: str, port: int, timeout: float = 2.0) -> dict[str
 
 
 def supervisor_status() -> dict[str, Any]:
-    result = run_cmd(["supervisorctl", "-c", SUPERVISOR_CONFIG, "status"], timeout=5.0)
+    result = run_cmd(["supervisorctl", "-c", SUPERVISOR_CONFIG, "status"], timeout=3.0)
     programs = []
     for line in result["stdout"].splitlines():
         parts = line.split(None, 2)
@@ -209,7 +211,7 @@ def redis_check() -> dict[str, Any]:
     if password:
         args.extend(["--no-auth-warning", "-a", password])
     args.append("ping")
-    result = run_cmd(args, timeout=3.0)
+    result = run_cmd(args, timeout=2.0)
     return {"name": "redis", "ok": result["ok"] and "PONG" in result["stdout"], **result}
 
 
@@ -223,23 +225,36 @@ def postgres_check() -> dict[str, Any]:
         "-U",
         env("DB_USERNAME", "dify"),
     ]
-    result = run_cmd(args, timeout=3.0)
+    result = run_cmd(args, timeout=2.0)
     return {"name": "postgres", **result}
 
 
+def collect_checks(checks_to_run: list[Any]) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any] | None] = [None] * len(checks_to_run)
+    with ThreadPoolExecutor(max_workers=len(checks_to_run)) as executor:
+        futures = [(index, executor.submit(check)) for index, check in enumerate(checks_to_run)]
+        for index, future in futures:
+            try:
+                checks[index] = future.result(timeout=3.0)
+            except Exception as exc:
+                checks[index] = {"name": f"check-{index}", "ok": False, "error": str(exc)}
+    return [check for check in checks if check is not None]
+
+
 def health_payload(public: bool = False) -> dict[str, Any]:
-    checks = [
-        postgres_check(),
-        redis_check(),
-        tcp_check("plugin-daemon-tcp", "127.0.0.1", parse_int(env("PLUGIN_DAEMON_PORT"), 5002)),
-        tcp_check("sandbox-tcp", "127.0.0.1", parse_int(env("SANDBOX_PORT"), 8194)),
-        http_check("dify-api-health", "http://127.0.0.1:5001/health"),
-        http_check("dify-web", "http://127.0.0.1:3000/apps"),
-        http_check("nginx", "http://127.0.0.1:7860/nginx-health"),
-    ]
-    setup = http_check("dify-setup", "http://127.0.0.1:5001/console/api/setup")
-    init = http_check("dify-init", "http://127.0.0.1:5001/console/api/init")
-    checks.extend([setup, init])
+    checks = collect_checks(
+        [
+            postgres_check,
+            redis_check,
+            partial(tcp_check, "plugin-daemon-tcp", "127.0.0.1", parse_int(env("PLUGIN_DAEMON_PORT"), 5002)),
+            partial(tcp_check, "sandbox-tcp", "127.0.0.1", parse_int(env("SANDBOX_PORT"), 8194)),
+            partial(http_check, "dify-api-health", "http://127.0.0.1:5001/health"),
+            partial(http_check, "dify-web", "http://127.0.0.1:3000/apps"),
+            partial(http_check, "nginx", "http://127.0.0.1:7860/nginx-health"),
+            partial(http_check, "dify-setup", "http://127.0.0.1:5001/console/api/setup"),
+            partial(http_check, "dify-init", "http://127.0.0.1:5001/console/api/init"),
+        ]
+    )
 
     payload: dict[str, Any] = {
         "ok": all(check["ok"] for check in checks),
