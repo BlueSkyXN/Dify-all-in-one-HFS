@@ -93,7 +93,7 @@ Git 属性配置。
 
 职责：
 
-- 准备 `/data`、`/conf`、`/dependencies`，并在 `/persist` 可写时启用 bucket-lite 映射。
+- 准备 `/data`、`/conf`、`/dependencies`，并在 `/persist` 是挂载点且可写时启用 bucket-lite 映射。
 - 生成或复用 `/data/config/generated.env`。
 - 渲染 Redis 和 Sandbox 配置。
 - 初始化 PostgreSQL、数据库、role 和 pgvector。
