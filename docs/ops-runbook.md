@@ -376,6 +376,7 @@ scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 web-root
 nginx-health
 ops-healthz
+admin-disabled
 setup-api
 init-api
 ops-health

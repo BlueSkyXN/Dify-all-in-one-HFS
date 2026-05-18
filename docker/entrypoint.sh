@@ -115,7 +115,10 @@ detect_persist_mode() {
       fi
       ;;
     bucket|persist)
-      mkdir -p "${PERSIST_ROOT:-/persist}"
+      if ! mkdir -p "${PERSIST_ROOT:-/persist}" 2>/dev/null; then
+        log "PERSIST_MODE=${PERSIST_MODE} requires creatable or mounted PERSIST_ROOT=${PERSIST_ROOT:-/persist}."
+        exit 1
+      fi
       if ! persist_writable; then
         log "PERSIST_MODE=${PERSIST_MODE} requires writable PERSIST_ROOT=${PERSIST_ROOT:-/persist}."
         exit 1
@@ -331,7 +334,7 @@ worker_timeout: ${SANDBOX_WORKER_TIMEOUT:-15}
 python_path: "${python_path}"
 nodejs_path: "${nodejs_path}"
 python_pip_mirror_url: "${PIP_MIRROR_URL:-}"
-python_deps_update_interval: "${SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL:-30m}"
+python_deps_update_interval: "${SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL:-876000h}"
 enable_network: ${enable_network}
 enable_preload: false
 log_path: "/data/logs"

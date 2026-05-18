@@ -85,6 +85,7 @@ flowchart TD
 | `/healthz` | `ops-service /healthz` | 综合健康探针 |
 | `/_ops` | redirect `/_ops/` | 保留 query string |
 | `/_ops/` | `127.0.0.1:8081` | 只读运维诊断入口 |
+| `/_admin/` | Nginx local 404 | Admin 默认关闭，避免落到 Web 默认路由 |
 | `/console/api` | `127.0.0.1:5001` | Dify console API |
 | `/api` | `127.0.0.1:5001` | Dify API |
 | `/v1` | `127.0.0.1:5001` | OpenAPI style endpoint |
