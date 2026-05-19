@@ -348,12 +348,12 @@ generated.env
 
 ## WebSSH / Web Terminal
 
-以下变量为未来 break-glass Web terminal 保留；当前镜像没有安装 terminal binary，也没有暴露 `/_admin/terminal/` 路由。
+以下变量为未来 break-glass Web terminal 保留。当前镜像暴露 `/_admin/terminal/` 路由，但默认只代理到 disabled placeholder；镜像没有安装 `ttyd`，所以即使设置 `WEBSSH_ENABLED=true` 也只会返回 503，除非后续镜像显式加入 terminal binary。
 
 | 变量 | 默认值 | 当前状态 |
 | --- | --- | --- |
-| `WEBSSH_ENABLED` | `false` | 保留变量，当前不启动 Web terminal |
-| `WEBSSH_HOST` | `127.0.0.1` | 保留变量 |
-| `WEBSSH_PORT` | `7681` | 保留变量 |
-| `WEBSSH_SHELL` | `/bin/bash` | 保留变量 |
-| `WEBSSH_MAX_CLIENTS` | `1` | 保留变量 |
+| `WEBSSH_ENABLED` | `false` | 默认 disabled placeholder；开启后需要镜像内有 `ttyd` |
+| `WEBSSH_HOST` | `127.0.0.1` | terminal/placeholder bind host |
+| `WEBSSH_PORT` | `7681` | terminal/placeholder port |
+| `WEBSSH_SHELL` | `/bin/bash` | 未来 terminal shell |
+| `WEBSSH_MAX_CLIENTS` | `1` | 未来 terminal 最大连接数 |

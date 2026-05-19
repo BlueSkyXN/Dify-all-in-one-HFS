@@ -163,7 +163,7 @@ WEBSSH_MAX_CLIENTS=1
 ```
 
 公开 Space 不建议开启 admin。确需开启时，至少使用 Private/Protected Space、强随机 `ADMIN_TOKEN`，并保持 file writes 关闭，除非正在做受控排障。
-`WEBSSH_*` 目前只是保留变量；当前镜像不安装 terminal binary，也不暴露 terminal route。
+`/_admin/terminal/` 当前只代理到 disabled placeholder；镜像不安装 `ttyd`，`WEBSSH_ENABLED=true` 但缺少 binary 时会返回 503。
 
 ## 健康检查语义
 

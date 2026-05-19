@@ -1027,6 +1027,7 @@ class Handler(BaseHTTPRequestHandler):
         internal_terminal_auth = self.headers.get("X-Admin-Internal", "") == "terminal-auth"
         if path == "/api/auth/terminal" and internal_terminal_auth and not webssh_enabled():
             self.send_response(204)
+            self.end_headers()
             return
         if path == "/api/auth/terminal" and internal_terminal_auth and (not admin_enabled() or not admin_token()):
             self.send_json({"ok": False, "error": "admin auth is required for web terminal"}, status=403)

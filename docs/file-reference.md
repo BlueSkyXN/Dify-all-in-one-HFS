@@ -70,7 +70,7 @@ Git 属性配置。
 
 - 保留已有 Docker/HF env。
 - 为 Dify API/Web/Worker/Beat、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
-- 为 Admin Service 和保留 WebSSH 变量设置默认值。
+- 为 Admin Service 和 Web terminal placeholder 设置默认值。
 - 被 `entrypoint.sh`、`with-*` wrapper 和 `wait-for-core` source。
 
 修改注意：
