@@ -20,27 +20,25 @@ Visibility: Private 或 Protected
 建议 Variables：
 
 ```env
-MARKETPLACE_ENABLED=false
-SANDBOX_ENABLE_NETWORK=false
-FORCE_VERIFYING_SIGNATURE=false
-OPS_TOKEN=<fixed-random-token>
-ADMIN_ENABLED=false
-PERSIST_MODE=auto
-REDIS_PERSISTENCE=false
-POSTGRES_BACKUP_ENABLED=auto
+PERSIST_MODE=bucket
+POSTGRES_BUCKET_FAILURE_MODE=exit
 ```
 
 建议 Secrets：
 
 ```env
-SECRET_KEY=<固定强随机值>
-PLUGIN_DAEMON_KEY=<固定强随机值>
-PLUGIN_DIFY_INNER_API_KEY=<固定强随机值>
-CODE_EXECUTION_API_KEY=<固定强随机值>
-SANDBOX_API_KEY=<固定强随机值>
+OPS_TOKEN=<固定 demo 值或强随机值>
+DB_PASSWORD=<固定 demo 值或强随机值>
+REDIS_PASSWORD=<固定 demo 值或强随机值>
+SECRET_KEY=<固定 demo 值或强随机值>
+PLUGIN_DAEMON_KEY=<固定 demo 值或强随机值>
+PLUGIN_DIFY_INNER_API_KEY=<固定 demo 值或强随机值>
+CODE_EXECUTION_API_KEY=<固定 demo 值或强随机值>
 ```
 
-如果只做一次性公开演示，可以不设置 Secret；如果要多次重启后保持登录、文件 URL、插件凭据一致，必须设置固定 Secret 或把 bucket 挂到 `/persist`，让自动生成的 `/data/config/generated.env` 实际落到 `/persist/config/generated.env`。
+本地只维护一个 `.env.local` 作为 HF 配置事实源：其中 `[HF Secrets]` 上传到 Space Secrets，`[HF Variables]` 上传到 Space Variables；与 `docker/dify.env.runtime` 默认值一致的变量不要重复上传。不要再维护 `.env.hf.local` 或 `local/hf-space.env` 这类并行 env 快照。
+
+不要单独上传 `SANDBOX_API_KEY` 和 `INNER_API_KEY_FOR_PLUGIN`，除非你明确要拆分内部 key。默认情况下，`SANDBOX_API_KEY` 继承 `CODE_EXECUTION_API_KEY`，`INNER_API_KEY_FOR_PLUGIN` 继承 `PLUGIN_DIFY_INNER_API_KEY`。
 
 bucket-lite 模式下会持久化：
 
