@@ -173,7 +173,7 @@ RUN chmod +x \
       /persist \
       /tmp/dify-aio/logs /tmp/dify-aio/run /tmp/dify-aio/redis /tmp/dify-aio/hf-cache /tmp/dify-aio/plugin_packages /tmp/dify-aio/plugin_cwd \
       /var/sandbox/sandbox-python /var/sandbox/sandbox-nodejs \
-    && chown -R user:user /opt/dify/plugin-daemon /app /data /persist /tmp/dify-aio /conf /dependencies /var/sandbox \
+    && chown -R user:user /data /persist /tmp/dify-aio /conf /dependencies /var/sandbox \
     && chown root:root /opt/dify/sandbox/main \
     && chmod 4755 /opt/dify/sandbox/main \
     && chmod -R 755 /var/sandbox \
