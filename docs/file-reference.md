@@ -335,6 +335,19 @@ env-file=docker/dify.env.demo
 /_ops/errors
 ```
 
+### `scripts/static-check.sh`
+
+无额外依赖的本地静态检查入口。
+
+职责：
+
+- 对 `docker/` 和 `scripts/` 下所有 shell helper 运行 `bash -n`。
+- 对 `docker/ops_service.py` 和 `docker/admin_service.py` 运行 `python3 -m py_compile`。
+- 运行 `git diff --check`。
+- 对 changed/untracked 文件额外检查 trailing whitespace，覆盖新文件未 staged 时 `git diff --check` 看不到的情况。
+
+该脚本不替代 Docker build、local smoke 或 Hugging Face live smoke；它只是小改动和 PR 前的最小轻量 gate。
+
 ## `docs/`
 
 ### `docs/README.md`
@@ -344,6 +357,10 @@ env-file=docker/dify.env.demo
 ### `docs/project-overview.md`
 
 项目目标、非目标、设计取舍和目录结构。
+
+### `docs/project-status-and-roadmap.md`
+
+当前实现状态、未完成事项、下一步计划和本次审查循环记录。
 
 ### `docs/architecture.md`
 
