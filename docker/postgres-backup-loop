@@ -78,7 +78,7 @@ main() {
   fi
 
   wait_for_postgres
-  local initial_delay=${POSTGRES_BACKUP_INITIAL_DELAY_SECONDS:-600}
+  local initial_delay=${POSTGRES_BACKUP_INITIAL_DELAY_SECONDS:-60}
   local interval=${POSTGRES_BACKUP_INTERVAL_SECONDS:-3600}
   if ! [[ "$initial_delay" =~ ^[0-9]+$ ]]; then
     initial_delay=600

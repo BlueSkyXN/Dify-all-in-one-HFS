@@ -1,3 +1,6 @@
 .DS_Store
 /docker/__pycache__
 /.playwright-mcp/
+
+# Local environment and secret snapshots.
+/.env.local
