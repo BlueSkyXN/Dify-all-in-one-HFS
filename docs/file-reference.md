@@ -4,6 +4,16 @@
 
 ## Root Files
 
+### `AGENTS.md`
+
+Codex 根级 router 和项目指令。
+
+职责：
+
+- 记录本仓库的 demo 定位、目录导航、真实命令面、全局不变量和验证标准。
+- 提醒后续 Agent 在 push、merge 或对比前先看 `git remote -v`。
+- 约束 `docker/` 修改前读取 `docker/AGENTS.md`。
+
 ### `README.md`
 
 Hugging Face Space card 和项目首页。
@@ -60,7 +70,24 @@ SANDBOX_IMAGE
 
 Git 属性配置。
 
+### `.gitignore`
+
+忽略本地 generated/cache 文件和 `.env.local`。
+
+### `LICENSE`
+
+项目许可证。
+
 ## `docker/`
+
+### `docker/AGENTS.md`
+
+`docker/` 子目录 navigation card。
+
+职责：
+
+- 记录 runtime 目录的高风险点、不变量和最小验证命令。
+- 提醒修改 `docker/` 前重点核对 entrypoint、env、Supervisor、Nginx、ops/admin 服务和 wrappers。
 
 ### `docker/dify.env.runtime`
 
@@ -121,7 +148,7 @@ main
 
 职责：
 
-- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
+- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、admin-service、web-terminal、nginx。
 - 定义 admin-service，默认由 `ADMIN_ENABLED=false` 返回 404。
 - 设置启动 priority、autorestart、日志路径。
 - 暴露 supervisor unix socket：`/data/run/supervisor.sock`。
@@ -136,6 +163,7 @@ Nginx 路由和日志配置。
 - 输出 JSON access log。
 - 将路径代理到 Web/API/Plugin/Ops/Admin。
 - 暴露 `/nginx-health`。
+- 隐藏上游 `X-Frame-Options`，并设置允许 Hugging Face iframe 的 `Content-Security-Policy frame-ancestors`。
 
 ### `docker/ops_service.py`
 
@@ -167,6 +195,26 @@ Nginx 路由和日志配置。
 - 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks。
 - 可选提供 `/_admin/api/files/*` 文件管理；path 限制在 `ADMIN_FILES_ROOT` 内。
 - 写入 `ADMIN_AUDIT_LOG`，但不记录 token、secret 或文件内容。
+
+### `docker/postgres-backup-loop`
+
+bucket-lite PostgreSQL dump 备份循环。
+
+职责：
+
+- 在 bucket-lite 或显式开启备份时等待 PostgreSQL ready。
+- 周期执行 `pg_dumpall --no-role-passwords`。
+- 写入 `${POSTGRES_BACKUP_DIR}/latest.sql.gz` 和 `latest.created_at`。
+
+### `docker/webssh_entrypoint.sh`
+
+Web terminal placeholder / ttyd wrapper。
+
+职责：
+
+- `WEBSSH_ENABLED=false` 时监听 `WEBSSH_HOST:WEBSSH_PORT` 并返回 disabled placeholder。
+- `WEBSSH_ENABLED=true` 但镜像没有 `ttyd` 时返回 503 placeholder。
+- 只有后续镜像显式安装 `ttyd` 时才启动 interactive terminal。
 
 ### `docker/with-dify-env`
 
@@ -275,6 +323,7 @@ env-file=docker/dify.env.demo
 
 ```text
 /
+/apps header check: no X-Frame-Options, CSP frame-ancestors allows Hugging Face
 /nginx-health
 /healthz
 /_admin/
