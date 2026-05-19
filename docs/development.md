@@ -26,6 +26,16 @@
 
 ## 本地静态检查
 
+推荐直接运行聚合脚本：
+
+```bash
+scripts/static-check.sh
+```
+
+它会执行下面这些轻量 gate。
+
+`git diff --check` 不会检查未跟踪的新文件；`scripts/static-check.sh` 会额外扫描 changed/untracked 文件的 trailing whitespace。
+
 Shell 语法：
 
 ```bash
@@ -36,9 +46,12 @@ bash -n \
   docker/with-sandbox-env \
   docker/wait-for-core \
   docker/healthcheck.sh \
+  docker/postgres-backup-loop \
+  docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
-  scripts/hf-space-smoke.sh
+  scripts/hf-space-smoke.sh \
+  scripts/static-check.sh
 ```
 
 Python 语法：
@@ -239,9 +252,12 @@ bash -n \
   docker/with-sandbox-env \
   docker/wait-for-core \
   docker/healthcheck.sh \
+  docker/postgres-backup-loop \
+  docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
-  scripts/hf-space-smoke.sh
+  scripts/hf-space-smoke.sh \
+  scripts/static-check.sh
 python3 -m py_compile docker/ops_service.py
 python3 -m py_compile docker/admin_service.py
 git diff --check

@@ -59,7 +59,8 @@
 |-- scripts/
 |   |-- build.sh               # 本地 docker build 包装
 |   |-- run-demo.sh            # 本地 docker run 包装
-|   `-- hf-space-smoke.sh      # 线上 smoke 验证
+|   |-- hf-space-smoke.sh      # 线上或本地 smoke 验证
+|   `-- static-check.sh        # 无 Docker 依赖的静态检查聚合脚本
 `-- docs/                      # 完整工程文档
 ```
 
