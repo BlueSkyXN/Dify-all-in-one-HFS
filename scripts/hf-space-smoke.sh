@@ -128,8 +128,19 @@ check_space_frame_headers() {
   local label="space-frame-headers"
   local url="$BASE_URL/apps"
   local status
+  local attempt
 
-  status=$(curl -sS -D "$tmp_headers" -o "$tmp_body" -w '%{http_code}' --max-time 30 "$url" || true)
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    status=$(curl -sS -D "$tmp_headers" -o "$tmp_body" -w '%{http_code}' --max-time 30 "$url" || true)
+    if [ "$status" = "200" ]; then
+      break
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected HTTP 200, got %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
   if [ "$status" != "200" ]; then
     printf 'FAIL %s: expected HTTP 200, got %s\n' "$label" "$status" >&2
     sed -n '1,40p' "$tmp_body" >&2 || true
