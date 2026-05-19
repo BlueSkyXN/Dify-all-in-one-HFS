@@ -8,7 +8,8 @@ SMOKE_RETRIES=${SMOKE_RETRIES:-30}
 SMOKE_DELAY=${SMOKE_DELAY:-5}
 
 tmp_body=$(mktemp)
-trap 'rm -f "$tmp_body"' EXIT
+tmp_headers=$(mktemp)
+trap 'rm -f "$tmp_body" "$tmp_headers"' EXIT
 
 check_status() {
   local label=$1
@@ -64,7 +65,41 @@ check_ops() {
   exit 1
 }
 
+check_space_frame_headers() {
+  local label="space-frame-headers"
+  local url="$BASE_URL/apps"
+  local status
+
+  status=$(curl -sS -D "$tmp_headers" -o "$tmp_body" -w '%{http_code}' --max-time 30 "$url" || true)
+  if [ "$status" != "200" ]; then
+    printf 'FAIL %s: expected HTTP 200, got %s\n' "$label" "$status" >&2
+    sed -n '1,40p' "$tmp_body" >&2 || true
+    exit 1
+  fi
+
+  if grep -qi '^x-frame-options:' "$tmp_headers"; then
+    printf 'FAIL %s: X-Frame-Options blocks Hugging Face iframe embedding\n' "$label" >&2
+    grep -i '^x-frame-options:' "$tmp_headers" >&2 || true
+    exit 1
+  fi
+
+  if ! grep -qi '^content-security-policy:.*frame-ancestors' "$tmp_headers"; then
+    printf 'FAIL %s: missing Content-Security-Policy frame-ancestors\n' "$label" >&2
+    sed -n '1,40p' "$tmp_headers" >&2 || true
+    exit 1
+  fi
+
+  if ! grep -qi '^content-security-policy:.*https://huggingface\.co' "$tmp_headers"; then
+    printf 'FAIL %s: frame-ancestors must allow https://huggingface.co\n' "$label" >&2
+    grep -i '^content-security-policy:' "$tmp_headers" >&2 || true
+    exit 1
+  fi
+
+  printf 'PASS %s: iframe headers allow Hugging Face Space embedding\n' "$label"
+}
+
 check_status "web-root" "$BASE_URL/" "200"
+check_space_frame_headers
 check_status "nginx-health" "$BASE_URL/nginx-health" "200"
 check_status "ops-healthz" "$BASE_URL/healthz" "200"
 check_status "admin-disabled" "$BASE_URL/_admin/" "404"

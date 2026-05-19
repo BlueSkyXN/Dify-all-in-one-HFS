@@ -95,6 +95,28 @@ Authorization: Bearer
 
 WebSSH 或 interactive shell 风险明显高于受控 action catalog，应作为最后阶段独立模块处理；只建议 Private/Protected 环境开启，并需要独立强 token、session timeout、审计日志和清晰的命令风险说明。
 
+## Hugging Face iframe 嵌入
+
+Hugging Face Space 的项目页会把运行时 app 嵌入到 `huggingface.co` 页面中。Dify Web 上游默认可能返回：
+
+```text
+X-Frame-Options: DENY
+```
+
+这会导致 Space 页面报错：
+
+```text
+Refused to display '<space>.hf.space' in a frame because it set 'X-Frame-Options' to 'deny'.
+```
+
+本工程在 Nginx 边界隐藏上游 `X-Frame-Options`，并统一返回：
+
+```text
+Content-Security-Policy: frame-ancestors 'self' https://huggingface.co https://*.huggingface.co
+```
+
+这只允许本站和 Hugging Face 页面嵌入 demo，避免为了 Space iframe 兼容而放开任意第三方嵌入。修改 `docker/nginx.conf` 后，使用 `scripts/hf-space-smoke.sh` 检查该 header 是否仍然生效。
+
 ## Sandbox
 
 默认：
