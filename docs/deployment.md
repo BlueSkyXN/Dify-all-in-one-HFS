@@ -24,27 +24,28 @@ Visibility: Private 或 Protected
 
 6. 建议设置 Variables / Secrets，详见 [Configuration Reference](./configuration.md)。
 
-## 推送到当前 Space
+## 确认部署 remote 并推送
 
-当前远端：
+推送前先确认 remote，不要假设 `origin` 一定是 Hugging Face Space：
 
 ```bash
 git remote -v
 ```
 
-预期包含：
+当前本机 checkout 的常见布局是：
 
 ```text
-https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one
+hf      https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one
+origin  https://github.com/BlueSkyXN/Dify-all-in-one-HFS.git
 ```
 
-推送：
+只有推送到指向 `https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one` 的 remote 才会触发 Space Docker build。以上布局中应使用：
 
 ```bash
-git push origin main
+git push hf main
 ```
 
-Hugging Face 会自动触发 Docker build 和 runtime restart。
+如果你的 remote 名称不同，使用实际指向 Hugging Face Space 的 remote。推送 GitHub mirror 不会直接触发 Hugging Face Space rebuild。
 
 ## 查看 build / runtime
 
@@ -89,6 +90,7 @@ OPS_TOKEN=dify_ops_demo_token \
 
 ```text
 web-root
+space-frame-headers
 nginx-health
 ops-healthz
 admin-disabled
@@ -100,7 +102,7 @@ ops-metrics
 ops-errors
 ```
 
-如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status` 与 `/_admin/api/actions`。默认不会触发 admin action。
+如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status` 与 `/_admin/api/actions`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`。
 
 默认重试：
 
@@ -125,7 +127,10 @@ scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```bash
 curl https://blueskyxn-dify-all-in-one.hf.space/nginx-health
 curl https://blueskyxn-dify-all-in-one.hf.space/healthz
+curl -I https://blueskyxn-dify-all-in-one.hf.space/apps
 ```
+
+`/apps` 响应不应带 `X-Frame-Options`，并应带允许 `https://huggingface.co` 的 `Content-Security-Policy: frame-ancestors ...`，否则 Hugging Face Space 页面 iframe 可能无法嵌入。
 
 只读运维：
 

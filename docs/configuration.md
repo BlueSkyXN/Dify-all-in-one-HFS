@@ -143,13 +143,17 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 /data/config                   -> /persist/config
 /data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
 /data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/plugin_daemon/cwd        -> /tmp/dify-aio/plugin_cwd
 /data/logs                     -> /tmp/dify-aio/logs
 /data/run                      -> /tmp/dify-aio/run
 /data/redis                    -> /tmp/dify-aio/redis
 /data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
+HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
 `/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/latest.sql.gz` 是普通文件备份，用于降低 bucket mount 文件系统语义风险。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在有 dump 时先恢复 dump。
+
+如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
 ## URL 变量
 

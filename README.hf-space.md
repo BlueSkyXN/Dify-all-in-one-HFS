@@ -51,6 +51,8 @@ bucket-lite 模式下会持久化：
 /persist/postgres-backups/latest.sql.gz
 ```
 
+如果显式设置 `PLUGIN_CWD_PERSISTENCE=true`，还会持久化 `/persist/plugin_daemon/cwd`。
+
 默认会先尝试把 `/persist/postgres` 当 live PostgreSQL data directory 使用。若 bucket mount 的文件系统语义导致 PostgreSQL 无法启动，`POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会让容器退回 `/tmp/dify-aio/postgres`，并继续把周期 dump 写到 `/persist/postgres-backups/latest.sql.gz`。
 
 这些目录不会占用 bucket：
@@ -61,6 +63,7 @@ bucket-lite 模式下会持久化：
 /tmp/dify-aio/redis
 /tmp/dify-aio/hf-cache
 /tmp/dify-aio/plugin_packages
+/tmp/dify-aio/plugin_cwd
 ```
 
 ## 运维诊断
