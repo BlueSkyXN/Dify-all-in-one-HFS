@@ -24,6 +24,7 @@ MARKETPLACE_ENABLED=false
 SANDBOX_ENABLE_NETWORK=false
 FORCE_VERIFYING_SIGNATURE=false
 OPS_TOKEN=<fixed-random-token>
+ADMIN_ENABLED=false
 PERSIST_MODE=auto
 REDIS_PERSISTENCE=false
 POSTGRES_BACKUP_ENABLED=auto
@@ -82,5 +83,7 @@ OPS_TOKEN=<fixed-random-token> \
 ```
 
 `/_ops/` 是只读诊断入口，主要用于查看 dashboard、supervisor 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 建议设置为 Private 或 Protected。
+
+`/_admin/` 是独立管理入口，默认 `ADMIN_ENABLED=false` 并返回 404。只有在 Private/Protected Space 或受控演示场景中才建议设置 `ADMIN_ENABLED=true` 和强随机 `ADMIN_TOKEN`；文件管理由 `ADMIN_FILES_*` 独立控制，Web terminal 当前只保留 `WEBSSH_*` 变量、不暴露路由。
 
 完整工程文档见 [docs/README.md](./docs/README.md)。其中 [Deployment Guide](./docs/deployment.md) 覆盖部署流程，[Operations Runbook](./docs/ops-runbook.md) 覆盖运维、502 排障、日志入口和发布后验收。

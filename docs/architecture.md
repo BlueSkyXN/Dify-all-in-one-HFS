@@ -11,6 +11,8 @@ flowchart TD
     nginx --> api["Dify API :5001"]
     nginx --> plugin["Plugin Daemon :5002"]
     nginx --> ops["ops-service :8081"]
+    nginx --> admin["admin-service :8082"]
+    nginx --> terminal["web terminal placeholder :7681"]
     api --> postgres["PostgreSQL 15 + pgvector :5432"]
     api --> redis["Redis :6379"]
     api --> sandbox["Sandbox :8194"]
@@ -25,6 +27,10 @@ flowchart TD
     api --> data_storage["/data/dify/storage"]
     ops --> logs["read-only log tail: OPS_LOG_DIR"]
     ops --> supervisor["supervisorctl"]
+    admin --> admin_actions["whitelisted admin actions"]
+    admin --> admin_files["optional file manager: ADMIN_FILES_ROOT"]
+    admin --> admin_audit["ADMIN_AUDIT_LOG"]
+    admin_actions --> supervisor
 ```
 
 ## OPS 内部架构
@@ -73,6 +79,8 @@ flowchart TD
 | `dify-beat` | none | Celery beat scheduler | `/data/logs/dify-beat.log`, `/data/logs/dify-beat.err` |
 | `dify-web` | `0.0.0.0:3000` | Next.js Web UI | stdout/stderr |
 | `ops-service` | `127.0.0.1:8081` | 只读诊断服务 | stdout/stderr |
+| `admin-service` | `127.0.0.1:8082` | 默认关闭的受控管理面 | stdout/stderr |
+| `web-terminal` | `127.0.0.1:7681` | 默认关闭的 Web terminal placeholder；启用需镜像内有 `ttyd` | stdout/stderr |
 | `nginx` | `0.0.0.0:7860` | 外部单入口反向代理 | `/data/logs/nginx.log`, stderr |
 
 ## Nginx 路由
@@ -85,7 +93,9 @@ flowchart TD
 | `/healthz` | `ops-service /healthz` | 综合健康探针 |
 | `/_ops` | redirect `/_ops/` | 保留 query string |
 | `/_ops/` | `127.0.0.1:8081` | 只读运维诊断入口 |
-| `/_admin/` | Nginx local 404 | Admin 默认关闭，避免落到 Web 默认路由 |
+| `/_admin` | redirect `/_admin/` | 保留 query string |
+| `/_admin/` | `127.0.0.1:8082` | Admin 管理面；默认由 admin-service 返回 404 |
+| `/_admin/terminal/` | `127.0.0.1:7681` | Web terminal route；默认代理到 disabled placeholder |
 | `/console/api` | `127.0.0.1:5001` | Dify console API |
 | `/api` | `127.0.0.1:5001` | Dify API |
 | `/v1` | `127.0.0.1:5001` | OpenAPI style endpoint |
@@ -120,6 +130,8 @@ flowchart TD
     api --> web["dify-web"]
     supervisor --> nginx["nginx"]
     supervisor --> ops["ops-service"]
+    supervisor --> admin["admin-service"]
+    supervisor --> terminal["web-terminal placeholder"]
 ```
 
 长期运行阶段的依赖由 `docker/wait-for-core` 控制：
@@ -214,7 +226,7 @@ Hugging Face Space 如果没有挂载 `/persist`，`auto` 会回退旧 `/data` �
 
 ## Admin 设计边界
 
-写操作不进入 `/_ops/*`。如果后续增加管理面，应使用独立路径和配置：
+写操作不进入 `/_ops/*`。当前管理面使用独立路径和配置：
 
 ```text
 /_admin/*
@@ -222,4 +234,16 @@ ADMIN_ENABLED=false
 ADMIN_TOKEN=<separate-token>
 ```
 
-`/_admin/*` 只能暴露白名单 action catalog，例如 restart service、reload nginx、run migration、clear cache。每个 action 都需要确认参数、审计日志和 action id；请求不能传任意 shell command。WebSSH 或 interactive shell 只能作为最后阶段的独立模块，并且默认关闭。
+`/_admin/*` 当前只暴露白名单 action catalog：
+
+```text
+restart-service
+reload-nginx
+run-health-checks
+```
+
+每个写 action 都需要 CSRF header，重启和 reload 需要 `confirm=true`，并写入 `ADMIN_AUDIT_LOG`。请求不能传任意 shell command。
+
+File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
+
+WebSSH 或 interactive shell 只能作为最后阶段的独立模块，并且默认关闭。当前镜像不安装 terminal binary；`WEBSSH_ENABLED=false` 时 `web-terminal` 只返回 disabled placeholder，`WEBSSH_ENABLED=true` 但缺少 `ttyd` 时返回 503 placeholder。

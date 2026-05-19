@@ -4,6 +4,9 @@ set -euo pipefail
 BASE_URL=${1:-${HF_SPACE_URL:-https://blueskyxn-dify-all-in-one.hf.space}}
 BASE_URL=${BASE_URL%/}
 OPS_TOKEN=${OPS_TOKEN:-}
+ADMIN_TOKEN=${ADMIN_TOKEN:-}
+SMOKE_ADMIN_ENABLED=${SMOKE_ADMIN_ENABLED:-${ADMIN_ENABLED:-false}}
+SMOKE_ADMIN_ACTIONS=${SMOKE_ADMIN_ACTIONS:-false}
 SMOKE_RETRIES=${SMOKE_RETRIES:-30}
 SMOKE_DELAY=${SMOKE_DELAY:-5}
 
@@ -65,6 +68,62 @@ check_ops() {
   exit 1
 }
 
+check_admin() {
+  local label=$1
+  local path=$2
+  local status
+  local attempt
+
+  if [ -z "$ADMIN_TOKEN" ]; then
+    printf 'FAIL %s: ADMIN_TOKEN is not set\n' "$label" >&2
+    exit 1
+  fi
+
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+      -H "X-Admin-Token: $ADMIN_TOKEN" \
+      "$BASE_URL$path" || true)
+    if [ "$status" = "200" ]; then
+      printf 'PASS %s: HTTP %s\n' "$label" "$status"
+      return
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected HTTP 200, got %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
+  printf 'FAIL %s: expected HTTP 200, got %s\n' "$label" "$status" >&2
+  sed -n '1,80p' "$tmp_body" >&2 || true
+  exit 1
+}
+
+check_admin_action() {
+  local label="admin-run-health-checks"
+  local status
+
+  if [ "$SMOKE_ADMIN_ACTIONS" != "true" ]; then
+    printf 'SKIP %s: SMOKE_ADMIN_ACTIONS is not true\n' "$label"
+    return
+  fi
+
+  status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 60 \
+    -H "X-Admin-Token: $ADMIN_TOKEN" \
+    -H "X-Admin-CSRF: smoke" \
+    -H "Content-Type: application/json" \
+    -d '{"confirm":true}' \
+    "$BASE_URL/_admin/api/actions/run-health-checks" || true)
+
+  if [ "$status" = "200" ]; then
+    printf 'PASS %s: HTTP %s\n' "$label" "$status"
+    return
+  fi
+
+  printf 'FAIL %s: expected HTTP 200, got %s\n' "$label" "$status" >&2
+  sed -n '1,80p' "$tmp_body" >&2 || true
+  exit 1
+}
+
 check_space_frame_headers() {
   local label="space-frame-headers"
   local url="$BASE_URL/apps"
@@ -102,7 +161,14 @@ check_status "web-root" "$BASE_URL/" "200"
 check_space_frame_headers
 check_status "nginx-health" "$BASE_URL/nginx-health" "200"
 check_status "ops-healthz" "$BASE_URL/healthz" "200"
-check_status "admin-disabled" "$BASE_URL/_admin/" "404"
+if [ "$SMOKE_ADMIN_ENABLED" = "true" ]; then
+  check_status "admin-root" "$BASE_URL/_admin/" "200"
+  check_admin "admin-status" "/_admin/api/status"
+  check_admin "admin-actions" "/_admin/api/actions"
+  check_admin_action
+else
+  check_status "admin-disabled" "$BASE_URL/_admin/" "404"
+fi
 check_status "setup-api" "$BASE_URL/console/api/setup" "200"
 check_status "init-api" "$BASE_URL/console/api/init" "200"
 check_ops "ops-health" "/_ops/health"

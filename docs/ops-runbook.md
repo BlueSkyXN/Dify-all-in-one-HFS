@@ -29,6 +29,7 @@ nginx:7860
   |-- Dify Web:3000
   |-- Dify API:5001
   |-- ops-service:8081
+  |-- admin-service:8082 (default 404)
   |
   +-- internal services
       |-- PostgreSQL 15 + pgvector
@@ -40,6 +41,8 @@ nginx:7860
 ```
 
 `ops-service` 是一个只读 Python HTTP 服务，只监听 `127.0.0.1:8081`，由 Nginx 暴露到 `/_ops/`。它不提供重启、修改配置、执行 SQL 等写操作。
+
+`admin-service` 是独立 Python HTTP 服务，只监听 `127.0.0.1:8082`，由 Nginx 暴露到 `/_admin/`。默认 `ADMIN_ENABLED=false`，因此 `/_admin/` 返回 404；开启后才提供受控 action catalog 和可选 file manager。
 
 ## Endpoint Reference
 
@@ -80,6 +83,40 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 `?token=` 适合临时调试，不适合长期使用，因为 URL 可能进入浏览器历史或代理日志。CLI 和自动化脚本优先使用 `X-Ops-Token`。
 
+需要 `ADMIN_TOKEN` 的管理入口，默认关闭：
+
+```text
+/_admin/
+/_admin/api/status
+/_admin/api/actions
+/_admin/api/actions/restart-service
+/_admin/api/actions/reload-nginx
+/_admin/api/actions/run-health-checks
+/_admin/api/files/list
+/_admin/api/files/text
+/_admin/api/files/download
+/_admin/api/files/mkdir
+/_admin/api/files/upload
+/_admin/api/files/rename
+/_admin/api/files/delete
+```
+
+CLI 示例：
+
+```bash
+curl -H "X-Admin-Token: $ADMIN_TOKEN" \
+  https://your-space.hf.space/_admin/api/status
+
+curl -X POST \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "X-Admin-CSRF: cli" \
+  -H "Content-Type: application/json" \
+  -d '{"service":"dify-api","confirm":true}' \
+  https://your-space.hf.space/_admin/api/actions/restart-service
+```
+
+浏览器访问 `/_admin/` 会用 `ADMIN_TOKEN` 登录并换取 signed HttpOnly cookie。不要把 `ADMIN_TOKEN` 放进 URL query。
+
 ## 配置项
 
 默认值位于 `docker/dify.env.runtime`：
@@ -104,6 +141,29 @@ OPS_TOKEN=<fixed-random-token>
 ```
 
 `OPS_TOKEN` 只适合演示和轻量诊断，不应当被当成生产级安全边界。公开场景建议同时将 Space 设置为 Private 或 Protected。
+
+Admin 默认配置：
+
+```env
+ADMIN_ENABLED=false
+ADMIN_HOST=127.0.0.1
+ADMIN_PORT=8082
+ADMIN_TOKEN=
+ADMIN_SESSION_TTL_SECONDS=3600
+ADMIN_AUDIT_LOG=/data/logs/admin-audit.jsonl
+ADMIN_FILES_ENABLED=false
+ADMIN_FILES_ROOT=/data
+ADMIN_FILES_WRITE_ENABLED=false
+ADMIN_FILES_MAX_UPLOAD_BYTES=10485760
+WEBSSH_ENABLED=false
+WEBSSH_HOST=127.0.0.1
+WEBSSH_PORT=7681
+WEBSSH_SHELL=/bin/bash
+WEBSSH_MAX_CLIENTS=1
+```
+
+公开 Space 不建议开启 admin。确需开启时，至少使用 Private/Protected Space、强随机 `ADMIN_TOKEN`，并保持 file writes 关闭，除非正在做受控排障。
+`WEBSSH_*` 目前只是保留变量；当前镜像不安装 terminal binary，也不暴露 terminal route。
 
 ## 健康检查语义
 
@@ -370,6 +430,21 @@ SMOKE_DELAY=5 \
 scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
+如果目标实例已经开启 `/_admin`，使用：
+
+```bash
+SMOKE_ADMIN_ENABLED=true \
+ADMIN_TOKEN=<admin-token> \
+OPS_TOKEN=dify_ops_demo_token \
+scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+```
+
+默认不会触发 admin action。需要额外验证 `run-health-checks` action 时再加：
+
+```bash
+SMOKE_ADMIN_ACTIONS=true
+```
+
 脚本当前检查：
 
 ```text
@@ -377,6 +452,8 @@ web-root
 nginx-health
 ops-healthz
 admin-disabled
+admin-status        # 仅 SMOKE_ADMIN_ENABLED=true 时
+admin-actions       # 仅 SMOKE_ADMIN_ENABLED=true 时
 setup-api
 init-api
 ops-health
@@ -389,11 +466,11 @@ ops-errors
 
 ## 后续可扩展方向
 
-当前运维能力是只读诊断层。后续如果要做管理面板，可以优先考虑：
+当前 `/_ops` 保持只读，`/_admin` 已承接受控写操作。后续可以考虑：
 
 - 增加按 service / severity / keyword 过滤日志。
 - 增加 build/runtime SHA 展示和版本漂移提示。
 - 增加只读数据库 schema 检查，例如 plugin-daemon 必需表是否存在。
 - 增加显式 warmup 状态，区分启动中和真正失败。
 
-涉及重启服务、修改配置、执行迁移、清理数据等写操作时，应单独放在 `/_admin/*`。Admin 应默认关闭，使用独立 `ADMIN_TOKEN`，只允许白名单 action，每个 action 需要 `confirm=true`、审计日志、action id / result，并且不允许请求传任意 shell command。WebSSH 或 interactive shell 只能作为最后阶段能力，默认关闭并与 OPS 权限隔离。
+涉及执行迁移、清理缓存、SQL、配置修改等新写操作时，仍应放在 `/_admin/*`，并继续使用独立 `ADMIN_TOKEN`、白名单 action、`confirm=true`、CSRF header、审计日志和 action id / result。不要把任意 shell command 放进请求参数。WebSSH 或 interactive shell 只能作为最后阶段能力，默认关闭并与 OPS 权限隔离。
