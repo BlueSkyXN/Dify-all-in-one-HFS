@@ -393,6 +393,44 @@ EOF_PGHBA
   chmod 600 /data/postgres/postgresql.conf /data/postgres/pg_hba.conf || true
 }
 
+ensure_postgres_required_dirs() {
+  source_runtime_env
+  [ -s /data/postgres/PG_VERSION ] || return
+
+  # Object-store backed mounts may not preserve empty directories. PostgreSQL
+  # still requires these directories to exist before it can start an existing
+  # cluster.
+  local -a dirs=(
+    base
+    global
+    pg_commit_ts
+    pg_dynshmem
+    pg_logical
+    pg_logical/mappings
+    pg_logical/snapshots
+    pg_multixact
+    pg_multixact/members
+    pg_multixact/offsets
+    pg_notify
+    pg_replslot
+    pg_serial
+    pg_snapshots
+    pg_stat
+    pg_stat_tmp
+    pg_subtrans
+    pg_tblspc
+    pg_twophase
+    pg_wal
+    pg_wal/archive_status
+    pg_xact
+  )
+  local dir
+  for dir in "${dirs[@]}"; do
+    mkdir -p "/data/postgres/${dir}"
+    chmod 700 "/data/postgres/${dir}" 2>/dev/null || true
+  done
+}
+
 print_postgres_failure_context() {
   source_runtime_env
   log "Temporary PostgreSQL failed to start. Last postgres-init.log lines:"
@@ -536,6 +574,7 @@ init_postgres() {
     log "PostgreSQL data directory already exists; skipping initdb."
   fi
 
+  ensure_postgres_required_dirs
   configure_postgres_files
   clear_stale_postgres_runtime_files
   if ! start_temp_postgres; then
@@ -552,6 +591,7 @@ init_postgres() {
           exit 1
         fi
       fi
+      ensure_postgres_required_dirs
       configure_postgres_files
       clear_stale_postgres_runtime_files
       start_temp_postgres || exit 1

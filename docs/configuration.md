@@ -98,7 +98,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 /data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
 ```
 
-`/persist/postgres` 会先作为 live PostgreSQL data directory 实测；`/persist/postgres-backups/latest.sql.gz` 是普通文件备份，用于降低 bucket mount 文件系统语义风险。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在有 dump 时先恢复 dump。
+`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/latest.sql.gz` 是普通文件备份，用于降低 bucket mount 文件系统语义风险。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在有 dump 时先恢复 dump。
 
 ## URL 变量
 
