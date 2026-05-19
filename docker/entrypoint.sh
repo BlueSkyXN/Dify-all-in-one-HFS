@@ -579,6 +579,7 @@ init_postgres() {
   clear_stale_postgres_runtime_files
   if ! start_temp_postgres; then
     if postgres_on_bucket_path && postgres_bucket_fallback_enabled; then
+      stop_temp_postgres
       switch_postgres_to_runtime_fallback
       if [ ! -s /data/postgres/PG_VERSION ]; then
         log "Initializing fallback PostgreSQL data directory at /data/postgres"
