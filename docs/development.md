@@ -5,7 +5,7 @@
 ## 开发原则
 
 - 优先复用官方 Dify 镜像资产，不复制或 fork 大量上游源码。
-- 修改保持在 Dockerfile、runtime scripts、Nginx、Supervisor、ops-service 和 docs 范围内。
+- 修改保持在 Dockerfile、runtime scripts、Nginx、Supervisor、ops/admin service 和 docs 范围内。
 - 改配置前先确认对应服务是否真的读取该变量。
 - 不把演示环境默认值误写成生产安全建议。
 - 每次改 runtime 启动链路后必须做线上或本地 smoke。
@@ -19,7 +19,7 @@
 | 环境变量 | `docker/dify.env.runtime`, `docker/dify.env.demo` | 默认值、demo env-file |
 | 进程编排 | `docker/supervisord.conf` | 新增/调整进程、启动顺序、日志路径 |
 | 路由 | `docker/nginx.conf` | 路径代理、健康探针、access log |
-| 运维服务 | `docker/ops_service.py` | `/_ops` endpoint、健康检查、日志白名单 |
+| 运维服务 | `docker/ops_service.py`, `docker/admin_service.py` | `/_ops` endpoint、健康检查、日志白名单、`/_admin` 受控管理面 |
 | 辅助脚本 | `docker/with-*`, `docker/wait-for-core`, `docker/healthcheck.sh` | 环境转换、依赖等待、Docker healthcheck |
 | 本地/线上脚本 | `scripts/*.sh` | build/run/smoke |
 | 文档 | `README*.md`, `docs/*.md` | 用户说明和运维 runbook |
@@ -44,7 +44,7 @@ bash -n \
 Python 语法：
 
 ```bash
-python3 -m py_compile docker/ops_service.py
+python3 -m py_compile docker/ops_service.py docker/admin_service.py
 ```
 
 Git whitespace：
@@ -183,6 +183,38 @@ curl -H "X-Ops-Token: $OPS_TOKEN" "<base>/_ops/logs?service=dify-api&lines=80"
 - `ops-service` 本体不要依赖可写 `/data`；自身日志走 stdout/stderr，`/_ops/logs` 只读读取 `OPS_LOG_DIR`。
 - query token 不应进入 ops-service 自身日志。
 
+## 修改 admin-service
+
+修改 `docker/admin_service.py` 后检查：
+
+```bash
+python3 -m py_compile docker/admin_service.py
+```
+
+本地或线上验证默认关闭状态：
+
+```bash
+curl -i <base>/_admin/
+```
+
+开启 admin 后验证：
+
+```bash
+curl -H "X-Admin-Token: $ADMIN_TOKEN" <base>/_admin/api/status
+curl -H "X-Admin-Token: $ADMIN_TOKEN" <base>/_admin/api/actions
+```
+
+安全要求：
+
+- `ADMIN_ENABLED=false` 时 `/_admin/` 必须返回 404。
+- `ADMIN_ENABLED=true` 时必须设置 `ADMIN_TOKEN`。
+- 不复用 `OPS_TOKEN`。
+- action 必须是白名单，不允许请求传入任意 shell command。
+- 写 action 必须有 CSRF header，重启和 reload 必须要求 `confirm=true`。
+- file manager path 必须限制在 `ADMIN_FILES_ROOT` 内。
+- 不读取或写入 generated secret、pem/key、secret/token 类路径。
+- 删除只支持文件或空目录，不做递归删除。
+
 ## 修改配置变量
 
 增加变量时需要同步：
@@ -207,6 +239,7 @@ bash -n \
   scripts/run-demo.sh \
   scripts/hf-space-smoke.sh
 python3 -m py_compile docker/ops_service.py
+python3 -m py_compile docker/admin_service.py
 git diff --check
 ```
 

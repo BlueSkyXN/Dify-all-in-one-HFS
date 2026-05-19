@@ -181,6 +181,7 @@ docker exec -it dify-aio-hf supervisorctl status
 /nginx-health          Nginx 存活探针
 /healthz               综合健康探针
 /_ops/                 只读运维诊断入口
+/_admin/               受控管理入口，默认关闭
 ```
 
 `/_ops/` 默认需要 `OPS_TOKEN`。Demo 默认值是：
@@ -220,6 +221,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_ops/logs             白名单服务日志 tail
 /_ops/metrics          Prometheus-style text metrics
 ```
+
+`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 只包括 restart service、reload nginx、run health checks；`/_ops` 仍保持只读。
 
 Nginx access log 使用 JSON 格式输出到 stdout，包含 `request_id`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status` 和 `upstream_response_time`，便于从 Hugging Face App logs 里快速区分 Web/API/Plugin/Ops 的上游问题。
 

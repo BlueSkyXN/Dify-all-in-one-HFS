@@ -38,7 +38,7 @@ Docker Space 构建入口。
 - 复用官方 Dify Web/API/Plugin/Sandbox 镜像。
 - 安装系统依赖、PostgreSQL、pgvector、Nginx、Supervisor、Redis、Node.js、uv。
 - 创建 rootless runtime user。
-- 复制 runtime scripts、Nginx、Supervisor、ops-service。
+- 复制 runtime scripts、Nginx、Supervisor、ops-service 和 admin-service。
 - 声明 `HEALTHCHECK` 和最终 `ENTRYPOINT`。
 
 关键 build args：
@@ -70,6 +70,7 @@ Git 属性配置。
 
 - 保留已有 Docker/HF env。
 - 为 Dify API/Web/Worker/Beat、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
+- 为 Admin Service 和 Web terminal placeholder 设置默认值。
 - 被 `entrypoint.sh`、`with-*` wrapper 和 `wait-for-core` source。
 
 修改注意：
@@ -120,7 +121,8 @@ main
 
 职责：
 
-- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、nginx。
+- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
+- 定义 admin-service，默认由 `ADMIN_ENABLED=false` 返回 404。
 - 设置启动 priority、autorestart、日志路径。
 - 暴露 supervisor unix socket：`/data/run/supervisor.sock`。
 
@@ -132,7 +134,7 @@ Nginx 路由和日志配置。
 
 - 监听 `7860`。
 - 输出 JSON access log。
-- 将路径代理到 Web/API/Plugin/Ops。
+- 将路径代理到 Web/API/Plugin/Ops/Admin。
 - 暴露 `/nginx-health`。
 
 ### `docker/ops_service.py`
@@ -152,6 +154,19 @@ Nginx 路由和日志配置。
 - 只返回 secret presence，不返回 secret 原文。
 - 按 service 分组错误摘要，显示匹配 pattern，并限制扫描与返回行数。
 - 过滤已知启动期 benign error pattern，避免把短暂 warmup 误报成当前异常。
+
+### `docker/admin_service.py`
+
+默认关闭的受控管理服务。
+
+职责：
+
+- 监听 `ADMIN_HOST:ADMIN_PORT`，默认 `127.0.0.1:8082`。
+- `ADMIN_ENABLED=false` 时所有入口返回 404。
+- 使用 `ADMIN_TOKEN`、signed HttpOnly cookie 和 CSRF header 保护写操作。
+- 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks。
+- 可选提供 `/_admin/api/files/*` 文件管理；path 限制在 `ADMIN_FILES_ROOT` 内。
+- 写入 `ADMIN_AUDIT_LOG`，但不记录 token、secret 或文件内容。
 
 ### `docker/with-dify-env`
 
@@ -253,6 +268,7 @@ env-file=docker/dify.env.demo
 - 第一个参数：base URL。
 - 或 `HF_SPACE_URL`。
 - `OPS_TOKEN` 可选，用于检查 `/_ops`。
+- `ADMIN_TOKEN` + `SMOKE_ADMIN_ENABLED=true` 可选，用于检查已开启的 `/_admin`。
 - `SMOKE_RETRIES` 和 `SMOKE_DELAY` 控制重试。
 
 检查：
