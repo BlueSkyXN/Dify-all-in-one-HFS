@@ -286,3 +286,74 @@ OPS_EXTRA_COMMAND_CHECKS_JSON=[{"name":"worker","args":["/usr/local/bin/workerct
 自定义探针最多执行 32 个；HTTP 探针未设置 `expected_status` 时沿用内置语义，即 HTTP `<500` 代表 upstream 可达。
 如果关闭内置探针又没有配置任何额外探针，`/healthz` 会返回不健康，避免空检查被误判为正常。
 `/_ops/config` 不返回这些 JSON 的原文，只返回解析出的检查名称，避免误把 URL 或 command args 中的敏感片段暴露成配置摘要。
+
+## Admin Service
+
+`/_admin` 是独立于 `/_ops` 的受控管理面，默认关闭。Nginx 会把 `/_admin/` 代理到 `ADMIN_HOST:ADMIN_PORT`，但 `ADMIN_ENABLED=false` 时 admin-service 只返回 404，保持默认 smoke 行为。
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `ADMIN_ENABLED` | `false` | 是否开启 `/_admin` 管理面 |
+| `ADMIN_HOST` | `127.0.0.1` | admin-service bind host |
+| `ADMIN_PORT` | `8082` | admin-service port |
+| `ADMIN_TOKEN` | empty | 独立 admin token；开启 admin 时必须设置 |
+| `ADMIN_SESSION_TTL_SECONDS` | `3600` | Browser session cookie 有效期 |
+| `ADMIN_AUDIT_LOG` | `/data/logs/admin-audit.jsonl` | admin action 和文件写操作审计日志 |
+
+认证方式：
+
+```text
+X-Admin-Token: <token>
+Authorization: Bearer <token>
+Browser login -> signed HttpOnly cookie
+```
+
+写操作必须使用 `POST` / `PUT` / `PATCH` / `DELETE`，并携带 CSRF header。浏览器登录后由页面使用 session 对应的 CSRF token；CLI 使用 header token 时也需要显式传入 `X-Admin-CSRF`。
+
+当前 action catalog：
+
+```text
+POST /_admin/api/actions/restart-service
+POST /_admin/api/actions/reload-nginx
+POST /_admin/api/actions/run-health-checks
+```
+
+`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`。
+
+## Admin File Manager
+
+文件管理属于 `/_admin`，不是 `/_ops`。它默认关闭，即使开启 admin，也需要单独打开 `ADMIN_FILES_ENABLED`。
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `ADMIN_FILES_ENABLED` | `false` | 是否开启 `/_admin/api/files/*` |
+| `ADMIN_FILES_ROOT` | `/data` | 文件管理根目录 |
+| `ADMIN_FILES_WRITE_ENABLED` | `false` | 是否允许 mkdir、写文本、上传、重命名、删除 |
+| `ADMIN_FILES_MAX_UPLOAD_BYTES` | `10485760` | 上传和文本写入最大字节数 |
+
+路径会被当作相对 `ADMIN_FILES_ROOT` 的路径处理，`/foo` 表示 `${ADMIN_FILES_ROOT}/foo`，不会读取宿主意义上的绝对 `/foo`。解析后的路径必须仍在 `ADMIN_FILES_ROOT` 内；symlink 跳出 root 会被标记为 protected。
+
+默认保护规则会拒绝读取或写入：
+
+```text
+/data/config/generated.env
+generated.env
+*.pem
+*.key
+*secret*
+*token*
+```
+
+上传和重命名不会覆盖已有目标；删除只支持文件或空目录，不做递归删除。
+
+## WebSSH / Web Terminal
+
+以下变量为未来 break-glass Web terminal 保留。当前镜像暴露 `/_admin/terminal/` 路由，但默认只代理到 disabled placeholder；镜像没有安装 `ttyd`，所以即使设置 `WEBSSH_ENABLED=true` 也只会返回 503，除非后续镜像显式加入 terminal binary。
+
+| 变量 | 默认值 | 当前状态 |
+| --- | --- | --- |
+| `WEBSSH_ENABLED` | `false` | 默认 disabled placeholder；开启后需要镜像内有 `ttyd` |
+| `WEBSSH_HOST` | `127.0.0.1` | terminal/placeholder bind host |
+| `WEBSSH_PORT` | `7681` | terminal/placeholder port |
+| `WEBSSH_SHELL` | `/bin/bash` | 未来 terminal shell |
+| `WEBSSH_MAX_CLIENTS` | `1` | 未来 terminal 最大连接数 |

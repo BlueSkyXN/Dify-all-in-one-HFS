@@ -100,6 +100,8 @@ ops-metrics
 ops-errors
 ```
 
+如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status` 与 `/_admin/api/actions`。默认不会触发 admin action。
+
 默认重试：
 
 ```env

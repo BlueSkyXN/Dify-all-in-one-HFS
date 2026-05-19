@@ -147,6 +147,8 @@ COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service
+COPY docker/admin_service.py /usr/local/bin/dify-admin-service
+COPY docker/webssh_entrypoint.sh /usr/local/bin/dify-web-terminal
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/healthcheck.sh /usr/local/bin/dify-demo-healthcheck
@@ -159,6 +161,8 @@ RUN chmod +x \
       /usr/local/bin/with-sandbox-env \
       /usr/local/bin/postgres-backup-loop \
       /usr/local/bin/dify-ops-service \
+      /usr/local/bin/dify-admin-service \
+      /usr/local/bin/dify-web-terminal \
       /usr/local/bin/dify-demo-healthcheck \
       /usr/local/bin/wait-for-core \
       /app/api/docker/entrypoint.sh \

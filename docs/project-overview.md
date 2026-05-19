@@ -30,7 +30,7 @@
 | Plugin 存储 | `/data/plugin_daemon`，核心插件文件指向 `/persist` | 插件保留，包缓存不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认关闭 | 降低外部依赖和演示不确定性 |
-| 运维入口 | 只读 `ops-service` | 便于诊断，不提供破坏性操作 |
+| 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
 
 ## 目录结构
 
@@ -46,6 +46,7 @@
 |   |-- supervisord.conf       # 多进程编排
 |   |-- nginx.conf             # 外部路由和 access log
 |   |-- ops_service.py         # 只读运维诊断 HTTP 服务
+|   |-- admin_service.py       # 默认关闭的受控管理 HTTP 服务
 |   |-- with-dify-env          # Dify API/Web/Worker 环境包装器
 |   |-- with-plugin-env        # Plugin Daemon 环境包装器
 |   |-- with-sandbox-env       # Sandbox 环境包装器
@@ -95,6 +96,13 @@ https://<space>.hf.space/
 /_ops/
 /_ops/system
 /_ops/metrics
+```
+
+默认关闭的管理入口：
+
+```text
+/_admin/
+/_admin/api/status
 ```
 
 完整排障流程见 [Operations Runbook](./ops-runbook.md)。

@@ -80,20 +80,34 @@ Authorization: Bearer
 - 没有审计日志。
 - 没有 token rotation 机制。
 
-如果要扩展成管理面板，写操作必须单独设计更强鉴权和审计。
+写操作不进入 `/_ops`；管理能力由独立的 `/_admin` 边界承接。
 
 ## `/_admin` 设计边界
 
-`/_admin/*` 不应复用 `OPS_TOKEN`，也不应默认开启。建议的最低门槛：
+`/_admin/*` 是独立于 `/_ops` 的受控管理面，不复用 `OPS_TOKEN`，也不默认开启。当前默认值：
+
+```env
+ADMIN_ENABLED=false
+ADMIN_TOKEN=
+ADMIN_FILES_ENABLED=false
+ADMIN_FILES_WRITE_ENABLED=false
+```
+
+最低门槛：
 
 - `ADMIN_ENABLED=false` 作为默认值。
 - `ADMIN_TOKEN` 独立于 `OPS_TOKEN`。
-- 只允许白名单 action，例如 restart service、reload nginx、run migration、clear cache。
-- 每个 action 要求显式确认参数，例如 `confirm=true`。
+- 只允许白名单 action，例如 restart service、reload nginx、run health checks。
+- 写 action 要求显式确认参数，例如 `confirm=true`。
+- 写请求要求 CSRF header。
 - 记录审计日志，返回 action id 和 result。
 - 不从请求参数接收任意 shell command。
 
-WebSSH 或 interactive shell 风险明显高于受控 action catalog，应作为最后阶段独立模块处理；只建议 Private/Protected 环境开启，并需要独立强 token、session timeout、审计日志和清晰的命令风险说明。
+当前没有提供 run migration、clear cache、SQL、任意 command 或配置修改。Dify migration 命令涉及上游 runtime 语义，不能在未确认真实命令前加入 action catalog。
+
+`/_admin/api/files/*` 是 admin file manager，不属于 ops-service。它默认以 `/data` 为 root，并把请求 path 当成相对 root 的路径处理；解析后的路径必须仍在 `ADMIN_FILES_ROOT` 内。默认拒绝读取或写入 `generated.env`、`*.pem`、`*.key`、`*secret*`、`*token*`。写入能力还需要额外开启 `ADMIN_FILES_WRITE_ENABLED=true`。
+
+WebSSH 或 interactive shell 风险明显高于受控 action catalog。当前镜像暴露 `/_admin/terminal/` 路由，但默认只代理到 disabled placeholder；镜像不安装 `ttyd`，所以不会提供可交互 shell。后续如果真正启用，只建议 Private/Protected 环境开启，并需要独立强 token、session timeout、审计日志和清晰的命令风险说明。
 
 ## Hugging Face iframe 嵌入
 
