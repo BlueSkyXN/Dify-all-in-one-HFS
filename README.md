@@ -48,7 +48,7 @@ nginx:7860
 - 使用 `pgvector` 替代 Weaviate，减少一个独立向量库服务。
 - 使用本地文件系统 `/data/dify/storage`。
 - 不内置大模型；模型服务建议外接 HTTPS 模型 API、OpenAI-compatible 网关或企业模型网关。
-- 默认关闭 Marketplace：`MARKETPLACE_ENABLED=false`。
+- 默认启用 Marketplace：`MARKETPLACE_ENABLED=true`，便于 demo/plugin 验证。
 - 默认关闭 Sandbox 出网：`SANDBOX_ENABLE_NETWORK=false`。
 - 运行时采用 UID `1000` 的非 root 用户，适配 Hugging Face Docker Space 权限模型。
 
@@ -79,27 +79,30 @@ Storage: Persistent Storage / Storage Bucket
 Visibility: Private 或 Protected
 ```
 
-5. 在 Space Settings → Variables / Secrets 中设置可选变量。
+5. 在 Space Settings → Variables / Secrets 中按本地 `.env.local` 的分区上传配置。
+
+`.env.local` 是本地唯一配置事实源，已被 `.gitignore` 忽略。`[HF Secrets]` 区上传到 Space Secrets，`[HF Variables]` 区上传到 Space Variables；与 `docker/dify.env.runtime` 默认值一致的变量不要重复上传。
 
 推荐 Variables：
 
 ```env
-MARKETPLACE_ENABLED=false
-SANDBOX_ENABLE_NETWORK=false
-FORCE_VERIFYING_SIGNATURE=false
+PERSIST_MODE=bucket
+POSTGRES_BUCKET_FAILURE_MODE=exit
 ```
 
 推荐 Secrets：
 
 ```env
-SECRET_KEY=<固定强随机值>
-PLUGIN_DAEMON_KEY=<固定强随机值>
-PLUGIN_DIFY_INNER_API_KEY=<固定强随机值>
-CODE_EXECUTION_API_KEY=<固定强随机值>
-SANDBOX_API_KEY=<固定强随机值>
+OPS_TOKEN=<固定 demo 值或强随机值>
+DB_PASSWORD=<固定 demo 值或强随机值>
+REDIS_PASSWORD=<固定 demo 值或强随机值>
+SECRET_KEY=<固定 demo 值或强随机值>
+PLUGIN_DAEMON_KEY=<固定 demo 值或强随机值>
+PLUGIN_DIFY_INNER_API_KEY=<固定 demo 值或强随机值>
+CODE_EXECUTION_API_KEY=<固定 demo 值或强随机值>
 ```
 
-如果不设置这些 Secret，入口脚本会自动生成并写入 `/data/config/generated.env`。在 bucket-lite 模式下，该路径会映射到 `/persist/config/generated.env`，因此可以跨重启保留。
+不要单独上传 `SANDBOX_API_KEY` 和 `INNER_API_KEY_FOR_PLUGIN`，除非你明确要拆分内部 key。默认情况下，`SANDBOX_API_KEY` 继承 `CODE_EXECUTION_API_KEY`，`INNER_API_KEY_FOR_PLUGIN` 继承 `PLUGIN_DIFY_INNER_API_KEY`。
 
 ## HF Space URL 处理
 
@@ -190,7 +193,7 @@ docker exec -it dify-aio-hf supervisorctl status
 OPS_TOKEN=dify_ops_demo_token
 ```
 
-如果 Space 是公开的，建议在 Space Settings → Variables 中覆盖成你自己的固定值：
+如果 Space 是公开的，建议在 Space Settings → Secrets 中覆盖成你自己的固定值：
 
 ```env
 OPS_TOKEN=<fixed-random-token>

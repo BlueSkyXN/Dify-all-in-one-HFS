@@ -41,4 +41,4 @@ scripts/build.sh
 scripts/run-demo.sh
 ```
 
-公开 Space 建议在 Space Settings -> Variables 中覆盖 `OPS_TOKEN`，并将 Space 设置为 Private 或 Protected。
+公开 Space 建议在 Space Settings -> Secrets 中覆盖 `OPS_TOKEN`，并将 Space 设置为 Private 或 Protected。

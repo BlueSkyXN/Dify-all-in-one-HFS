@@ -27,6 +27,58 @@ docker/dify.env.demo
 - 其次复用已有 `/data/config/generated.env`。
 - 最后才随机生成。
 
+## 本地 env 维护约定
+
+本仓库只维护一个本地环境配置事实源：
+
+```text
+.env.local
+```
+
+`.env.local` 已被 `.gitignore` 忽略，适合保存 demo/test 阶段的本地固定值和 Hugging Face 上传清单。不要再维护 `.env.hf.local`、`local/hf-space.env` 或其他并行 env 快照；多份 env 很容易让 HF Settings、文档和本地判断互相漂移。
+
+`.env.local` 按上传策略分区：
+
+- `[HF Secrets]`：上传到 Space Settings -> Secrets。
+- `[HF Variables]`：只放与 `docker/dify.env.runtime` 默认值不同、且确实要覆盖 runtime 行为的变量。
+- `[Default only]`：与镜像默认值一致，只作对照，不上传。
+- `[Derived defaults]`：由 HF 注入的 `SPACE_HOST` 或 runtime 默认逻辑推导，不上传。
+- `[Derived secrets]`：由已上传 secret 派生，不重复上传。
+- `[Do not upload separately]`：派生 key 或兼容变量，单独配置反而容易漂移。
+
+初始化前推荐先在 `.env.local` 里明确选择这些值，再同步到 HF：
+
+| 类别 | 变量 | 说明 |
+| --- | --- | --- |
+| Secret | `OPS_TOKEN` | `/_ops` 只读诊断入口 token；demo 可用固定易记值，公开长期运行应换强随机值 |
+| Secret | `DB_PASSWORD` | 本容器 PostgreSQL demo 用户密码；初始化后不要随意改 |
+| Secret | `REDIS_PASSWORD` | 本容器 Redis 密码；会影响 `CELERY_BROKER_URL` 派生值 |
+| Secret | `SECRET_KEY` | Dify 应用签名/加密 secret；初始化后不要随意改 |
+| Secret | `PLUGIN_DAEMON_KEY` | Dify 调 Plugin Daemon 的 server key |
+| Secret | `PLUGIN_DIFY_INNER_API_KEY` | Plugin Daemon 访问 Dify inner API 的 key；`INNER_API_KEY_FOR_PLUGIN` 会由它派生 |
+| Secret | `CODE_EXECUTION_API_KEY` | Dify 调 Sandbox 的 key；`SANDBOX_API_KEY` 默认继承它 |
+| Variable | `PERSIST_MODE=bucket` | 初始化前建议使用，比默认 `auto` 更严格；`/persist` 缺失时直接失败 |
+| Variable | `POSTGRES_BUCKET_FAILURE_MODE=exit` | 初始化前建议使用，比默认 `fallback-to-runtime` 更严格；避免 PostgreSQL 静默退到 `/tmp` |
+
+不要上传以下派生值，除非你明确要覆盖默认推导：
+
+```env
+PUBLIC_URL
+CONSOLE_WEB_URL
+CONSOLE_API_URL
+APP_WEB_URL
+APP_API_URL
+FILES_URL
+ENDPOINT_URL_TEMPLATE
+TRIGGER_URL
+CELERY_BROKER_URL
+PGVECTOR_PASSWORD
+INNER_API_KEY_FOR_PLUGIN
+SANDBOX_API_KEY
+```
+
+其中 `CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。重复上传这些变量会增加配置漂移风险。
+
 ## Hugging Face Space Metadata
 
 `README.md` 顶部 YAML：
@@ -42,30 +94,29 @@ Hugging Face 会根据 `app_port` 把外部流量转发到容器端口 `7860`。
 ## 推荐 Space Variables
 
 ```env
-MARKETPLACE_ENABLED=false
-SANDBOX_ENABLE_NETWORK=false
-FORCE_VERIFYING_SIGNATURE=false
-OPS_TOKEN=<fixed-random-token>
+PERSIST_MODE=bucket
+POSTGRES_BUCKET_FAILURE_MODE=exit
 ```
 
 说明：
 
-- `MARKETPLACE_ENABLED=false` 降低外部依赖。
-- `SANDBOX_ENABLE_NETWORK=false` 让 Code Sandbox 默认不能出网。
-- `FORCE_VERIFYING_SIGNATURE=false` 方便演示第三方插件；企业环境建议按插件策略调整。
-- `OPS_TOKEN` 用于保护只读 `/_ops` 诊断入口。
+- 这些值只是当前 demo 初始化阶段的强校验覆盖建议；完整来源应以本地 `.env.local` 为准。
+- 与 `docker/dify.env.runtime` 默认值一致的变量不要上传到 HF Variables。
+- 初始化完成且确认 `/persist/postgres` 稳定后，可按运维偏好把 `POSTGRES_BUCKET_FAILURE_MODE` 改回默认 `fallback-to-runtime`。
 
 ## 推荐 Space Secrets
 
 ```env
-SECRET_KEY=<fixed-random-secret>
-PLUGIN_DAEMON_KEY=<fixed-random-secret>
-PLUGIN_DIFY_INNER_API_KEY=<fixed-random-secret>
-CODE_EXECUTION_API_KEY=<fixed-random-secret>
-SANDBOX_API_KEY=<fixed-random-secret>
+OPS_TOKEN=<fixed-demo-or-random-token>
+DB_PASSWORD=<fixed-demo-or-random-password>
+REDIS_PASSWORD=<fixed-demo-or-random-password>
+SECRET_KEY=<fixed-demo-or-random-secret>
+PLUGIN_DAEMON_KEY=<fixed-demo-or-random-secret>
+PLUGIN_DIFY_INNER_API_KEY=<fixed-demo-or-random-secret>
+CODE_EXECUTION_API_KEY=<fixed-demo-or-random-secret>
 ```
 
-如果挂载了 `/persist`，可以让 `entrypoint.sh` 自动生成并保存在 `/persist/config/generated.env`。如果没有持久化目录，每次重启都会重新生成，登录状态、签名、插件通信和文件 URL 可能失效。
+不要单独上传 `SANDBOX_API_KEY` 和 `INNER_API_KEY_FOR_PLUGIN`，除非你明确要拆分内部 key。默认情况下，`SANDBOX_API_KEY` 继承 `CODE_EXECUTION_API_KEY`，`INNER_API_KEY_FOR_PLUGIN` 继承 `PLUGIN_DIFY_INNER_API_KEY`。
 
 ## Persistence Layout
 
@@ -80,7 +131,7 @@ SANDBOX_API_KEY=<fixed-random-secret>
 | `POSTGRES_BACKUP_ENABLED` | `auto` | bucket-lite 启用时自动启动 `pg_dumpall` 备份；可设 `true`/`false` |
 | `POSTGRES_BACKUP_DIR` | `${PERSIST_ROOT}/postgres-backups` | `latest.sql.gz` 和时间戳写入目录 |
 | `POSTGRES_BACKUP_INTERVAL_SECONDS` | `3600` | 周期备份间隔，最小有效值 60 秒 |
-| `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` | `600` | supervisor 启动后首次备份延迟 |
+| `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` | `60` | supervisor 启动后首次备份延迟；只影响第一次 `pg_dumpall` 前等待多久，后续周期由 `POSTGRES_BACKUP_INTERVAL_SECONDS` 控制 |
 | `HF_HOME` | `${RUNTIME_ROOT}/hf-cache` | Hugging Face cache 根目录，默认不进 bucket |
 | `HF_HUB_CACHE` | `${HF_HOME}/hub` | Hugging Face Hub cache |
 
@@ -181,11 +232,11 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 | `WEB_API_CORS_ALLOW_ORIGINS` | `*` | Web API CORS |
 | `CONSOLE_CORS_ALLOW_ORIGINS` | `*` | Console CORS |
 | `NEXT_PUBLIC_BATCH_CONCURRENCY` | `5` | 前端批量并发 |
-| `TEXT_GENERATION_TIMEOUT_MS` | `60000` | 文本生成 timeout |
+| `TEXT_GENERATION_TIMEOUT_MS` | `120000` | 文本生成 timeout |
 | `NEXT_TELEMETRY_DISABLED` | `1` | 关闭 Next telemetry |
 | `MARKETPLACE_API_URL` | `https://marketplace.dify.ai` | Marketplace API |
 | `MARKETPLACE_URL` | `https://marketplace.dify.ai` | Marketplace Web |
-| `MARKETPLACE_ENABLED` | `false` | 是否启用 Marketplace |
+| `MARKETPLACE_ENABLED` | `true` | 是否启用 Marketplace |
 
 ## Storage
 
@@ -234,7 +285,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 | `PLUGIN_MAX_PACKAGE_SIZE` | `52428800` | 插件包最大大小 |
 | `PLUGIN_PYTHON_ENV_INIT_TIMEOUT` | `120` | 插件 Python 环境初始化 timeout |
 | `PLUGIN_MAX_EXECUTION_TIMEOUT` | `600` | 插件执行 timeout |
-| `ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES` | `true` | 是否强制 LangGenius plugin signature |
+| `ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES` | `false` | 是否强制 LangGenius plugin signature |
 | `FORCE_VERIFYING_SIGNATURE` | `false` | 是否强制验证签名 |
 
 `with-plugin-env` 会把 `DB_PLUGIN_DATABASE` 映射到 Plugin Daemon 期望的 `DB_DATABASE`。

@@ -37,15 +37,18 @@ Storage Bucket: mount 到 /persist
 建议设置：
 
 ```env
+OPS_TOKEN=<fixed-demo-or-random-token>
+DB_PASSWORD=<fixed-demo-or-random-password>
+REDIS_PASSWORD=<fixed-demo-or-random-password>
 SECRET_KEY=<fixed-random-secret>
 PLUGIN_DAEMON_KEY=<fixed-random-secret>
 PLUGIN_DIFY_INNER_API_KEY=<fixed-random-secret>
 CODE_EXECUTION_API_KEY=<fixed-random-secret>
-SANDBOX_API_KEY=<fixed-random-secret>
-OPS_TOKEN=<fixed-random-token>
 ```
 
-如果不设置，entrypoint 会生成并写入：
+不要单独上传 `SANDBOX_API_KEY` 和 `INNER_API_KEY_FOR_PLUGIN`，除非你明确要拆分内部 key。默认情况下，`SANDBOX_API_KEY` 继承 `CODE_EXECUTION_API_KEY`，`INNER_API_KEY_FOR_PLUGIN` 继承 `PLUGIN_DIFY_INNER_API_KEY`。
+
+如果不设置 Dify 内部 secret，entrypoint 会生成并写入：
 
 ```text
 /data/config/generated.env
@@ -152,9 +155,9 @@ SANDBOX_ENABLE_NETWORK=false
 默认：
 
 ```env
-MARKETPLACE_ENABLED=false
+MARKETPLACE_ENABLED=true
 FORCE_VERIFYING_SIGNATURE=false
-ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES=true
+ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES=false
 ```
 
 演示时可以降低插件安装门槛，但企业环境应制定插件来源、签名和审核策略。

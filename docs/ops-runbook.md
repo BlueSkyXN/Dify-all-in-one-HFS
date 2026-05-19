@@ -134,7 +134,7 @@ OPS_LOG_SERVICES_JSON=
 OPS_LOG_LINES_MAX=1000
 ```
 
-公开 Space 建议在 Space Settings -> Variables 中覆盖：
+公开 Space 建议在 Space Settings -> Secrets 中覆盖：
 
 ```env
 OPS_TOKEN=<fixed-random-token>
