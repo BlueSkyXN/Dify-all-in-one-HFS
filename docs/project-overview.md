@@ -1,6 +1,6 @@
 # Project Overview
 
-`dify-all-in-one` 是一个面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把官方 Dify 多容器部署中的 Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis 和 Nginx 收敛到一个 Docker 容器中，目标是课程演示、企业内训、PoC 和快速功能验证。
+`dify-all-in-one` 是一个面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把官方 Dify 多容器部署中的 Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service`、默认关闭的 `admin-service` 和 Web terminal placeholder 收敛到一个 Docker 容器中，目标是课程演示、企业内训、PoC 和快速功能验证。
 
 ## 项目目标
 
@@ -27,19 +27,21 @@
 | 外部入口 | Nginx `7860` | 对外单端口，内部按路径转发 |
 | 向量库 | PostgreSQL + pgvector | 减少 Weaviate 等额外服务 |
 | 文件存储 | `/data/dify/storage`，bucket-lite 下指向 `/persist/dify/storage` | 适配 Space Bucket 持久化 |
-| Plugin 存储 | `/data/plugin_daemon`，核心插件文件指向 `/persist` | 插件保留，包缓存不占 bucket |
+| Plugin 存储 | `/data/plugin_daemon`，核心插件文件指向 `/persist`，工作目录和包缓存默认在 `/tmp/dify-aio` | 插件保留，scratch/cache 不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
-| Marketplace | 默认关闭 | 降低外部依赖和演示不确定性 |
+| Marketplace | 默认开启 | 便于 demo/plugin 验证；公开或稳定演示环境可按需关闭以减少外部依赖 |
 | 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
 
 ## 目录结构
 
 ```text
 .
+|-- AGENTS.md                  # Codex 根级 router 和项目指令
 |-- Dockerfile                 # Hugging Face Space 和本地 Docker 构建入口
 |-- README.md                  # Space card + 项目首页
 |-- README.hf-space.md         # Hugging Face Space 部署说明
 |-- docker/
+|   |-- AGENTS.md              # docker/ runtime navigation card
 |   |-- dify.env.runtime       # 运行时默认环境变量
 |   |-- dify.env.demo          # 本地 demo env-file
 |   |-- entrypoint.sh          # 容器主入口，初始化数据和迁移
@@ -47,6 +49,8 @@
 |   |-- nginx.conf             # 外部路由和 access log
 |   |-- ops_service.py         # 只读运维诊断 HTTP 服务
 |   |-- admin_service.py       # 默认关闭的受控管理 HTTP 服务
+|   |-- postgres-backup-loop   # bucket-lite PostgreSQL dump 备份循环
+|   |-- webssh_entrypoint.sh   # Web terminal disabled/ttyd wrapper
 |   |-- with-dify-env          # Dify API/Web/Worker 环境包装器
 |   |-- with-plugin-env        # Plugin Daemon 环境包装器
 |   |-- with-sandbox-env       # Sandbox 环境包装器

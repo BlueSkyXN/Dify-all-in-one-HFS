@@ -2,7 +2,7 @@
 
 ## 项目目的
 
-`dify-all-in-one` 是面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把 Dify Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx 和只读 `ops-service` 收敛到一个 Docker 容器中，用于企业内训、课程演示、PoC 和快速功能验证。
+`dify-all-in-one` 是面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把 Dify Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service`、默认关闭的 `/_admin` 管理面（由 `admin-service` 承载）和 Web terminal placeholder 收敛到一个 Docker 容器中，用于企业内训、课程演示、PoC 和快速功能验证。
 
 本仓库不是生产部署方案。生产环境应回到官方 Docker Compose、Kubernetes 或企业内网拆分式部署，并单独设计高可用、备份、鉴权、审计和正式监控。
 
@@ -14,7 +14,7 @@
 - 修改 `Local AGENTS.md = Yes` 的目录前，必须先运行 `cat <path>/AGENTS.md`。
 - 如果未来出现多层本地卡片，按从浅到深的顺序读取。
 - 文档和代码冲突时，以受版本控制的 runtime 文件为准；如果用户要求同步文档，再更新对应 docs。
-- 不要假设 Git remote 名称永远固定。本机可能用 `origin` 指向 Hugging Face Space、`github` 指向 GitHub 镜像；push、merge 或对比前先看 `git remote -v`。
+- 不要假设 Git remote 名称永远固定。本机可能用 `hf` 指向 Hugging Face Space、`origin` 指向 GitHub 镜像，也可能用其他命名；push、merge 或对比前先看 `git remote -v`。
 
 ## 目录地图
 
@@ -26,7 +26,7 @@
 | `.dockerignore` | Docker build context 过滤 | No | 修改哪些文件进入 Docker build context 时 |
 | `.gitattributes` | Git/LFS 文件处理规则 | No | 修改大文件、二进制文件或 LFS 跟踪规则时 |
 | `.gitignore` | 本地 generated/cache 忽略规则 | No | 新增 `.DS_Store`、浏览器 profile、Python cache 等本地 artifact 时 |
-| `docker/` | 容器 runtime 合同：entrypoint、env defaults、Supervisor、Nginx、ops-service、healthcheck | Yes | 修改 `docker/` 下任何文件前 |
+| `docker/` | 容器 runtime 合同：entrypoint、env defaults、Supervisor、Nginx、ops-service、admin-service、web terminal placeholder、PostgreSQL backup loop、healthcheck | Yes | 修改 `docker/` 下任何文件前 |
 | `scripts/` | 本地 build/run wrapper 和 HF/local smoke 脚本 | No | 修改命令包装、smoke 预期、重试策略、默认 image tag 或默认 Space URL 时 |
 | `docs/` | 工程文档、部署指南、运维 runbook、配置和安全说明 | No | 修改用户/运维文档时；先用真实 runtime 文件核对事实 |
 | `local/` | 如果存在，为本地计划或 scratch 材料 | No | 除非用户明确要求本地计划材料，否则不要编辑 |
@@ -48,14 +48,15 @@ cat docker/AGENTS.md
 
 | Command | Purpose | Scope | Sandbox notes |
 | --- | --- | --- | --- |
-| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh scripts/build.sh scripts/run-demo.sh scripts/hf-space-smoke.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
-| `python3 -m py_compile docker/ops_service.py` | 检查只读 ops-service Python 语法 | `docker/ops_service.py` | 需要 Python 3 |
+| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop docker/webssh_entrypoint.sh scripts/build.sh scripts/run-demo.sh scripts/hf-space-smoke.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
+| `python3 -m py_compile docker/ops_service.py docker/admin_service.py` | 检查 ops/admin Python 服务语法 | `docker/ops_service.py`, `docker/admin_service.py` | 需要 Python 3 |
 | `git diff --check` | 检查 diff whitespace 问题 | repo | 只读；如果有无关 dirty diff，使用 path-limited 形式 |
 | `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:1.14.1` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
 | `scripts/build.sh my-dify-aio:dev` | 用自定义 tag 构建镜像 | repo | 需要 Docker daemon 和构建网络 |
 | `scripts/run-demo.sh` | 本地启动 demo，默认 `http://localhost:8080` | repo | 需要 Docker daemon 和已构建镜像；会删除同名 `dify-aio-hf-demo` 容器 |
 | `OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080` | smoke 本地运行容器 | repo | 需要本地容器正在运行 |
 | `OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space` | smoke 线上 HF Space | live Space | 需要网络和有效 demo 或配置后的 `OPS_TOKEN` |
+| `SMOKE_ADMIN_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh <base-url>` | smoke 已开启的 `/_admin` 管理面 | local/live Space | 仅在 `ADMIN_ENABLED=true` 且有有效 `ADMIN_TOKEN` 时使用；写 action 还需显式 `SMOKE_ADMIN_ACTIONS=true` |
 | `hf spaces info BlueSkyXN/dify-all-in-one` | 查看 Space runtime metadata | deployment | 需要 HF CLI、网络和必要登录态 |
 | `hf spaces logs BlueSkyXN/dify-all-in-one -n 220` | 查看 app logs | deployment | 需要 HF CLI 和网络 |
 | `hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220` | 查看 build logs | deployment | 需要 HF CLI 和网络 |
@@ -76,17 +77,19 @@ cat docker/AGENTS.md
 - `entrypoint.sh` 生成的 secrets 属于 `/data/config/generated.env`。不要提交 generated secret 文件，也不要在 docs 或 AGENTS 中粘贴真实 generated secret。
 - `dify_demo_password`、`dify_redis_password`、`dify_ops_demo_token` 这类值只能作为 demo 默认值描述，不要写成生产安全建议。
 - env 加载顺序是：Docker/HF 已注入 env 优先，`docker/dify.env.runtime` 用默认值补齐，`/data/config/generated.env` 补齐自动生成 secrets。不要破坏显式外部 env 覆盖。
-- 新增或重命名 env var 时，同步检查 `docker/dify.env.runtime`、`docker/dify.env.demo`、相关 `docker/with-*` wrapper、`docker/entrypoint.sh`、`docker/supervisord.conf`、`docker/ops_service.py` 和 `docs/configuration.md`。
+- 新增或重命名 env var 时，同步检查 `docker/dify.env.runtime`、`docker/dify.env.demo`、相关 `docker/with-*` wrapper、`docker/entrypoint.sh`、`docker/supervisord.conf`、`docker/ops_service.py`、`docker/admin_service.py`、`docker/webssh_entrypoint.sh` 和 `docs/configuration.md`。
 - `DB_USERNAME`、`DB_DATABASE`、`DB_PLUGIN_DATABASE` 在 `entrypoint.sh` 中必须保留 PostgreSQL identifier 校验。
 - Plugin Daemon 必须在启动 server 前执行 migration：`/opt/dify/plugin-daemon/commandline migrate && exec /opt/dify/plugin-daemon/main`。
 - Sandbox 默认 `SANDBOX_ENABLE_NETWORK=false`。如果开启网络，必须说明安全影响并同步 `docs/security.md`。
-- Marketplace 默认关闭。若开启，必须说明 Hugging Face 上的外部依赖和演示不确定性。
+- Marketplace 默认开启，便于 demo/plugin 验证。若改为关闭或调整外部 Marketplace 地址，必须同步说明 Hugging Face 上的外部依赖和演示不确定性。
 - `ops-service` 是只读诊断面。`/_ops` 不能新增重启服务、修改配置、执行 SQL、删除数据、任意命令执行、任意文件读取或返回 secret 原文的能力。
 - `OPS_TOKEN` 只是 demo/lightweight diagnostic gate，不是生产级鉴权系统，不能用它为写操作背书。
+- `admin-service` 承载独立 `/_admin` 管理面，默认 `ADMIN_ENABLED=false`。管理 action 必须保留白名单、`ADMIN_TOKEN`、CSRF/confirm 和审计边界；不要把写操作搬到 `/_ops`。
 - `/_ops/logs` 必须保持 service 白名单，不要从请求参数读取任意文件路径。
 - CLI 和自动化示例优先使用 `X-Ops-Token` 或 `Authorization: Bearer`；`?token=` 只适合临时浏览器调试。
-- Nginx 路由修改必须保护 `/nginx-health`、`/healthz`、`/_ops/`、`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/socket.io/`、`/e/`、`/explore` 和 `/`，除非用户明确要求重做路由。
+- Nginx 路由修改必须保护 `/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/_admin/terminal/`、`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/socket.io/`、`/e/`、`/explore` 和 `/`，除非用户明确要求重做路由。
 - `/socket.io/` 必须保留 WebSocket `Upgrade` / `Connection` header。
+- `/_admin/terminal/` 必须保留 `auth_request /_admin_auth_terminal` 和 WebSocket `Upgrade` / `Connection` header；当前镜像没有 `ttyd`，默认只是 disabled placeholder。
 - `/e/` 必须保留 `Dify-Hook-Url`，用于 Plugin Daemon endpoint hook。
 - `NGINX_PORT` 和 `NGINX_CLIENT_MAX_BODY_SIZE` 是 env defaults；除非实现模板渲染，不要声称它们会动态改变静态 `docker/nginx.conf`。
 - Shell 脚本保持 Bash 和 `set -euo pipefail` 风格，修改后跑 `bash -n`。
@@ -94,17 +97,17 @@ cat docker/AGENTS.md
 - 文档修改不要大段复制 README；只改发生变化的事实、命令、endpoint 或限制。
 - 排查 live 502 时按顺序看：HF runtime stage/SHA、`/nginx-health`、`/healthz`、`/_ops/health`、`/_ops/status`、`/_ops/errors`、定向 `/_ops/logs`、Hugging Face app/build logs。
 - Space 顶层 repo `sha` 更新不代表新镜像已接管流量；必须确认 `runtime.stage=RUNNING` 且 `runtime.raw.sha=<expected commit sha>`。
-- 如果 GitHub 与 Hugging Face remotes 分叉，先 fetch 两边并对比 head，再决定 merge 或 push。不要假设 `origin/main` 与 `github/main` 等价。
+- 如果 GitHub 与 Hugging Face remotes 分叉，先 fetch 两边并对比 head，再决定 merge 或 push。不要假设任意 `<remote>/main` 与另一个 remote 等价。
 
 ## 不要做
 
-- 不要在用户没有明确要求时执行 `git push origin main`。
+- 不要在用户没有明确要求并确认目标 remote 前执行 `git push origin main`、`git push hf main` 或其他 main 分支推送。
 - 不要在用户没有明确要求时推送 GitHub mirror；先确认要更新哪个 remote/branch。
-- 不要在用户没有明确要求时执行 `docker volume rm dify-hf-demo-data`。
+- 不要在用户没有明确要求时执行 `docker volume rm dify-hf-demo-persist`。
 - 不要执行 `git reset`、`git checkout`、`git clean`、`git stash` 等破坏性 Git 操作，除非用户明确要求。
 - 不要把 `.DS_Store`、local cache、runtime data 或 generated files 当作正常代码改动处理。
 - 不要新增 Compose/Kubernetes 生产部署并把它写成本 demo 的默认目标，除非用户明确要求生产化路线。
-- 不要把 PostgreSQL、Redis、Sandbox、Plugin Daemon 内部端口或 ops-service 直接暴露到 Space 公网入口。
+- 不要把 PostgreSQL、Redis、Sandbox、Plugin Daemon 内部端口、ops-service、admin-service 或 web-terminal 直接暴露到 Space 公网入口。
 - 不要在 `/_ops` 下新增任意写操作；若用户要求 admin surface，必须单独设计鉴权、审计、白名单 action 和显式确认。
 - 不要通过 `/_ops/config`、logs、docs 或示例暴露 secret 原文；secret presence boolean 可以保留。
 - 不要静默升级 `DIFY_VERSION`、Plugin Daemon、Sandbox、Node.js、PostgreSQL major 或 uv 版本。版本升级必须配套 build 和 smoke。
@@ -138,10 +141,13 @@ bash -n \
   docker/with-sandbox-env \
   docker/wait-for-core \
   docker/healthcheck.sh \
+  docker/postgres-backup-loop \
+  docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/hf-space-smoke.sh
 python3 -m py_compile docker/ops_service.py
+python3 -m py_compile docker/admin_service.py
 git diff --check
 ```
 

@@ -39,6 +39,9 @@ nginx:7860
   ├─ Dify Beat
   ├─ Plugin Daemon:5002
   ├─ Sandbox:8194
+  ├─ ops-service:8081
+  ├─ admin-service:8082
+  ├─ web-terminal placeholder:7681
   ├─ PostgreSQL 15 + pgvector
   └─ Redis
 ```
@@ -168,13 +171,17 @@ docker exec -it dify-aio-hf supervisorctl status
 /data/config                   -> /persist/config
 /data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
 /data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/plugin_daemon/cwd        -> /tmp/dify-aio/plugin_cwd
 /data/logs                     -> /tmp/dify-aio/logs
 /data/run                      -> /tmp/dify-aio/run
 /data/redis                    -> /tmp/dify-aio/redis
 /data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
+HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
 `/persist/postgres-backups/latest.sql.gz` 会由 `postgres-backup` 进程定期生成，作为 live PostgreSQL data directory 的普通文件备份。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，然后把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并在有 dump 时先从 `latest.sql.gz` 恢复。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
+
+如果显式设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
 ## 运维与可观测入口
 
@@ -227,7 +234,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 `/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 只包括 restart service、reload nginx、run health checks；`/_ops` 仍保持只读。
 
-Nginx access log 使用 JSON 格式输出到 stdout，包含 `request_id`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status` 和 `upstream_response_time`，便于从 Hugging Face App logs 里快速区分 Web/API/Plugin/Ops 的上游问题。
+Nginx access log 使用 JSON 格式写到 Nginx stdout；当前 `supervisord` 会把 Nginx stdout 收进 `/data/logs/nginx.log`，可通过 `/_ops/logs?service=nginx` 查看。字段包含 `time`、`request_id`、`remote_addr`、`method`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status`、`upstream_response_time` 和 `host`，便于区分 Web/API/Plugin/Ops 的上游问题。
 
 部署后 smoke：
 

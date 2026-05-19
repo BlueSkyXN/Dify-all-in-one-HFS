@@ -1,0 +1,32 @@
+tracking_id,row_type,capability_id,function_point_id,spec_candidate_id,product_ids,work_package_id,evidence_refs,status_tags,baseline_maturity,critical_path_maturity,blocker_ids,next_action,source_refs
+TRK-001,function_point,CAP-001,FP-001,SPEC-001,PBS-001;PBS-001-01,WP-002,EVD-001,specified;implemented,M4,M4,,补 build 证据,Dockerfile:27-49;Dockerfile:121-139
+TRK-002,function_point,CAP-001,FP-002,SPEC-001,PBS-001;PBS-001-04,WP-006,EVD-002,specified;implemented,M4,M4,,形成升级检查清单,Dockerfile:80-115
+TRK-003,function_point,CAP-001,FP-003,SPEC-001,PBS-001;PBS-003-04,WP-002,EVD-003,specified;implemented,M4,M4,,把 healthcheck 结果纳入 smoke,Dockerfile:141-155;Dockerfile:190-195
+TRK-004,function_point,CAP-002,FP-004,,PBS-002;PBS-002-05,WP-002,EVD-004,specified;implemented,M4,M4,,记录运行态样本,docker/entrypoint.sh:35-74;docker/dify.env.runtime:34-58
+TRK-005,function_point,CAP-002,FP-005,,PBS-002;PBS-002-02,WP-002,EVD-005,specified;implemented,M4,M4,,验证 bucket 模式首启,docker/entrypoint.sh:112-141;docker/entrypoint.sh:171-211
+TRK-006,function_point,CAP-002,FP-006,,PBS-002;PBS-002-02,WP-002,EVD-006,specified;implemented,M4,M4,,保存 init 日志,docker/entrypoint.sh:76-83;docker/entrypoint.sh:561-630
+TRK-007,function_point,CAP-002,FP-007,SPEC-002,PBS-002;PBS-002-06,WP-002,EVD-007,specified;implemented;blocked,M4,M4,BLK-004,明确 fallback 默认值,docker/entrypoint.sh:499-555;docker/entrypoint.sh:580-601
+TRK-008,function_point,CAP-002,FP-008,,PBS-002,WP-002,EVD-008,specified;implemented,M4,M4,,增加 migration smoke,docker/entrypoint.sh:263-279;docker/entrypoint.sh:632-658
+TRK-009,function_point,CAP-003,FP-009,,PBS-003;PBS-003-01,WP-002,EVD-009,specified;implemented,M4,M4,,取得 supervisor 运行证据,docker/supervisord.conf:17-156
+TRK-010,function_point,CAP-003,FP-010,,PBS-003;PBS-003-02,WP-002,EVD-010,specified;implemented,M4,M4,,补 readiness 失败样本,docker/wait-for-core:16-49
+TRK-011,function_point,CAP-003,FP-011,SPEC-003,PBS-003;PBS-003-03,WP-001,EVD-011,specified;implemented,M4,M4,BLK-003,对齐端口与 body size 合同,docker/nginx.conf:46-157
+TRK-012,function_point,CAP-003,FP-012,,PBS-003;PBS-003-03,WP-002,EVD-012,specified;implemented,M4,M4,,增加 websocket smoke,docker/nginx.conf:86-106;docker/nginx.conf:138-149
+TRK-013,function_point,CAP-003,FP-013,,PBS-003;PBS-005-03,WP-002,EVD-013,specified;implemented,M4,M4,,保留 header smoke,scripts/hf-space-smoke.sh:127-158
+TRK-014,function_point,CAP-004,FP-014,SPEC-004,PBS-002;PBS-002-03,WP-006,EVD-014,specified;implemented,M4,M4,,增加 plugin 安装 smoke,docker/with-plugin-env:14-64
+TRK-015,function_point,CAP-004,FP-015,SPEC-004,PBS-002;PBS-002-04,WP-006,EVD-015,specified;implemented,M4,M4,,增加 code execution smoke,docker/with-sandbox-env:14-32
+TRK-016,function_point,CAP-005,FP-016,SPEC-005,PBS-004;PBS-004-01,WP-003,EVD-016,specified;implemented,M4,M4,BLK-002,自动化校验 probe,docker/ops_service.py:433-464
+TRK-017,function_point,CAP-005,FP-017,SPEC-005,PBS-004;PBS-004-01,WP-003,EVD-017,specified;implemented;operable,M4,M4,BLK-002,保存运行态 JSON 样本,docker/ops_service.py:481-493;docker/ops_service.py:608-693
+TRK-018,function_point,CAP-005,FP-018,SPEC-005,PBS-004;PBS-004-01,WP-003,EVD-018,specified;implemented,M4,M4,BLK-002,校验扩展 whitelist 行为,docker/ops_service.py:29-46;docker/ops_service.py:721-736
+TRK-019,function_point,CAP-005,FP-019,SPEC-005,PBS-004;PBS-004-01,WP-003,EVD-019,specified;implemented,M4,M4,BLK-002,准备错误样本回归,docker/ops_service.py:106-120;docker/ops_service.py:748-802
+TRK-020,function_point,CAP-006,FP-020,,PBS-004;PBS-004-02,WP-004,EVD-020,specified;implemented;changed,M4,M4,BLK-003,对齐 admin-enabled 叙述,docker/admin_service.py:95-152;docker/admin_service.py:954-1013
+TRK-021,function_point,CAP-006,FP-021,,PBS-004;PBS-004-03,WP-004,EVD-021,specified;implemented,M4,M4,BLK-002,增加 admin-enabled smoke,docker/admin_service.py:247-347;docker/admin_service.py:278-295
+TRK-022,function_point,CAP-006,FP-022,,PBS-004;PBS-004-02,WP-004,EVD-022,specified;implemented,M4,M4,BLK-003,明确 write 策略,docker/admin_service.py:350-587
+TRK-023,function_point,CAP-006,FP-023,SPEC-006,PBS-004;PBS-004-04,WP-005,EVD-023,specified;implemented;blocked,M4,M4,BLK-001,做 terminal fate 决策,docker/webssh_entrypoint.sh:47-60
+TRK-024,function_point,CAP-007,FP-024,SPEC-007,PBS-005;PBS-005-03;PBS-005-05,WP-002,EVD-024,specified;implemented;blocked,M4,M4,BLK-004,保存完整发布证据链,scripts/hf-space-smoke.sh:4-177;docs/deployment.md:27-119
+TRK-025,work_package,CAP-003,,,,WP-001,EVD-025,in-progress;blocked,M2,M4,BLK-003,先做事实对齐,AGENTS.md:82-84;README.md:51-52
+TRK-026,work_package,CAP-001,,,,WP-002,EVD-026,not-started;blocked,M4,M5,BLK-004,收集 build smoke SHA,docs/deployment.md:41-119
+TRK-027,work_package,CAP-005,,,,WP-003,EVD-027,not-started;blocked,M4,M7,BLK-002,增加自动回归,docs/development.md:261-266
+TRK-028,work_package,CAP-006,,,,WP-004,EVD-028,in-progress;blocked,M4,M5,BLK-003,明确 admin write 边界,docker/admin_service.py:350-587
+TRK-029,work_package,CAP-006,,,,WP-005,EVD-029,blocked,M3,M4,BLK-001,终端要么交付要么降级,docker/webssh_entrypoint.sh:47-60
+TRK-030,work_package,CAP-001,,,,WP-006,EVD-030,not-started,M2,M4,,固化升级 checklist,Dockerfile:17-22
+TRK-031,work_package,CAP-005,,,,WP-007,EVD-031,not-started,M3,M4,,抽出 non-Dify 示例,docs/architecture.md:200-215
