@@ -170,15 +170,15 @@ WEBSSH_MAX_CLIENTS=1
 `/healthz` 是对外综合健康探针，内部实际由 `ops-service` 执行以下检查：
 
 ```text
-postgres          pg_isready
-redis             redis-cli ping
-plugin-daemon     TCP 127.0.0.1:5002
-sandbox           TCP 127.0.0.1:8194
-dify-api-health   HTTP 127.0.0.1:5001/health
-dify-web          HTTP 127.0.0.1:3000/apps
-nginx             HTTP 127.0.0.1:7860/nginx-health
-dify-setup        HTTP 127.0.0.1:5001/console/api/setup
-dify-init         HTTP 127.0.0.1:5001/console/api/init
+postgres            pg_isready
+redis               redis-cli ping
+plugin-daemon-tcp   TCP 127.0.0.1:5002
+sandbox-tcp         TCP 127.0.0.1:8194
+dify-api-health     HTTP 127.0.0.1:5001/health
+dify-web            HTTP 127.0.0.1:3000/apps
+nginx               HTTP 127.0.0.1:7860/nginx-health
+dify-setup          HTTP 127.0.0.1:5001/console/api/setup
+dify-init           HTTP 127.0.0.1:5001/console/api/init
 ```
 
 `/_ops/health` 会额外返回：
@@ -244,7 +244,7 @@ dify-beat.err
 nginx
 ```
 
-`dify-web` 和 `ops-service` 当前由 supervisor 直接写到容器 stdout/stderr，主要通过 Hugging Face App logs 查看；`/_ops/logs` 暂不暴露它们的专用文件。这样 `ops-service` 本体不需要写 `/data`，只通过 `OPS_LOG_DIR` 只读读取其他服务日志。
+`sandbox`、`dify-web`、`ops-service`、`admin-service` 和 `web-terminal` 当前由 supervisor 直接写到容器 stdout/stderr，主要通过 Hugging Face App logs 查看；`/_ops/logs` 暂不暴露它们的专用文件。这样 `ops-service` 本体不需要写 `/data`，只通过 `OPS_LOG_DIR` 只读读取其他服务日志。
 
 迁移到其他程序时，可以保留默认白名单，也可以用 `OPS_LOG_SERVICES_JSON` 增加服务到相对日志文件名的映射：
 
@@ -278,10 +278,10 @@ request_time
 upstream_addr
 upstream_status
 upstream_response_time
-http_user_agent
+host
 ```
 
-这些字段用于判断 502 来自 Nginx 本身、Dify Web、Dify API，还是上游进程尚未 ready。
+Nginx 配置把 access log 写到 stdout，当前 `supervisord` 会把 Nginx stdout 收进 `/data/logs/nginx.log`，因此可以通过 `/_ops/logs?service=nginx` 查看。这些字段用于判断 502 来自 Nginx 本身、Dify Web、Dify API，还是上游进程尚未 ready。
 
 ## 发布后验收
 
@@ -449,11 +449,13 @@ SMOKE_ADMIN_ACTIONS=true
 
 ```text
 web-root
+space-frame-headers
 nginx-health
 ops-healthz
 admin-disabled
 admin-status        # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-actions       # 仅 SMOKE_ADMIN_ENABLED=true 时
+admin-run-health-checks # 仅 SMOKE_ADMIN_ENABLED=true 且 SMOKE_ADMIN_ACTIONS=true 时
 setup-api
 init-api
 ops-health

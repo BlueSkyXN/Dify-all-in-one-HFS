@@ -93,6 +93,7 @@ exec supervisord
 /data/run/nginx/*
 /conf
 /dependencies
+HF_HOME/HF_HUB_CACHE
 ```
 
 bucket-lite 模式下关键映射为：
@@ -103,13 +104,17 @@ bucket-lite 模式下关键映射为：
 /data/config                   -> /persist/config
 /data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
 /data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/plugin_daemon/cwd        -> /tmp/dify-aio/plugin_cwd
 /data/logs                     -> /tmp/dify-aio/logs
 /data/run                      -> /tmp/dify-aio/run
 /data/redis                    -> /tmp/dify-aio/redis
 /data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
+HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
 PostgreSQL 会先尝试使用 `/persist/postgres`。由于 object-store backed mount 可能不保留空目录，entrypoint 会在启动已有 PGDATA 前补建 `pg_notify`、`pg_tblspc`、`pg_wal/archive_status` 等 PostgreSQL 必需目录。如果 bucket mount 仍不满足 live data directory 需要的权限、锁或同步语义，默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并继续把 dump 备份写到 `/persist/postgres-backups`。
+
+如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
 并验证 `/data` 对 UID `1000` 可写。如果 `PERSIST_MODE=bucket` 但 `/persist` 不可写，容器会直接退出。
 
@@ -202,6 +207,7 @@ requirepass <REDIS_PASSWORD>
 ```text
 10 postgres
 20 redis
+25 postgres-backup
 30 plugin-daemon
 35 sandbox
 40 dify-api
@@ -209,6 +215,8 @@ requirepass <REDIS_PASSWORD>
 60 dify-beat
 70 dify-web
 75 ops-service
+76 admin-service
+77 web-terminal
 80 nginx
 ```
 
@@ -273,7 +281,7 @@ curl -fsS http://127.0.0.1:7860/
 有持久化 Storage 时：
 
 - bucket-lite 下 `/data/postgres`、`/data/config/generated.env`、`/data/dify/storage`、`/data/plugin_daemon/plugin`、`/data/plugin_daemon/assets` 会通过 `/persist` 保留。
-- `/data/redis`、`/data/logs`、`/data/run`、`/data/plugin_daemon/plugin_packages` 默认在 `/tmp/dify-aio`，重启后会重新生成。
+- `/data/redis`、`/data/logs`、`/data/run`、`/data/plugin_daemon/plugin_packages`、`/data/plugin_daemon/cwd` 和 Hugging Face cache 默认在 `/tmp/dify-aio`，重启后会重新生成。
 - `postgres-backup` 会定期写 `/persist/postgres-backups/latest.sql.gz`，作为 live PostgreSQL data directory 的普通文件兜底备份。
 - `entrypoint.sh` 会跳过 `initdb`，继续更新 role 密码和确保数据库存在。
 - Dify API migration 和 Plugin Daemon migration 仍会执行，应当保持幂等。

@@ -1,0 +1,32 @@
+evidence_id,object_type,object_id,evidence_type,path,line_or_range,evidence_strength,confidence,notes
+EVD-001,function_point,FP-001,code,Dockerfile,27-49;121-139,Code,high,官方 Dify 资产 intake 与 copy 路径清晰
+EVD-002,function_point,FP-002,code,Dockerfile,80-115,Code,high,系统包安装与 rootless user 创建
+EVD-003,function_point,FP-003,code,Dockerfile,141-155;190-195,Code,high,entrypoint scripts copy 与 healthcheck contract
+EVD-004,function_point,FP-004,code,docker/entrypoint.sh,35-74,Code,high,generated secrets 优先级；配合 `docker/dify.env.runtime:34-58`
+EVD-005,function_point,FP-005,code,docker/entrypoint.sh,112-141;171-211,Code,high,bucket-lite 检测和 symlink 映射
+EVD-006,function_point,FP-006,code,docker/entrypoint.sh,76-83;561-630,Code,high,identifier 校验与 Postgres/vector 初始化
+EVD-007,function_point,FP-007,code,docker/entrypoint.sh,499-555;580-601,Code,medium-high,PGDATA fallback 与 dump restore 分支存在
+EVD-008,function_point,FP-008,code,docker/entrypoint.sh,263-279;319-362;632-658,Code,high,Redis/Sandbox config 与 Dify migration 顺序
+EVD-009,function_point,FP-009,code,docker/supervisord.conf,17-156,Code,high,长期进程图
+EVD-010,function_point,FP-010,code,docker/wait-for-core,16-49,Code,high,依赖等待契约
+EVD-011,function_point,FP-011,code,docker/nginx.conf,46-157,Code,high,单端口 path routing
+EVD-012,function_point,FP-012,code,docker/nginx.conf,86-106;138-149,Code,high,terminal websocket 与 plugin hook headers
+EVD-013,function_point,FP-013,code,scripts/hf-space-smoke.sh,127-158,Code,high,iframe header 断言逻辑；配合 `docker/nginx.conf:55-61`
+EVD-014,function_point,FP-014,code,docker/with-plugin-env,14-64,Code,high,plugin-daemon contract 映射
+EVD-015,function_point,FP-015,code,docker/with-sandbox-env,14-32,Code,high,no-network 默认与 rootless prep
+EVD-016,function_point,FP-016,code,docker/ops_service.py,433-464,Code,high,health payload 聚合
+EVD-017,function_point,FP-017,code,docker/ops_service.py,481-493;608-693;805-1270,Code,high,status/system/config/version/metrics/dashboard
+EVD-018,function_point,FP-018,code,docker/ops_service.py,29-46;721-736,Code,high,日志白名单与 tail
+EVD-019,function_point,FP-019,code,docker/ops_service.py,106-120;748-802,Code,high,pattern 聚合与 ignored startup lines
+EVD-020,function_point,FP-020,code,docker/admin_service.py,95-152;954-1013,Code,high,admin enable/auth/csrf
+EVD-021,function_point,FP-021,code,docker/admin_service.py,247-347;278-295;1110-1115,Code,high,白名单动作与审计
+EVD-022,function_point,FP-022,code,docker/admin_service.py,350-412;446-587,Code,high,file root confinement 与 protected paths
+EVD-023,function_point,FP-023,code,docker/webssh_entrypoint.sh,47-60,Code,high,placeholder/optional ttyd 逻辑；配合 `docker/nginx.conf:86-106`
+EVD-024,function_point,FP-024,code,scripts/hf-space-smoke.sh,4-177,Code,medium-high,build/run/smoke 与 HF 回读流程；配合 docs
+EVD-025,work_package,WP-001,doc,AGENTS.md,82-84,Doc,high,Marketplace 与 admin 边界的高层合同漂移来源之一
+EVD-026,work_package,WP-002,doc,docs/deployment.md,41-119,Doc,high,发布证据链当前是人工流程
+EVD-027,work_package,WP-003,doc,docs/development.md,261-266,Doc,high,仓库无单元测试框架的已知限制
+EVD-028,work_package,WP-004,code,docker/admin_service.py,350-587,Code,high,file-write 策略和 protected path 都在实现里
+EVD-029,work_package,WP-005,code,docker/webssh_entrypoint.sh,47-60,Code,high,terminal 当前只有 placeholder
+EVD-030,work_package,WP-006,code,Dockerfile,17-22,Code,high,核心版本 pin 都在 build args 中
+EVD-031,work_package,WP-007,doc,docs/architecture.md,200-215,Doc,medium-high,ops-service 已有 non-Dify 迁移提示

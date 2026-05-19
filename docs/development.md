@@ -95,11 +95,14 @@ docker logs -f dify-aio-hf-demo
 
 ## Hugging Face 验证
 
-推送后：
+推送到 Hugging Face Space remote 后：
 
 ```bash
-git push origin main
+git remote -v
+git push hf main
 ```
+
+不要假设 `origin` 一定是 Hugging Face Space。当前本机 checkout 常见为 `hf` 指向 Hugging Face Space、`origin` 指向 GitHub mirror；如果你的 remote 名称不同，使用实际指向 `https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one` 的 remote。
 
 轮询：
 
@@ -149,6 +152,7 @@ curl -H "X-Ops-Token: dify_ops_demo_token" \
 - `/nginx-health` 是否返回 `ok`。
 - `/healthz` 是否代理到 ops-service。
 - `/console/api/setup` 和 `/console/api/init` 是否为 200。
+- `/apps` 是否移除了上游 `X-Frame-Options`，并保留允许 Hugging Face iframe 的 `Content-Security-Policy frame-ancestors`。
 - `/socket.io/` 是否保留 Upgrade / Connection header。
 - `/e/` 是否保留 `Dify-Hook-Url`。
 - `/` 是否仍代理 Dify Web。
@@ -262,5 +266,5 @@ OPS_TOKEN=dify_ops_demo_token \
 
 - 本仓库没有单元测试框架，主要依赖 shell/Python 静态检查和 Docker/HF smoke。
 - 本地没有 Docker daemon 时，无法完整验证镜像构建，只能依赖 HF build。
-- `dify-web` 和 `ops-service` 直接输出到容器 stdout/stderr，`/_ops/logs` 不暴露它们的专用文件。
+- `sandbox`、`dify-web`、`ops-service`、`admin-service` 和 `web-terminal` 直接输出到容器 stdout/stderr，`/_ops/logs` 不暴露它们的专用文件。
 - Nginx port/body size 变量目前不是动态模板。

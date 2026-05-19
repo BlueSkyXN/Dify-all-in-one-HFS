@@ -1,0 +1,8 @@
+spec_candidate_id,function_point_id,capability_id,actor_or_trigger,input,output,acceptance_signal,open_question,status,source_refs
+SPEC-001,FP-001,CAP-001,维护者升级版本或重建镜像,DIFY image args;Docker daemon,可构建且可 smoke 的 image,存在 build 记录与 smoke 结果,升级兼容矩阵由谁维护,planned,Dockerfile:17-22;docs/deployment.md:148-166
+SPEC-002,FP-007,CAP-002,HF bucket 文件系统语义变化,PERSIST_MODE;POSTGRES_BUCKET_FAILURE_MODE;latest.sql.gz,明确 fallback 或 exit 的恢复路径,同一故障稳定导向预期分支,是否接受 fallback 到 `/tmp`,planned,docker/entrypoint.sh:506-518;docs/configuration.md:123-153
+SPEC-003,FP-011,CAP-003,维护者希望动态调整 Nginx 合同,NGINX_PORT;NGINX_CLIENT_MAX_BODY_SIZE,一致的静态或动态端口合同,README Dockerfile nginx.conf smoke 同步,是否值得引入模板渲染,planned,docker/nginx.conf:46-53;docs/configuration.md:293-300
+SPEC-004,FP-014,CAP-004,升级 Plugin Daemon 或 Sandbox version,version args;wrapper env,稳定的 plugin/sandbox 回归清单,迁移成功且 smoke 无回退,谁负责上游 drift 回归,planned,Dockerfile:17-22;docker/with-plugin-env:14-64;docker/with-sandbox-env:14-32
+SPEC-005,FP-016,CAP-005,其他项目复用 `ops-service`,OPS_DEFAULT_CHECKS_ENABLED;OPS_EXTRA_*;OPS_LOG_*,可迁移的只读诊断合同,至少一个 non-Dify 示例跑通,是否需要独立仓库或 bundle,planned,docs/architecture.md:200-215;docs/configuration.md:327-339
+SPEC-006,FP-023,CAP-006,需要 break-glass terminal,WEBSSH_*;terminal binary;auth policy,明确的 terminal 产品合同,有真实 terminal smoke 或明确降级说明,是补装 `ttyd` 还是移除该路由,planned,docker/webssh_entrypoint.sh:47-60;docs/security.md:111-114
+SPEC-007,FP-024,CAP-007,维护者要证明发布已经被 HF runtime 接管,commit sha;base URL;OPS_TOKEN,最小发布证据包,`runtime.raw.sha` 与 smoke 结果一致,是否需要最小 CI 自动收集,planned,docs/deployment.md:51-119;docs/ops-runbook.md:286-315

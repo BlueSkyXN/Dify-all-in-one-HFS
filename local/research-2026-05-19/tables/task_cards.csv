@@ -1,0 +1,9 @@
+task_id,parent_work_package_id,title,role_hint,acceptance_signal,depends_on,blocked_by,evidence_needed,source_refs
+WP-002-T1,WP-002,完成一次 build 并保存关键日志,ops,可引用的 build 结果,,,build 日志摘要,scripts/build.sh:1-4;docs/deployment.md:148-166
+WP-002-T2,WP-002,对目标 URL 运行 smoke 并记录结果,ops,smoke 结果映射到关键 FP,,,smoke 输出摘要,scripts/hf-space-smoke.sh:160-177
+WP-002-T3,WP-002,回读 `runtime.stage` 与 `runtime.raw.sha`,ops,目标 commit 与运行镜像一致,WP-002-T1,,`hf spaces info` 关键字段,docs/deployment.md:51-79
+WP-004-T1,WP-004,明确 `ADMIN_ENABLED` 与 `ADMIN_FILES_*` 推荐矩阵,product,文档和默认值无歧义,WP-001,,对齐后的文档差异,docs/configuration.md:341-410;docs/security.md:88-114
+WP-004-T2,WP-004,审核 protected path 规则是否覆盖 demo secrets,security,`generated.env` key token 类路径都被拦截,,BLK-003,路径测试样例,docker/admin_service.py:387-412
+WP-004-T3,WP-004,补 admin-enabled smoke 场景,ops,至少覆盖 status actions files/list,WP-004-T1,BLK-002,smoke 结果摘要,scripts/hf-space-smoke.sh:164-171
+WP-005-T1,WP-005,评估安装 `ttyd` 的依赖与风险,ops,给出 yes/no 决策记录,WP-004,BLK-001,决策记录,docker/webssh_entrypoint.sh:47-60
+WP-005-T2,WP-005,若不交付 terminal 则降级其对外合同,docs,文档与 smoke 不再暗示可立即使用,WP-005-T1,BLK-001,文档 diff,docs/security.md:111-114;docs/configuration.md:400-410

@@ -1,0 +1,8 @@
+capability_id,baseline_maturity,critical_path_maturity,status_tags,evidence_refs,blocker_ids,reason,next_maturity_step,source_refs
+CAP-001,M4,M4,specified;implemented;blocked,EVD-001;EVD-002;EVD-003,BLK-004,构建图和 runtime image 代码完整但没有 build 证据,完成一次可回放 build 与 smoke,Dockerfile:17-22;Dockerfile:27-49;Dockerfile:141-195
+CAP-002,M4,M4,specified;implemented;blocked,EVD-004;EVD-005;EVD-006;EVD-007;EVD-008,BLK-004,bootstrap fallback restore migration 都已实现但无运行态回读,拿到 bucket 与 fallback 两组运行证据,docker/entrypoint.sh:171-211;docker/entrypoint.sh:561-658
+CAP-003,M4,M4,specified;implemented;blocked,EVD-009;EVD-010;EVD-011;EVD-012;EVD-013,BLK-003;BLK-004,路由与编排合同存在但高层叙述和运行证据都未完全闭环,先对齐合同再跑 smoke,docker/supervisord.conf:17-156;docker/nginx.conf:46-157
+CAP-004,M4,M4,specified;implemented;blocked,EVD-014;EVD-015,BLK-002,plugin sandbox 适配代码存在但没有专项 smoke,增加 plugin 与 code execution 验证,docker/with-plugin-env:14-64;docker/with-sandbox-env:14-32
+CAP-005,M4,M4,specified;implemented;operable;blocked,EVD-016;EVD-017;EVD-018;EVD-019,BLK-002,ops 面已经有 operability 设计但未形成提交内运行证据,为关键 endpoint 补自动回归,docker/ops_service.py:433-464;docker/ops_service.py:608-693
+CAP-006,M4,M4,specified;implemented;blocked;changed,EVD-020;EVD-021;EVD-022;EVD-023,BLK-001;BLK-003,admin code 已入主线但 terminal 未交付且高层合同未完全收口,固定 admin-enabled 合同并决定 terminal fate,docker/admin_service.py:95-152;docker/webssh_entrypoint.sh:47-60
+CAP-007,M4,M4,specified;implemented;blocked,EVD-024,BLK-004,脚本和 docs 完整但发布证据链仍完全依赖人工,保存一次与 commit 绑定的发布证据,scripts/hf-space-smoke.sh:4-177;docs/deployment.md:27-119

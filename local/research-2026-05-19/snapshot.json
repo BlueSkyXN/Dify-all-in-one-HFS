@@ -1,0 +1,493 @@
+{
+  "schema_version": 1,
+  "project_root": "/Users/sky/Github/dify-all-in-one",
+  "scanned_at": "2026-05-19T06:34:44Z",
+  "tier": "deep",
+  "output_dir": "local/research-2026-05-19",
+  "project_signature": {
+    "primary_language": "shell",
+    "frameworks": [
+      "docker",
+      "nginx",
+      "supervisord",
+      "python-stdlib-http"
+    ],
+    "entry_points": [
+      "Dockerfile",
+      "docker/entrypoint.sh",
+      "docker/ops_service.py",
+      "docker/admin_service.py"
+    ],
+    "dependency_manifests": [
+      "Dockerfile",
+      "docker/dify.env.runtime",
+      "docker/dify.env.demo"
+    ],
+    "deploy_configs": [
+      "Dockerfile",
+      "docker/supervisord.conf",
+      "docker/nginx.conf"
+    ],
+    "test_dirs": [
+      "scripts/"
+    ],
+    "doc_dirs": [
+      "README.md",
+      "README.hf-space.md",
+      "docs/"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "CAP-001",
+      "name": "镜像组装与官方资产复用",
+      "maturity": "M4",
+      "status_tags": [
+        "specified",
+        "implemented",
+        "blocked"
+      ],
+      "function_points": [
+        {
+          "id": "FP-001",
+          "name": "复用官方 Dify 资产",
+          "paths": [
+            "Dockerfile:27-49"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-002",
+          "name": "runtime 依赖与 rootless user",
+          "paths": [
+            "Dockerfile:80-115"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-003",
+          "name": "entrypoint 与 healthcheck 合同",
+          "paths": [
+            "Dockerfile:141-195"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CAP-002",
+      "name": "启动初始化与持久化编排",
+      "maturity": "M4",
+      "status_tags": [
+        "specified",
+        "implemented",
+        "blocked"
+      ],
+      "function_points": [
+        {
+          "id": "FP-004",
+          "name": "generated secrets 与 URL/env precedence",
+          "paths": [
+            "docker/entrypoint.sh:35-74"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-005",
+          "name": "bucket-lite 路径映射",
+          "paths": [
+            "docker/entrypoint.sh:112-141"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-006",
+          "name": "PostgreSQL init 与 vector",
+          "paths": [
+            "docker/entrypoint.sh:561-630"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-007",
+          "name": "PGDATA fallback 与 dump restore",
+          "paths": [
+            "docker/entrypoint.sh:499-555"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented",
+            "blocked"
+          ]
+        },
+        {
+          "id": "FP-008",
+          "name": "Redis Sandbox config 与 Dify migration",
+          "paths": [
+            "docker/entrypoint.sh:263-279"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CAP-003",
+      "name": "进程编排与单端口请求路由",
+      "maturity": "M4",
+      "status_tags": [
+        "specified",
+        "implemented",
+        "blocked"
+      ],
+      "function_points": [
+        {
+          "id": "FP-009",
+          "name": "Supervisor 长期进程编排",
+          "paths": [
+            "docker/supervisord.conf:17-156"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-010",
+          "name": "wait-for-core 依赖等待",
+          "paths": [
+            "docker/wait-for-core:16-49"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-011",
+          "name": "单端口 path routing",
+          "paths": [
+            "docker/nginx.conf:46-157"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-012",
+          "name": "WebSocket 与 plugin hook headers",
+          "paths": [
+            "docker/nginx.conf:86-106"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-013",
+          "name": "HF iframe CSP override",
+          "paths": [
+            "scripts/hf-space-smoke.sh:127-158"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CAP-004",
+      "name": "Plugin 与 Sandbox 适配",
+      "maturity": "M4",
+      "status_tags": [
+        "specified",
+        "implemented",
+        "blocked"
+      ],
+      "function_points": [
+        {
+          "id": "FP-014",
+          "name": "plugin env mapping 与 migration",
+          "paths": [
+            "docker/with-plugin-env:14-64"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-015",
+          "name": "sandbox no-network 与 rootless prep",
+          "paths": [
+            "docker/with-sandbox-env:14-32"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CAP-005",
+      "name": "只读运维诊断",
+      "maturity": "M4",
+      "status_tags": [
+        "specified",
+        "implemented",
+        "operable",
+        "blocked"
+      ],
+      "function_points": [
+        {
+          "id": "FP-016",
+          "name": "健康聚合",
+          "paths": [
+            "docker/ops_service.py:433-464"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-017",
+          "name": "dashboard 与 metrics",
+          "paths": [
+            "docker/ops_service.py:608-693"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented",
+            "operable"
+          ]
+        },
+        {
+          "id": "FP-018",
+          "name": "白名单日志 tail",
+          "paths": [
+            "docker/ops_service.py:721-736"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-019",
+          "name": "错误摘要与 benign pattern suppression",
+          "paths": [
+            "docker/ops_service.py:748-802"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CAP-006",
+      "name": "受控管理与文件边界",
+      "maturity": "M4",
+      "status_tags": [
+        "specified",
+        "implemented",
+        "blocked",
+        "changed"
+      ],
+      "function_points": [
+        {
+          "id": "FP-020",
+          "name": "admin auth gate 与 CSRF",
+          "paths": [
+            "docker/admin_service.py:95-152"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented",
+            "changed"
+          ]
+        },
+        {
+          "id": "FP-021",
+          "name": "白名单动作与审计",
+          "paths": [
+            "docker/admin_service.py:247-347"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-022",
+          "name": "file manager root confinement",
+          "paths": [
+            "docker/admin_service.py:350-587"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented"
+          ]
+        },
+        {
+          "id": "FP-023",
+          "name": "terminal placeholder / optional ttyd",
+          "paths": [
+            "docker/webssh_entrypoint.sh:47-60"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented",
+            "blocked"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CAP-007",
+      "name": "部署验证与运维文档",
+      "maturity": "M4",
+      "status_tags": [
+        "specified",
+        "implemented",
+        "blocked"
+      ],
+      "function_points": [
+        {
+          "id": "FP-024",
+          "name": "build run smoke 与 runtime SHA 回读",
+          "paths": [
+            "scripts/hf-space-smoke.sh:4-177"
+          ],
+          "status_tags": [
+            "specified",
+            "implemented",
+            "blocked"
+          ]
+        }
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "BLK-001",
+      "type": "dependency",
+      "title": "`/_admin/terminal/` 只有 placeholder",
+      "blocks_e2e": false,
+      "first_seen": "2026-05-19"
+    },
+    {
+      "id": "BLK-002",
+      "type": "test",
+      "title": "缺提交内自动化测试与运行证据",
+      "blocks_e2e": true,
+      "first_seen": "2026-05-19"
+    },
+    {
+      "id": "BLK-003",
+      "type": "spec",
+      "title": "Marketplace/Admin 合同漂移",
+      "blocks_e2e": false,
+      "first_seen": "2026-05-19"
+    },
+    {
+      "id": "BLK-004",
+      "type": "deployment",
+      "title": "发布证据链仍依赖人工动作",
+      "blocks_e2e": true,
+      "first_seen": "2026-05-19"
+    }
+  ],
+  "targets": {
+    "explicit_goals_hash": "3835df2785613ca92ca3403ebad2f4f15044e8d790abe46ab1e77d1958040cc7",
+    "implicit_goals_hash": "77c2bd4720b7c96d9344ca931d8597ab43f3d139834062cc1925313f104fef03",
+    "last_shift_at": "2026-05-19"
+  },
+  "artifacts": {
+    "markdown_files": [
+      "project-overview.md",
+      "capability-map.md",
+      "product-structure.md",
+      "work-breakdown.md",
+      "tracking-matrix.md",
+      "evidence-map.md",
+      "blocker-list.md",
+      "delivery-maturity.md",
+      "e2e-flow.md",
+      "next-actions.md",
+      "deployment-ops-review.md",
+      "target-shift-log.md",
+      "function-spec-cards/FP-005.md",
+      "function-spec-cards/FP-011.md",
+      "function-spec-cards/FP-016.md",
+      "function-spec-cards/FP-021.md"
+    ],
+    "csv_tables": [
+      "tables/capability_tree.csv",
+      "tables/function_inventory.csv",
+      "tables/product_structure.csv",
+      "tables/wbs.csv",
+      "tables/evidence_map.csv",
+      "tables/blockers.csv",
+      "tables/maturity.csv",
+      "tables/tracking_matrix.csv",
+      "tables/spec_candidates.csv",
+      "tables/task_cards.csv"
+    ],
+    "artifact_hashes": {
+      "project-overview.md": "5124e10c902e15437b0cfba73b83edac13c4b246a12996892bb5111bbd332216",
+      "capability-map.md": "4abd60d9ebbdb6433a1159a2a36232f22cb30f52d43b9296ef41d99826fd23e5",
+      "product-structure.md": "5a462e213d46d496a5bf29daccbd9c273853b44868ecaddd01611a84f41b976e",
+      "work-breakdown.md": "30065d9ed000302d7e534a24880f03f5c7000e4d75430993c49b8a54a0b085e7",
+      "tracking-matrix.md": "a97d12377c0695fd870190494113657b314433a148fab175fda1fedc3a93f91b",
+      "evidence-map.md": "89959720e9d23453be3ef3734fc3422c146b6621fd309cf816cc0171bce5cb3e",
+      "blocker-list.md": "d12b91407b8d8a508dd56c6bc73853073ce8a4579f718f4ad2e9787166d2da40",
+      "delivery-maturity.md": "f589c488752602ba31aef93e40ddd2242104e643896e9a9c39c6e089341f9914",
+      "e2e-flow.md": "d46c35c832f96089ee3a7b53da655ad421fa441c22b79992e1494bf9f8beb090",
+      "next-actions.md": "0c1d7c224188c34bcbcf9b55d55bf1096182cf516b3c5518a8fe3b76f6cd926b",
+      "deployment-ops-review.md": "393ba575672e4accaf95cd0e12a3024ecfab9c1f1bc5202c2f0b5b942928cd06",
+      "target-shift-log.md": "40b4dce08aefcb29818a717c88a09cd51ef05f2f422607e6744fd2e7fc27ef79",
+      "function-spec-cards/FP-005.md": "6974fce46c7c2d6e727640afe5b862c8eed361b57562c865e9f3e13a023eb04d",
+      "function-spec-cards/FP-011.md": "e74066a4bc4a255f15eeac472b851b798168824a8fc3cbc9dde27fbc0fa039fe",
+      "function-spec-cards/FP-016.md": "65e8461180c1e7708734b0c5d53fadcf7276e9c8fd93cbb96b31fad617b7e9aa",
+      "function-spec-cards/FP-021.md": "fb1f18d62bb4aa74a74540c0fc5569fec7af6be14496f523b1d0299830dfe710",
+      "tables/capability_tree.csv": "5a41c1e3e0601207edcb08b8e1010879310c71abe1809d65bcbc73e4e8baa710",
+      "tables/function_inventory.csv": "dad7a2feaa02bbf1dc42c8f81263e0aa0ba39e78376b09e0c32cc7637ee226f0",
+      "tables/product_structure.csv": "1bff5c3d71673dfbc38518124d07f939435174f683c1e0ecca1904e7e5535ca2",
+      "tables/wbs.csv": "c3652a49ec4a3901412f1960d6f1028e0ca41535ab6b03b0a5fc97a4bd2b21eb",
+      "tables/evidence_map.csv": "efc2a67663662ff5503c5efac4b5d9cad92b869c4237fecae714392ddfbf1980",
+      "tables/blockers.csv": "0c02cbe85e2d03f912f274dab3913e23430fa95c0eaa65cb68ad9772c1d30c80",
+      "tables/maturity.csv": "dc50bbc6ee03a949daaebc8aaee31fc254a859df01db5b5f197062da20494782",
+      "tables/tracking_matrix.csv": "b7ebc0acd5b712abeb0c35f7cfb460ea34e5dea7249ae0eaee678c5c9a3a3c33",
+      "tables/spec_candidates.csv": "5d67258872ee11f0f75e6a9549baee76733ab6ce4d3a39efc4993d8842dd1dd8",
+      "tables/task_cards.csv": "fd763b3ab2e7fa2d0cac6ddbcadd01222591b055a47c73fbe94f8d12b1722419"
+    }
+  },
+  "removed_since_last_run": []
+}
