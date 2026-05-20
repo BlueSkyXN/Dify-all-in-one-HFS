@@ -20,6 +20,7 @@ pinned: false
 - [完整工程文档](./docs/README.md)
 - [Hugging Face Space 部署说明](./README.hf-space.md)
 - [架构说明](./docs/architecture.md)
+- [项目状态与下一步计划](./docs/project-status-and-roadmap.md)
 - [配置参考](./docs/configuration.md)
 - [部署指南](./docs/deployment.md)
 - [运维与可观测 Runbook](./docs/ops-runbook.md)
@@ -241,6 +242,12 @@ Nginx access log 使用 JSON 格式写到 Nginx stdout；当前 `supervisord` �
 ```bash
 OPS_TOKEN=dify_ops_demo_token \
   scripts/hf-space-smoke.sh https://your-space.hf.space
+```
+
+提交前轻量检查：
+
+```bash
+scripts/static-check.sh
 ```
 
 更完整的 endpoint 说明、502 排障流程、Plugin Daemon migration 说明和发布后验收步骤见 [运维与可观测 Runbook](./docs/ops-runbook.md)。
