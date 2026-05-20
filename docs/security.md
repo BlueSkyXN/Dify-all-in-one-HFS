@@ -76,6 +76,8 @@ Authorization: Bearer
 
 优先使用 header。`?token=` 只适合临时浏览器调试。
 
+`/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。新增诊断状态、错误说明或按钮文案时，应同步两种语言，避免不同语言下的运维含义不一致。
+
 `OPS_TOKEN` 不是生产级访问控制：
 
 - 没有用户体系。
@@ -109,6 +111,8 @@ ADMIN_FILES_WRITE_ENABLED=false
 当前没有提供 run migration、clear cache、SQL、任意 command 或配置修改。Dify migration 命令涉及上游 runtime 语义，不能在未确认真实命令前加入 action catalog。
 
 `/_admin/api/files/*` 是 admin file manager，不属于 ops-service。它默认以 `/data` 为 root，并把请求 path 当成相对 root 的路径处理；解析后的路径必须仍在 `ADMIN_FILES_ROOT` 内。默认拒绝读取或写入 `generated.env`、`*.pem`、`*.key`、`*secret*`、`*token*`。写入能力还需要额外开启 `ADMIN_FILES_WRITE_ENABLED=true`。
+
+`/_admin/` 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。管理 action、confirm 提示、file manager 状态和错误信息必须同步两种语言，避免管理员在不同语言界面下误判操作影响。
 
 WebSSH 或 interactive shell 风险明显高于受控 action catalog。当前镜像内置 `ttyd`，但 `WEBSSH_ENABLED=false` 是默认值，`/_admin/terminal/` 默认返回 404。确需启用时必须同时开启 `ADMIN_ENABLED=true`、设置独立强 `ADMIN_TOKEN`，并通过 Nginx `auth_request` 鉴权后才代理到 `ttyd`。只建议在 Private/Protected 环境做受控排障，并保留 session timeout、审计日志和清晰的命令风险说明。
 

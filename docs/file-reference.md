@@ -210,6 +210,7 @@ Nginx 路由和日志配置。
 - 只返回 secret presence，不返回 secret 原文。
 - 按 service 分组错误摘要，显示匹配 pattern，并限制扫描与返回行数。
 - 过滤已知启动期 benign error pattern，避免把短暂 warmup 误报成当前异常。
+- `/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 
 ### `docker/admin_service.py`
 
@@ -223,6 +224,7 @@ Nginx 路由和日志配置。
 - 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks。
 - 可选提供 `/_admin/api/files/*` 文件管理；path 限制在 `ADMIN_FILES_ROOT` 内。
 - 写入 `ADMIN_AUDIT_LOG`，但不记录 token、secret 或文件内容。
+- 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 
 ### `docker/postgres-backup-loop`
 

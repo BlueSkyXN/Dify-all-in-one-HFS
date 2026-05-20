@@ -117,7 +117,7 @@ git remote -v
 git push hf main
 ```
 
-不要假设 `origin` 一定是 Hugging Face Space。当前本机 checkout 常见为 `hf` 指向 Hugging Face Space、`origin` 指向 GitHub mirror；如果你的 remote 名称不同，使用实际指向 `https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one` 的 remote。
+不要假设 `origin` 一定是 Hugging Face Space。当前本机 checkout 常见为 `hf` 指向 Hugging Face Space、`origin` 指向 GitHub remote；如果你的 remote 名称不同，使用实际指向 `https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one` 的 remote。
 
 轮询：
 
@@ -135,14 +135,14 @@ runtime.raw.sha = <expected commit sha>
 线上 smoke：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
 错误摘要：
 
 ```bash
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
 ```
 
@@ -282,7 +282,7 @@ ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-toke
 如果部署到 Hugging Face：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
