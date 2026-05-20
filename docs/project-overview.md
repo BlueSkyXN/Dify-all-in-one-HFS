@@ -44,6 +44,7 @@
 |   |-- AGENTS.md              # docker/ runtime navigation card
 |   |-- dify.env.runtime       # 运行时默认环境变量
 |   |-- dify.env.demo          # 本地 demo env-file
+|   |-- sandbox-python-requirements.txt # Sandbox Python 依赖清单
 |   |-- entrypoint.sh          # 容器主入口，初始化数据和迁移
 |   |-- supervisord.conf       # 多进程编排
 |   |-- nginx.conf             # 外部路由和 access log

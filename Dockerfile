@@ -137,6 +137,10 @@ COPY --from=plugin-daemon-image --chown=user:user /app /opt/dify/plugin-daemon
 COPY --from=sandbox-image /main /opt/dify/sandbox/main
 COPY --from=sandbox-image --chown=user:user /conf /conf
 COPY --from=sandbox-image --chown=user:user /dependencies /dependencies
+COPY docker/sandbox-python-requirements.txt /dependencies/python-requirements.txt
+
+RUN python3 -m pip install --no-cache-dir -r /dependencies/python-requirements.txt \
+    && python3 -m pip check
 
 # Runtime scripts and config.
 RUN mkdir -p /etc/dify

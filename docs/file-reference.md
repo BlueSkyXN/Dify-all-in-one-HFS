@@ -115,6 +115,21 @@ Git 属性配置。
 - 不用于生产。
 - 密钥默认留空，由 entrypoint 生成。
 
+### `docker/sandbox-python-requirements.txt`
+
+Sandbox Python 依赖清单。
+
+职责：
+
+- 定义 Dify Workflow Code Node 常用 Python 包。
+- 在 `Dockerfile` build 阶段复制为 `/dependencies/python-requirements.txt`。
+- 配合 build-time `pip install` 和 `pip check`，让 demo runtime 不依赖现场下载这些包。
+
+修改注意：
+
+- 新增或升级包后，至少验证目标 Python 版本和 manylinux wheel 可下载。
+- 依赖清单服务于 demo 便利性，不代表生产 Sandbox 依赖治理方案。
+
 ### `docker/entrypoint.sh`
 
 容器主入口。
