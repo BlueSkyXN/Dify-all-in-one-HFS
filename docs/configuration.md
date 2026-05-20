@@ -328,6 +328,8 @@ Authorization: Bearer <token>
 
 CLI 和自动化优先使用 header，不建议长期使用 query token。
 
+`/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。该偏好属于浏览器本地状态，不是容器配置项。
+
 迁移到非 Dify 程序时，可以关闭内置探针，只保留通用探针：
 
 ```env
@@ -364,6 +366,8 @@ Browser login -> signed HttpOnly cookie
 ```
 
 写操作必须使用 `POST` / `PUT` / `PATCH` / `DELETE`，并携带 CSRF header。浏览器登录后由页面使用 session 对应的 CSRF token；CLI 使用 header token 时也需要显式传入 `X-Admin-CSRF`。
+
+`/_admin/` 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。语言选择不改变鉴权、CSRF、action 白名单或 file manager 权限。
 
 当前 action catalog：
 

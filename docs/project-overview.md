@@ -104,11 +104,15 @@ https://<space>.hf.space/
 /_ops/metrics
 ```
 
+`/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言。
+
 默认关闭的管理入口：
 
 ```text
 /_admin/
 /_admin/api/status
 ```
+
+开启 `ADMIN_ENABLED=true` 后，`/_admin/` 登录页和管理页同样支持 English / 中文切换。默认关闭状态下入口返回 404。
 
 完整排障流程见 [Operations Runbook](./ops-runbook.md)。

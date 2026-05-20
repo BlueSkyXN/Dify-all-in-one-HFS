@@ -22,7 +22,7 @@
 线上 smoke：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
@@ -50,4 +50,4 @@ scripts/static-check.sh
 scripts/run-demo.sh
 ```
 
-公开 Space 建议在 Space Settings -> Secrets 中覆盖 `OPS_TOKEN`，并将 Space 设置为 Private 或 Protected。
+公开 Space 建议在 Space Settings -> Secrets 中覆盖 `OPS_TOKEN`，并将 Space 设置为 Private 或 Protected。`dify_ops_demo_token` 只是未覆盖时的 demo 默认值，线上命令应使用 Space 当前配置的 token。

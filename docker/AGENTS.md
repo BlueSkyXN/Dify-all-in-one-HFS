@@ -14,12 +14,14 @@
 - Env 变更追踪 runtime/demo env、wrappers、entrypoint、Supervisor、ops/admin、`docs/configuration.md`。
 - Route 变更保护 upstream、headers、smoke、WebSocket、`Dify-Hook-Url`。
 - Admin/terminal 变更保护 `ADMIN_TOKEN`、CSRF/confirm、审计日志、file root 限制和 `/_admin_auth_terminal`。
+- Ops/admin dashboard 文案或 UI 结构变更必须同步 English / 中文文案，并保留浏览器语言检测与 `localStorage` 选择逻辑。
 - Persistence/PostgreSQL 变更覆盖 `/data`、generated env、`/data/run/postgresql`、pgvector、backup/fallback。
 
 ## 不变量
 
 - runtime rootless；可写状态只在 `/data` 或明确的 persistence mount。
 - Docker/HF env 优先于 defaults 和 generated secrets；secrets 不原文返回。
+- `HF_HOME` / `HF_HUB_CACHE` 默认在 `${RUNTIME_ROOT}/hf-cache`，属于 runtime cache，不是 bucket-lite 核心持久状态。
 - PostgreSQL identifier 先校验再拼 SQL。
 - Plugin Daemon migration 后再启动 `main`。
 - `SANDBOX_ENABLE_NETWORK=false` 是默认值；改变时同步 security docs。

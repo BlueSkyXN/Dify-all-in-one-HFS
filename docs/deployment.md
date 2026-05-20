@@ -45,7 +45,7 @@ origin  https://github.com/BlueSkyXN/Dify-all-in-one-HFS.git
 git push hf main
 ```
 
-如果你的 remote 名称不同，使用实际指向 Hugging Face Space 的 remote。推送 GitHub mirror 不会直接触发 Hugging Face Space rebuild。
+如果你的 remote 名称不同，使用实际指向 Hugging Face Space 的 remote。推送 GitHub remote 不会直接触发 Hugging Face Space rebuild。
 
 ## 查看 build / runtime
 
@@ -82,9 +82,11 @@ hf spaces logs BlueSkyXN/dify-all-in-one -n 220
 ## 发布后 smoke
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
+
+`dify_ops_demo_token` 只是未覆盖 `OPS_TOKEN` 时的镜像默认值。线上 Space 通常会在 Secrets 中覆盖它；发布验收必须使用 Space 当前配置的 token，否则 `/_ops/*` 会返回 401。
 
 脚本检查：
 
@@ -94,6 +96,7 @@ space-frame-headers
 nginx-health
 ops-healthz
 admin-disabled
+webssh-disabled
 setup-api
 init-api
 ops-health
@@ -102,7 +105,7 @@ ops-metrics
 ops-errors
 ```
 
-如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status` 与 `/_admin/api/actions`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`。
+如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status` 与 `/_admin/api/actions`。如果也开启 Web terminal，再加 `SMOKE_WEBSSH_ENABLED=true` 检查 `/_admin/terminal/`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`。
 
 默认重试：
 
@@ -114,7 +117,7 @@ SMOKE_DELAY=5
 可以调整：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
 SMOKE_RETRIES=60 \
 SMOKE_DELAY=5 \
 scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
@@ -135,10 +138,10 @@ curl -I https://blueskyxn-dify-all-in-one.hf.space/apps
 只读运维：
 
 ```bash
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/health
 
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
 ```
 
@@ -226,7 +229,7 @@ docker volume rm dify-hf-demo-persist
 ```bash
 curl https://blueskyxn-dify-all-in-one.hf.space/nginx-health
 curl https://blueskyxn-dify-all-in-one.hf.space/healthz
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/health
 ```
 
