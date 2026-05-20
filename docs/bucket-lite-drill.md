@@ -147,17 +147,17 @@ runtime.raw.sha = <expected sha>
 线上 smoke：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
 只读诊断：
 
 ```bash
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/health
 
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
 ```
 

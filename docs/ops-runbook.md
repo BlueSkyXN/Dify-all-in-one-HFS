@@ -89,11 +89,14 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 ```text
 /_admin/
+/_admin/api/login
+/_admin/api/logout
 /_admin/api/status
 /_admin/api/actions
 /_admin/api/actions/restart-service
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
+/_admin/api/auth/terminal
 /_admin/api/files/list
 /_admin/api/files/text
 /_admin/api/files/download
@@ -102,6 +105,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/files/rename
 /_admin/api/files/delete
 ```
+
+登录和登出是浏览器 dashboard 使用的 session 接口，`/_admin/api/auth/terminal` 只给 Nginx `auth_request` 和 Web terminal smoke 使用。`files/text` 同时支持读取和写入，写入需要 `ADMIN_FILES_WRITE_ENABLED=true`。
 
 CLI 示例：
 
@@ -344,14 +349,14 @@ runtime.raw.sha = <expected commit sha>
 2. 运行 smoke。
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
 3. 查看错误摘要。
 
 ```bash
-curl -sS -H "X-Ops-Token: dify_ops_demo_token" \
+curl -sS -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
 ```
 
@@ -465,7 +470,7 @@ SMOKE_DELAY=5
 示例：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
 SMOKE_RETRIES=60 \
 SMOKE_DELAY=5 \
 scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
@@ -476,7 +481,7 @@ scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```bash
 SMOKE_ADMIN_ENABLED=true \
 ADMIN_TOKEN=<admin-token> \
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
 scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
@@ -494,9 +499,11 @@ space-frame-headers
 nginx-health
 ops-healthz
 admin-disabled
+webssh-disabled
 admin-status        # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-actions       # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-run-health-checks # 仅 SMOKE_ADMIN_ENABLED=true 且 SMOKE_ADMIN_ACTIONS=true 时
+webssh-terminal     # 仅 SMOKE_ADMIN_ENABLED=true 且 SMOKE_WEBSSH_ENABLED=true 时
 setup-api
 init-api
 ops-health

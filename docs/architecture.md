@@ -198,6 +198,7 @@ Hugging Face Space 如果没有挂载 `/persist`，`auto` 会回退旧 `/data` �
 - secret 是否存在的布尔摘要。
 - 白名单日志 tail。
 - 按 service 分组的近期错误模式匹配。
+- English / 中文 dashboard，默认跟随浏览器语言并把选择保存在浏览器本地。
 
 它的可复用边界：
 
@@ -247,5 +248,7 @@ run-health-checks
 每个写 action 都需要 CSRF header，重启和 reload 需要 `confirm=true`，并写入 `ADMIN_AUDIT_LOG`。请求不能传任意 shell command。
 
 File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
+
+Admin 登录页和管理 dashboard 支持 English / 中文切换。改 UI 文案时必须同时维护两种语言，避免管理操作含义在不同语言下不一致。
 
 WebSSH 或 interactive shell 是独立的高风险模块，并且默认关闭。当前镜像内置 `ttyd`，但只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时，`/_admin/terminal/` 才会通过 Nginx `auth_request` 代理到 terminal；默认 `WEBSSH_ENABLED=false` 时只返回 404。

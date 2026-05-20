@@ -13,7 +13,7 @@ feature branch -> GitHub PR -> origin/main -> optional hf/main -> HF runtime -> 
 当前常见 remote 语义：
 
 ```text
-origin  GitHub mirror: https://github.com/BlueSkyXN/Dify-all-in-one-HFS.git
+origin  GitHub remote: https://github.com/BlueSkyXN/Dify-all-in-one-HFS.git
 hf      Hugging Face Space: https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one
 ```
 
@@ -136,14 +136,14 @@ runtime.raw.sha = <expected main sha>
 线上 smoke：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
 必要时增加重试：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
 SMOKE_RETRIES=60 \
 SMOKE_DELAY=5 \
 scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
@@ -162,10 +162,10 @@ Known skipped checks:
 只读诊断：
 
 ```bash
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/health
 
-curl -H "X-Ops-Token: dify_ops_demo_token" \
+curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
 ```
 

@@ -216,6 +216,8 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://your-space.hf.space/_ops/health
 ```
 
+`/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言，选择会保存在浏览器本地。
+
 浏览器临时访问可使用：
 
 ```text
@@ -235,14 +237,14 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_ops/metrics          Prometheus-style text metrics
 ```
 
-`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 只包括 restart service、reload nginx、run health checks；`/_ops` 仍保持只读。
+`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 只包括 restart service、reload nginx、run health checks；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
 
 Nginx access log 使用 JSON 格式写到 Nginx stdout；当前 `supervisord` 会把 Nginx stdout 收进 `/data/logs/nginx.log`，可通过 `/_ops/logs?service=nginx` 查看。字段包含 `time`、`request_id`、`remote_addr`、`method`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status`、`upstream_response_time` 和 `host`，便于区分 Web/API/Plugin/Ops 的上游问题。
 
 部署后 smoke：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token \
+OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
@@ -261,7 +263,7 @@ scripts/static-check.sh
 - Hugging Face 免费硬件会休眠；建议使用 CPU Upgrade + 持久化 Storage。
 - Space 运行时出站网络通常只适合 HTTP/HTTPS 端口；如果要接企业模型网关，建议暴露 HTTPS/443。
 - 构建阶段需要访问 GitHub、PyPI、npm/pnpm registry、APT 源和 Docker Hub。无外网环境需要提前做制品缓存。
-- 当前工程未在此对话环境中执行完整 Docker build；需要在有 Docker daemon 的机器或 Hugging Face Space 构建日志中验证。
+- `scripts/static-check.sh` 只证明脚本/Python 语法和 whitespace；Docker image 可运行性需要 Docker build/run、Hugging Face build logs 或 live smoke 作为证据。
 
 ## 课程演示建议
 
