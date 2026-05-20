@@ -415,6 +415,20 @@ Docker build、entrypoint 初始化、supervisord 生命周期和 migration 顺�
 
 Hugging Face Space 部署、本地 Docker 运行、发布后 smoke 和 runtime 状态确认。
 
+### `docs/release-checklist.md`
+
+GitHub PR、`main`、Hugging Face Space runtime 和 smoke 的发布证据记录模板。
+
+### `docs/bucket-lite-drill.md`
+
+`/persist` bucket-lite 持久化演练模板。
+
+职责：
+
+- 记录本地 Docker 和 Hugging Face Space 两类演练入口。
+- 覆盖 `/data/config/generated.env` 重启保留、PostgreSQL fallback 和 dump backup 检查。
+- 提供 evidence template，避免把未执行的持久化场景写成已验证。
+
 ### `docs/ops-runbook.md`
 
 运维诊断、日志、健康检查、502 排障和发布验收。
