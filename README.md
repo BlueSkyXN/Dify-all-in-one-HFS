@@ -23,6 +23,7 @@ pinned: false
 - [项目状态与下一步计划](./docs/project-status-and-roadmap.md)
 - [配置参考](./docs/configuration.md)
 - [部署指南](./docs/deployment.md)
+- [发布检查清单](./docs/release-checklist.md)
 - [运维与可观测 Runbook](./docs/ops-runbook.md)
 - [开发指南](./docs/development.md)
 - [文件职责说明](./docs/file-reference.md)

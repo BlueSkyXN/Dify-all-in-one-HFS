@@ -74,6 +74,16 @@ Git 属性配置。
 
 忽略本地 generated/cache 文件和 `.env.local`。
 
+### `.github/workflows/static-check.yml`
+
+GitHub Actions 轻量静态检查 workflow。
+
+职责：
+
+- 在 PR 和 `main` push 时运行 `scripts/static-check.sh`。
+- 只使用 `contents: read` 权限。
+- 不执行 Docker build、Hugging Face CLI 或 live smoke。
+
 ### `LICENSE`
 
 项目许可证。
