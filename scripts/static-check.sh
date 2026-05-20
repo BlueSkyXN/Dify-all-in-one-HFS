@@ -50,6 +50,7 @@ bash -n \
   docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
+  scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 

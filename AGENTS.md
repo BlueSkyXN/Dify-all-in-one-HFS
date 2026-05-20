@@ -49,7 +49,7 @@ cat docker/AGENTS.md
 | Command | Purpose | Scope | Sandbox notes |
 | --- | --- | --- | --- |
 | `scripts/static-check.sh` | 聚合轻量静态检查：shell 语法、Python 语法和 diff whitespace | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
-| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop docker/webssh_entrypoint.sh scripts/build.sh scripts/run-demo.sh scripts/hf-space-smoke.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
+| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop docker/webssh_entrypoint.sh scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/hf-space-smoke.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
 | `python3 -m py_compile docker/ops_service.py docker/admin_service.py` | 检查 ops/admin Python 服务语法 | `docker/ops_service.py`, `docker/admin_service.py` | 需要 Python 3 |
 | `git diff --check` | 检查 diff whitespace 问题 | repo | 只读；如果有无关 dirty diff，使用 path-limited 形式 |
 | `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:1.14.1` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
@@ -58,6 +58,7 @@ cat docker/AGENTS.md
 | `OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080` | smoke 本地运行容器 | repo | 需要本地容器正在运行 |
 | `OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space` | smoke 线上 HF Space | live Space | 需要网络和有效 demo 或配置后的 `OPS_TOKEN` |
 | `SMOKE_ADMIN_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh <base-url>` | smoke 已开启的 `/_admin` 管理面 | local/live Space | 仅在 `ADMIN_ENABLED=true` 且有有效 `ADMIN_TOKEN` 时使用；写 action 还需显式 `SMOKE_ADMIN_ACTIONS=true` |
+| `ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/admin-smoke.sh <base-url>` | 单独 smoke `/_admin` 鉴权、CSRF、action confirm 和 file manager 边界 | local/live Space | 默认不执行真实 action；写 action 需显式 `ADMIN_SMOKE_ACTIONS=true` |
 | `hf spaces info BlueSkyXN/dify-all-in-one` | 查看 Space runtime metadata | deployment | 需要 HF CLI、网络和必要登录态 |
 | `hf spaces logs BlueSkyXN/dify-all-in-one -n 220` | 查看 app logs | deployment | 需要 HF CLI 和网络 |
 | `hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220` | 查看 build logs | deployment | 需要 HF CLI 和网络 |
@@ -146,6 +147,7 @@ bash -n \
   docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
+  scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 python3 -m py_compile docker/ops_service.py
