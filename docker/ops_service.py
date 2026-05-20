@@ -1029,53 +1029,152 @@ def html_index(token: str) -> str:
       </div>
       <div class="toolbar">
         <span class="status-pill" id="overall">Loading</span>
-        <label class="switch"><input type="checkbox" id="autoRefresh" checked> Auto refresh</label>
-        <button id="refreshButton" type="button">Refresh</button>
+        <select id="languageSelect" aria-label="Language">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+        </select>
+        <label class="switch"><input type="checkbox" id="autoRefresh" checked> <span data-i18n="autoRefresh">Auto refresh</span></label>
+        <button id="refreshButton" type="button" data-i18n="refresh">Refresh</button>
       </div>
     </header>
 
     <section class="grid">
       <section class="panel wide">
-        <h2>Overview</h2>
+        <h2 data-i18n="overview">Overview</h2>
         <div class="summary" id="summary"></div>
       </section>
 
       <section class="panel">
-        <h2>Resources</h2>
+        <h2 data-i18n="resources">Resources</h2>
         <div id="resources"></div>
       </section>
 
       <section class="panel">
-        <h2>Health Checks</h2>
+        <h2 data-i18n="healthChecks">Health Checks</h2>
         <div id="checks"></div>
       </section>
 
       <section class="panel wide">
-        <h2>Services</h2>
+        <h2 data-i18n="services">Services</h2>
         <div id="services"></div>
       </section>
 
       <section class="panel wide">
-        <h2>Recent Errors</h2>
+        <h2 data-i18n="recentErrors">Recent Errors</h2>
         <div id="errors"></div>
       </section>
 
       <section class="panel wide">
-        <h2>Logs</h2>
+        <h2 data-i18n="logs">Logs</h2>
         <div class="log-controls">
-          <select id="logService">__SERVICE_OPTIONS__</select>
-          <input id="logLines" type="number" min="1" max="1000" value="120">
-          <button id="loadLog" type="button">Load</button>
-          <a id="metricsLink" href="metrics" target="_blank" rel="noreferrer">Metrics</a>
+          <select id="logService" aria-label="Log service">__SERVICE_OPTIONS__</select>
+          <input id="logLines" type="number" min="1" max="1000" value="120" aria-label="Log lines">
+          <button id="loadLog" type="button" data-i18n="load">Load</button>
+          <a id="metricsLink" href="metrics" target="_blank" rel="noreferrer" data-i18n="metrics">Metrics</a>
         </div>
-        <pre id="logOutput">Select a service log.</pre>
+        <pre id="logOutput" data-i18n="selectLog">Select a service log.</pre>
       </section>
     </section>
   </main>
   <script>
     const TOKEN = __TOKEN_JSON__;
     const HEADERS = {"X-Ops-Token": TOKEN};
+    const I18N = {
+      en: {
+        autoRefresh: "Auto refresh",
+        refresh: "Refresh",
+        overview: "Overview",
+        resources: "Resources",
+        healthChecks: "Health Checks",
+        services: "Services",
+        recentErrors: "Recent Errors",
+        logs: "Logs",
+        load: "Load",
+        metrics: "Metrics",
+        selectLog: "Select a service log.",
+        loadingRuntime: "Loading runtime summary...",
+        loading: "Loading",
+        overall: "Overall",
+        healthy: "Healthy",
+        unhealthy: "Unhealthy",
+        checks: "Checks",
+        checksPassing: "{passing}/{total} passing",
+        processes: "Processes",
+        uptime: "Uptime",
+        runtimeSummary: "Runtime summary",
+        cpuLoad: "CPU load",
+        memory: "Memory",
+        disk: "Disk {path}",
+        noResourceData: "No resource data.",
+        noChecksConfigured: "No checks configured",
+        name: "Name",
+        status: "Status",
+        latency: "Latency",
+        service: "Service",
+        state: "State",
+        description: "Description",
+        ok: "OK",
+        fail: "FAIL",
+        noSupervisorStatus: "No supervisor status",
+        noMatchedErrors: "No matched recent errors.",
+        matches: "{count} matches",
+        noGroupedErrors: "No grouped error data.",
+        noLogContent: "No log content.",
+        dashboard: "Dashboard",
+        error: "Error",
+        logServiceLabel: "Log service",
+        logLinesLabel: "Log lines",
+        languageLabel: "Language"
+      },
+      zh: {
+        autoRefresh: "自动刷新",
+        refresh: "刷新",
+        overview: "总览",
+        resources: "资源",
+        healthChecks: "健康检查",
+        services: "服务",
+        recentErrors: "近期错误",
+        logs: "日志",
+        load: "加载",
+        metrics: "指标",
+        selectLog: "选择一个服务日志。",
+        loadingRuntime: "正在加载运行摘要...",
+        loading: "加载中",
+        overall: "整体状态",
+        healthy: "健康",
+        unhealthy: "异常",
+        checks: "检查项",
+        checksPassing: "{passing}/{total} 通过",
+        processes: "进程数",
+        uptime: "运行时长",
+        runtimeSummary: "运行摘要",
+        cpuLoad: "CPU 负载",
+        memory: "内存",
+        disk: "磁盘 {path}",
+        noResourceData: "暂无资源数据。",
+        noChecksConfigured: "没有配置检查项",
+        name: "名称",
+        status: "状态",
+        latency: "耗时",
+        service: "服务",
+        state: "状态",
+        description: "描述",
+        ok: "正常",
+        fail: "失败",
+        noSupervisorStatus: "暂无 Supervisor 状态",
+        noMatchedErrors: "近期没有匹配到错误。",
+        matches: "{count} 条匹配",
+        noGroupedErrors: "暂无分组错误数据。",
+        noLogContent: "暂无日志内容。",
+        dashboard: "控制台",
+        error: "错误",
+        logServiceLabel: "日志服务",
+        logLinesLabel: "日志行数",
+        languageLabel: "语言"
+      }
+    };
     let timer = null;
+    let locale = detectLocale();
 
     const byId = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -1085,6 +1184,37 @@ def html_index(token: str) -> str:
       '"': "&quot;",
       "'": "&#39;"
     }[char]));
+
+    function detectLocale() {
+      const saved = localStorage.getItem("dify_ops_locale");
+      if (saved === "zh" || saved === "en") return saved;
+      return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+    }
+
+    function t(key, values = {}) {
+      let text = (I18N[locale] && I18N[locale][key]) || I18N.en[key] || key;
+      Object.entries(values).forEach(([name, value]) => {
+        text = text.replaceAll(`{${name}}`, value);
+      });
+      return text;
+    }
+
+    function applyI18n() {
+      document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+      byId("languageSelect").value = locale;
+      byId("languageSelect").setAttribute("aria-label", t("languageLabel"));
+      byId("logService").setAttribute("aria-label", t("logServiceLabel"));
+      byId("logLines").setAttribute("aria-label", t("logLinesLabel"));
+      document.querySelectorAll("[data-i18n]").forEach((node) => {
+        node.textContent = t(node.getAttribute("data-i18n"));
+      });
+      if (byId("versionLine").textContent === "Loading runtime summary..." || byId("versionLine").textContent === I18N.zh.loadingRuntime) {
+        byId("versionLine").textContent = t("loadingRuntime");
+      }
+      if (byId("overall").textContent === "Loading" || byId("overall").textContent === I18N.zh.loading) {
+        byId("overall").textContent = t("loading");
+      }
+    }
 
     function fmtBytes(value) {
       if (!Number.isFinite(value)) return "n/a";
@@ -1137,19 +1267,19 @@ def html_index(token: str) -> str:
       const checks = health.checks || [];
       const failed = checks.filter((item) => !item.ok).length;
       byId("summary").innerHTML = [
-        stat("Overall", health.ok ? "Healthy" : "Unhealthy", health.ok ? "ok-text" : "bad-text"),
-        stat("Checks", `${checks.length - failed}/${checks.length} passing`),
-        stat("Processes", system.process_count ?? "n/a"),
-        stat("Uptime", fmtDuration(system.uptime_seconds)),
+        stat(t("overall"), health.ok ? t("healthy") : t("unhealthy"), health.ok ? "ok-text" : "bad-text"),
+        stat(t("checks"), t("checksPassing", {passing: checks.length - failed, total: checks.length})),
+        stat(t("processes"), system.process_count ?? "n/a"),
+        stat(t("uptime"), fmtDuration(system.uptime_seconds)),
       ].join("");
       const overall = byId("overall");
-      overall.textContent = health.ok ? "Healthy" : "Unhealthy";
+      overall.textContent = health.ok ? t("healthy") : t("unhealthy");
       overall.className = `status-pill ${health.ok ? "ok" : "bad"}`;
       byId("versionLine").textContent = [
         version.version?.dify_version ? `Dify ${version.version.dify_version}` : "",
         version.version?.deploy_env || "",
         version.version?.public_url || version.version?.space_host || "",
-      ].filter(Boolean).join(" · ") || "Runtime summary";
+      ].filter(Boolean).join(" · ") || t("runtimeSummary");
     }
 
     function renderResources(system) {
@@ -1157,54 +1287,55 @@ def html_index(token: str) -> str:
       const memory = system.memory || {};
       const disk = system.disk || {};
       const rows = [];
-      if (cpu.ok) rows.push(resourceBar("CPU load", Math.min(100, (cpu.load1 / Math.max(cpu.cpu_count || 1, 1)) * 100), `1m ${cpu.load1}, 5m ${cpu.load5}, 15m ${cpu.load15}`));
-      if (memory.ok) rows.push(resourceBar("Memory", memory.used_percent, `${fmtBytes(memory.used_bytes)} / ${fmtBytes(memory.total_bytes)}`));
+      if (cpu.ok) rows.push(resourceBar(t("cpuLoad"), Math.min(100, (cpu.load1 / Math.max(cpu.cpu_count || 1, 1)) * 100), `1m ${cpu.load1}, 5m ${cpu.load5}, 15m ${cpu.load15}`));
+      if (memory.ok) rows.push(resourceBar(t("memory"), memory.used_percent, `${fmtBytes(memory.used_bytes)} / ${fmtBytes(memory.total_bytes)}`));
       Object.values(disk).forEach((usage) => {
-        if (usage.ok) rows.push(resourceBar(`Disk ${usage.path}`, usage.used_percent, `${fmtBytes(usage.used_bytes)} / ${fmtBytes(usage.total_bytes)}`));
+        if (usage.ok) rows.push(resourceBar(t("disk", {path: usage.path}), usage.used_percent, `${fmtBytes(usage.used_bytes)} / ${fmtBytes(usage.total_bytes)}`));
       });
-      byId("resources").innerHTML = rows.join("") || '<div class="muted">No resource data.</div>';
+      byId("resources").innerHTML = rows.join("") || `<div class="muted">${esc(t("noResourceData"))}</div>`;
     }
 
     function renderChecks(health) {
       const checks = health.checks || [];
       if (!checks.length) {
-        byId("checks").innerHTML = `<div class="bad-text">${esc(health.error || "No checks configured")}</div>`;
+        const message = health.error === "no checks configured" ? t("noChecksConfigured") : (health.error || t("noChecksConfigured"));
+        byId("checks").innerHTML = `<div class="bad-text">${esc(message)}</div>`;
         return;
       }
-      byId("checks").innerHTML = `<table><thead><tr><th>Name</th><th>Status</th><th>Latency</th></tr></thead><tbody>${
-        checks.map((item) => `<tr><td>${esc(item.name)}</td><td class="${item.ok ? "ok-text" : "bad-text"}">${item.ok ? "OK" : "FAIL"}</td><td>${esc(item.duration_ms ?? "")} ms</td></tr>`).join("")
+      byId("checks").innerHTML = `<table><thead><tr><th>${esc(t("name"))}</th><th>${esc(t("status"))}</th><th>${esc(t("latency"))}</th></tr></thead><tbody>${
+        checks.map((item) => `<tr><td>${esc(item.name)}</td><td class="${item.ok ? "ok-text" : "bad-text"}">${item.ok ? esc(t("ok")) : esc(t("fail"))}</td><td>${esc(item.duration_ms ?? "")} ms</td></tr>`).join("")
       }</tbody></table>`;
     }
 
     function renderServices(status) {
       const programs = status.supervisor?.programs || [];
       if (!programs.length) {
-        byId("services").innerHTML = `<div class="bad-text">${esc(status.supervisor?.stderr || "No supervisor status")}</div>`;
+        byId("services").innerHTML = `<div class="bad-text">${esc(status.supervisor?.stderr || t("noSupervisorStatus"))}</div>`;
         return;
       }
-      byId("services").innerHTML = `<table><thead><tr><th>Service</th><th>State</th><th>Description</th></tr></thead><tbody>${
+      byId("services").innerHTML = `<table><thead><tr><th>${esc(t("service"))}</th><th>${esc(t("state"))}</th><th>${esc(t("description"))}</th></tr></thead><tbody>${
         programs.map((item) => `<tr><td>${esc(item.name)}</td><td class="${item.ok ? "ok-text" : "bad-text"}">${esc(item.state)}</td><td>${esc(item.description)}</td></tr>`).join("")
       }</tbody></table>`;
     }
 
     function renderErrors(errors) {
       if (errors.ok) {
-        byId("errors").innerHTML = '<div class="ok-text">No matched recent errors.</div>';
+        byId("errors").innerHTML = `<div class="ok-text">${esc(t("noMatchedErrors"))}</div>`;
         return;
       }
       const groups = errors.groups || [];
       byId("errors").innerHTML = groups.map((group) => {
         const patterns = Object.entries(group.pattern_counts || {}).map(([key, value]) => `${esc(key)}: ${value}`).join(", ");
         const lines = (group.matches || []).map((item) => `<div class="error-line"><strong>${esc(item.pattern)}</strong> ${esc(item.line)}</div>`).join("");
-        return `<div class="error-group"><strong>${esc(group.service)}</strong> <span class="muted">${group.count} matches · ${patterns}</span>${lines}</div>`;
-      }).join("") || '<div class="muted">No grouped error data.</div>';
+        return `<div class="error-group"><strong>${esc(group.service)}</strong> <span class="muted">${esc(t("matches", {count: group.count}))} · ${patterns}</span>${lines}</div>`;
+      }).join("") || `<div class="muted">${esc(t("noGroupedErrors"))}</div>`;
     }
 
     async function loadLog() {
       const service = byId("logService").value;
       const lines = byId("logLines").value || "120";
       const payload = await getJson(`logs?service=${encodeURIComponent(service)}&lines=${encodeURIComponent(lines)}`);
-      byId("logOutput").textContent = payload.content || payload.error || "No log content.";
+      byId("logOutput").textContent = payload.content || payload.error || t("noLogContent");
     }
 
     async function refreshAll() {
@@ -1230,12 +1361,19 @@ def html_index(token: str) -> str:
 
     byId("refreshButton").addEventListener("click", refreshAll);
     byId("autoRefresh").addEventListener("change", configureTimer);
+    byId("languageSelect").addEventListener("change", () => {
+      locale = byId("languageSelect").value === "zh" ? "zh" : "en";
+      localStorage.setItem("dify_ops_locale", locale);
+      applyI18n();
+      refreshAll();
+    });
     byId("loadLog").addEventListener("click", loadLog);
     byId("metricsLink").href = `metrics?token=${encodeURIComponent(TOKEN)}`;
+    applyI18n();
     refreshAll().catch((error) => {
-      byId("overall").textContent = "Error";
+      byId("overall").textContent = t("error");
       byId("overall").className = "status-pill bad";
-      byId("summary").innerHTML = stat("Dashboard", error.message || String(error), "bad-text");
+      byId("summary").innerHTML = stat(t("dashboard"), error.message || String(error), "bad-text");
     });
     configureTimer();
   </script>
