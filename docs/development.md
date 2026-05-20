@@ -51,6 +51,7 @@ bash -n \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
+  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 ```
@@ -259,6 +260,7 @@ bash -n \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
+  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 python3 -m py_compile docker/ops_service.py
@@ -272,6 +274,9 @@ git diff --check
 scripts/build.sh
 scripts/run-demo.sh
 OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
+ADMIN_ENABLED=true WEBSSH_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/run-demo.sh
+ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> \
+  scripts/webssh-smoke.sh http://localhost:8080
 ```
 
 如果部署到 Hugging Face：

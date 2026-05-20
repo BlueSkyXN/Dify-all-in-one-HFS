@@ -403,12 +403,22 @@ generated.env
 
 ## WebSSH / Web Terminal
 
-以下变量为未来 break-glass Web terminal 保留。当前镜像暴露 `/_admin/terminal/` 路由，但默认只代理到 disabled placeholder；镜像没有安装 `ttyd`，所以即使设置 `WEBSSH_ENABLED=true` 也只会返回 503，除非后续镜像显式加入 terminal binary。
+以下变量控制 break-glass Web terminal。当前镜像内置 `ttyd`，但默认 `WEBSSH_ENABLED=false`，`/_admin/terminal/` 返回 404。只有同时设置 `ADMIN_ENABLED=true`、`ADMIN_TOKEN=<strong-token>` 和 `WEBSSH_ENABLED=true` 时，Nginx 才会通过 `/_admin_auth_terminal` 鉴权后代理到 `ttyd`。
 
 | 变量 | 默认值 | 当前状态 |
 | --- | --- | --- |
-| `WEBSSH_ENABLED` | `false` | 默认 disabled placeholder；开启后需要镜像内有 `ttyd` |
+| `WEBSSH_ENABLED` | `false` | 默认 disabled placeholder；开启后启动 `ttyd` |
 | `WEBSSH_HOST` | `127.0.0.1` | terminal/placeholder bind host |
 | `WEBSSH_PORT` | `7681` | terminal/placeholder port |
-| `WEBSSH_SHELL` | `/bin/bash` | 未来 terminal shell |
-| `WEBSSH_MAX_CLIENTS` | `1` | 未来 terminal 最大连接数 |
+| `WEBSSH_BASE_PATH` | `/_admin/terminal` | `ttyd --base-path`，必须与 Nginx route 匹配 |
+| `WEBSSH_SHELL` | `/bin/bash` | terminal shell |
+| `WEBSSH_MAX_CLIENTS` | `1` | terminal 最大连接数 |
+
+本地或线上启用后，建议单独跑：
+
+```bash
+ADMIN_EXPECTED_ENABLED=true \
+WEBSSH_EXPECTED_ENABLED=true \
+ADMIN_TOKEN=<admin-token> \
+scripts/webssh-smoke.sh <base-url>
+```

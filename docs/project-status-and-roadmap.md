@@ -6,7 +6,7 @@
 
 `dify-all-in-one` 是面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程，不是生产部署方案。当前实现已经覆盖核心 demo 目标：
 
-- 单容器多进程：`supervisord` 管理 Dify Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、ops-service、admin-service、web-terminal placeholder 和 Nginx。
+- 单容器多进程：`supervisord` 管理 Dify Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、ops-service、admin-service、默认关闭的 web-terminal 和 Nginx。
 - 单公开端口：Nginx 固定监听 `7860`，与 Hugging Face `app_port: 7860`、`Dockerfile EXPOSE 7860` 保持一致。
 - Demo 存储边界：程序继续访问 `/data`，bucket-lite 模式把核心状态映射到 `/persist`，scratch/log/cache/run 默认放到 `/tmp/dify-aio`。
 - 运维边界：`/_ops` 保持只读诊断面；`/_admin` 是默认关闭的独立管理面，写 action 保持白名单、独立 token、CSRF、confirm 和审计边界。
@@ -38,7 +38,7 @@ Docker build、local container smoke 和 Hugging Face live smoke 仍是最终运
 | P1 | Admin/File Manager 场景验证 | 代码和 docs 已实现默认关闭、token、CSRF、白名单 action、file root 限制 | admin disabled/enabled smoke、file manager read/write/protected path smoke |
 | P1 | bucket-lite 持久化演练 | 已有演练模板；代码支持 `/persist`、PostgreSQL fallback 和 dump restore；仍需要场景实测 | 独立 volume 或 live Space 上的 PGDATA、fallback、dump restore 记录 |
 | P1 | 发布证据留存 | 已有最小 CI 和 release checklist；仍需要每次发布按模板记录结果 | 记录 static check、build/smoke、runtime SHA 和 skipped checks |
-| P2 | Web terminal 决策 | 当前只有 disabled/503 placeholder；没有安装 `ttyd` | owner 明确保持 placeholder，或单独设计 terminal binary、auth、audit、WebSocket smoke |
+| P1 | Web terminal 启用验证 | 已内置 `ttyd`，默认关闭，并通过 `/_admin/terminal/` 走 admin 鉴权 | `ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<token> scripts/webssh-smoke.sh <base>` 和可选 live smoke |
 | P2 | `/_ops` 增强 | 当前诊断面已覆盖 health/status/system/config/logs/errors/metrics | 增加版本漂移提示、日志过滤、Plugin Daemon schema 只读检查或 warmup 状态 |
 
 ## 下一步开发计划
@@ -47,7 +47,7 @@ Docker build、local container smoke 和 Hugging Face live smoke 仍是最终运
 2. P1 扩展 smoke 覆盖 admin/file manager：保持无额外依赖，用 shell + curl 先覆盖默认关闭、token 鉴权、action catalog、CSRF、protected path 和 root escape。
 3. P1 按 bucket-lite 演练模板执行实测：使用新的临时 Docker volume 或独立测试 Space，避免破坏现有 demo 数据；记录每组 env、commit SHA、日志关键行、`/_ops/health` 和 `/_ops/errors`。
 4. P1 持续使用发布证据模板：把 static/build/smoke/runtime SHA 的输出格式固定，保证每次 PR 或发布可以复核。
-5. P2 再决定 Web terminal 和 `/_ops` 增强：除非 owner 明确需要真实 terminal，否则继续把它定义为 placeholder，避免把高风险能力误写成已交付。
+5. P2 继续增强 `/_ops`：增加版本漂移提示、日志过滤、Plugin Daemon schema 只读检查或 warmup 状态；Web terminal 只在 Private/Protected 环境按需启用。
 
 ## 本次实施审查循环
 

@@ -1,6 +1,6 @@
 # docker/ navigation card
 
-本目录是容器 runtime 合同：entrypoint、env、Supervisor、Nginx、ops/admin 服务、web terminal placeholder、PostgreSQL backup loop 和 healthcheck。改任何 `docker/` 文件前读本卡；重点看 `entrypoint.sh`、`dify.env.*`、`supervisord.conf`、`nginx.conf`、`ops_service.py`、`admin_service.py`、`webssh_entrypoint.sh`、`postgres-backup-loop`、`with-*`。
+本目录是容器 runtime 合同：entrypoint、env、Supervisor、Nginx、ops/admin 服务、默认关闭的 web terminal、PostgreSQL backup loop 和 healthcheck。改任何 `docker/` 文件前读本卡；重点看 `entrypoint.sh`、`dify.env.*`、`supervisord.conf`、`nginx.conf`、`ops_service.py`、`admin_service.py`、`webssh_entrypoint.sh`、`postgres-backup-loop`、`with-*`。
 
 ## 高风险
 
@@ -24,7 +24,7 @@
 - Plugin Daemon migration 后再启动 `main`。
 - `SANDBOX_ENABLE_NETWORK=false` 是默认值；改变时同步 security docs。
 - `/_admin` 默认 disabled；写 action 只能留在 admin 白名单，不能进入 `/_ops`。
-- Web terminal 默认 placeholder；没有 `ttyd` 时 `WEBSSH_ENABLED=true` 也只能返回 503。
+- Web terminal 默认关闭；只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时才能通过 `/_admin/terminal/` 进入。
 - Nginx 保留 `listen 7860`、`/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/_admin/terminal/`、`/socket.io/`、`/e/`。
 - `/_ops/logs` 只读 service 白名单；`ops-service` 保持只读。
 

@@ -46,7 +46,7 @@ Docker Space 构建入口。
 职责：
 
 - 复用官方 Dify Web/API/Plugin/Sandbox 镜像。
-- 安装系统依赖、PostgreSQL、pgvector、Nginx、Supervisor、Redis、Node.js、uv。
+- 安装系统依赖、PostgreSQL、pgvector、Nginx、Supervisor、Redis、Node.js、uv 和 `ttyd`。
 - 注入 `DIFY_AIO_BUILD_*` 构建元数据，供 `/_ops/version` 只读展示。
 - 创建 rootless runtime user。
 - 复制 runtime scripts、Nginx、Supervisor、ops-service 和 admin-service。
@@ -57,6 +57,7 @@ Docker Space 构建入口。
 ```text
 DIFY_VERSION
 UV_VERSION
+TTYD_VERSION
 DIFY_API_IMAGE
 DIFY_WEB_IMAGE
 PLUGIN_DAEMON_IMAGE
@@ -108,7 +109,7 @@ GitHub Actions 轻量静态检查 workflow。
 
 - 保留已有 Docker/HF env。
 - 为 Dify API/Web/Worker/Beat、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
-- 为 Admin Service 和 Web terminal placeholder 设置默认值。
+- 为 Admin Service 和默认关闭的 Web terminal 设置默认值。
 - 被 `entrypoint.sh`、`with-*` wrapper 和 `wait-for-core` source。
 
 修改注意：
@@ -235,13 +236,13 @@ bucket-lite PostgreSQL dump 备份循环。
 
 ### `docker/webssh_entrypoint.sh`
 
-Web terminal placeholder / ttyd wrapper。
+Web terminal disabled placeholder / `ttyd` wrapper。
 
 职责：
 
 - `WEBSSH_ENABLED=false` 时监听 `WEBSSH_HOST:WEBSSH_PORT` 并返回 disabled placeholder。
-- `WEBSSH_ENABLED=true` 但镜像没有 `ttyd` 时返回 503 placeholder。
-- 只有后续镜像显式安装 `ttyd` 时才启动 interactive terminal。
+- `WEBSSH_ENABLED=true` 时启动镜像内置 `ttyd`，并通过 `WEBSSH_BASE_PATH` 匹配 Nginx route。
+- 如果后续自定义镜像移除 `ttyd`，会返回 503 placeholder。
 
 ### `docker/with-dify-env`
 
@@ -334,6 +335,8 @@ volume=dify-hf-demo-persist:/persist
 env-file=docker/dify.env.demo
 ```
 
+脚本会额外透传当前 shell 中已设置的 `OPS_TOKEN`、`ADMIN_*` 和 `WEBSSH_*` 变量，便于本地启动开启 admin 或 terminal 的临时 demo。
+
 ### `scripts/hf-space-smoke.sh`
 
 线上或本地 smoke 脚本。
@@ -344,6 +347,7 @@ env-file=docker/dify.env.demo
 - 或 `HF_SPACE_URL`。
 - `OPS_TOKEN` 可选，用于检查 `/_ops`。
 - `ADMIN_TOKEN` + `SMOKE_ADMIN_ENABLED=true` 可选，用于检查已开启的 `/_admin`。
+- `SMOKE_WEBSSH_ENABLED=true` 可选，用于检查已开启的 `/_admin/terminal/`。
 - `SMOKE_RETRIES` 和 `SMOKE_DELAY` 控制重试。
 
 检查：
@@ -354,6 +358,7 @@ env-file=docker/dify.env.demo
 /nginx-health
 /healthz
 /_admin/
+/_admin/terminal/
 /console/api/setup
 /console/api/init
 /_ops/health
@@ -371,6 +376,16 @@ env-file=docker/dify.env.demo
 - 默认验证 `ADMIN_ENABLED=false` 时 `/_admin/` 和 `/_admin/api/status` 返回 404。
 - `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、action catalog、CSRF、`confirm=true` 和 file manager 边界。
 - 默认不执行真实 admin action；只有 `ADMIN_SMOKE_ACTIONS=true` 时才调用 `run-health-checks`。
+
+### `scripts/webssh-smoke.sh`
+
+`/_admin/terminal/` 专用 smoke 脚本。
+
+职责：
+
+- 默认验证 `WEBSSH_ENABLED=false` 时 `/_admin/terminal/` 返回 404。
+- `WEBSSH_EXPECTED_ENABLED=true` 时要求 `ADMIN_EXPECTED_ENABLED=true` 和 `ADMIN_TOKEN`。
+- 验证 terminal auth API、未授权访问、错误 token 和带 token 的 terminal HTML 入口。
 
 ### `scripts/static-check.sh`
 
