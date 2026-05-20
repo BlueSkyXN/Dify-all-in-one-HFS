@@ -132,8 +132,7 @@ RUN set -eux; \
     release_url="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}"; \
     curl -fsSL "${release_url}/${ttyd_asset}" -o /usr/local/bin/ttyd; \
     curl -fsSL "${release_url}/SHA256SUMS" -o /tmp/ttyd.SHA256SUMS; \
-    grep "  ${ttyd_asset}$" /tmp/ttyd.SHA256SUMS \
-      | sed "s#  ${ttyd_asset}$#  /usr/local/bin/ttyd#" \
+    awk -v asset="${ttyd_asset}" '$2 == asset { print $1 "  /usr/local/bin/ttyd" }' /tmp/ttyd.SHA256SUMS \
       | sha256sum -c -; \
     chmod 0755 /usr/local/bin/ttyd; \
     ttyd --version; \
