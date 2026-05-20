@@ -24,6 +24,7 @@ pinned: false
 - [配置参考](./docs/configuration.md)
 - [部署指南](./docs/deployment.md)
 - [发布检查清单](./docs/release-checklist.md)
+- [bucket-lite 持久化演练](./docs/bucket-lite-drill.md)
 - [运维与可观测 Runbook](./docs/ops-runbook.md)
 - [开发指南](./docs/development.md)
 - [文件职责说明](./docs/file-reference.md)

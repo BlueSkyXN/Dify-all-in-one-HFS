@@ -11,10 +11,11 @@
 5. [Configuration Reference](./configuration.md): 环境变量分组、默认值、覆盖优先级、Secrets 和 Hugging Face Space 设置。
 6. [Deployment Guide](./deployment.md): Hugging Face Space 部署、本地 Docker 运行、发布后 smoke 和 runtime 状态确认。
 7. [Release Checklist](./release-checklist.md): GitHub PR、`main`、Hugging Face runtime 和 smoke 的证据记录模板。
-8. [Operations Runbook](./ops-runbook.md): `/_ops` 诊断入口、健康检查、日志查看、502 排障和发布验收。
-9. [Development Guide](./development.md): 本地开发、改动点、验证命令、提交前检查和常见修改流程。
-10. [File Reference](./file-reference.md): 仓库内每个受版本控制文件的职责说明。
-11. [Security Notes](./security.md): 演示环境安全边界、默认密钥、公开 Space 风险和生产化注意事项。
+8. [Bucket-Lite Persistence Drill](./bucket-lite-drill.md): `/persist`、PostgreSQL fallback、dump backup 和重启保留的演练模板。
+9. [Operations Runbook](./ops-runbook.md): `/_ops` 诊断入口、健康检查、日志查看、502 排障和发布验收。
+10. [Development Guide](./development.md): 本地开发、改动点、验证命令、提交前检查和常见修改流程。
+11. [File Reference](./file-reference.md): 仓库内每个受版本控制文件的职责说明。
+12. [Security Notes](./security.md): 演示环境安全边界、默认密钥、公开 Space 风险和生产化注意事项。
 
 ## 快速命令
 
