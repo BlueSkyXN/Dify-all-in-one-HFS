@@ -362,6 +362,16 @@ env-file=docker/dify.env.demo
 /_ops/errors
 ```
 
+### `scripts/admin-smoke.sh`
+
+`/_admin` 专用 smoke 脚本。
+
+职责：
+
+- 默认验证 `ADMIN_ENABLED=false` 时 `/_admin/` 和 `/_admin/api/status` 返回 404。
+- `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、action catalog、CSRF、`confirm=true` 和 file manager 边界。
+- 默认不执行真实 admin action；只有 `ADMIN_SMOKE_ACTIONS=true` 时才调用 `run-health-checks`。
+
 ### `scripts/static-check.sh`
 
 无额外依赖的本地静态检查入口。
