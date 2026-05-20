@@ -50,6 +50,7 @@ bash -n \
   docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
+  scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 ```
@@ -219,6 +220,7 @@ curl -i <base>/_admin/
 ```bash
 curl -H "X-Admin-Token: $ADMIN_TOKEN" <base>/_admin/api/status
 curl -H "X-Admin-Token: $ADMIN_TOKEN" <base>/_admin/api/actions
+ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=$ADMIN_TOKEN scripts/admin-smoke.sh <base>
 ```
 
 安全要求：
@@ -256,6 +258,7 @@ bash -n \
   docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
+  scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 python3 -m py_compile docker/ops_service.py

@@ -113,6 +113,10 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"service":"dify-api","confirm":true}' \
   https://your-space.hf.space/_admin/api/actions/restart-service
+
+ADMIN_EXPECTED_ENABLED=true \
+ADMIN_TOKEN=$ADMIN_TOKEN \
+scripts/admin-smoke.sh https://your-space.hf.space
 ```
 
 浏览器访问 `/_admin/` 会用 `ADMIN_TOKEN` 登录并换取 signed HttpOnly cookie。不要把 `ADMIN_TOKEN` 放进 URL query。
