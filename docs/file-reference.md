@@ -47,6 +47,7 @@ Docker Space 构建入口。
 
 - 复用官方 Dify Web/API/Plugin/Sandbox 镜像。
 - 安装系统依赖、PostgreSQL、pgvector、Nginx、Supervisor、Redis、Node.js、uv。
+- 注入 `DIFY_AIO_BUILD_*` 构建元数据，供 `/_ops/version` 只读展示。
 - 创建 rootless runtime user。
 - 复制 runtime scripts、Nginx、Supervisor、ops-service 和 admin-service。
 - 声明 `HEALTHCHECK` 和最终 `ENTRYPOINT`。
@@ -202,6 +203,7 @@ Nginx 路由和日志配置。
 - 首页是单文件 HTML/CSS/原生 JS dashboard，不需要前端构建。
 - 支持通过 `OPS_EXTRA_*_CHECKS_JSON` 增加 HTTP、TCP 和只读 command 健康探针。
 - 返回 CPU load、memory、disk、uptime 和 process count 的只读系统摘要。
+- 通过 `/_ops/version` 返回 build image 来源和 Sandbox requirements 摘要。
 - 返回 Prometheus-style text metrics。
 - 通过 `OPS_LOG_DIR` 只读读取白名单日志，并允许用 `OPS_LOG_SERVICES_JSON` 扩展相对日志文件映射。
 - 只返回 secret presence，不返回 secret 原文。
