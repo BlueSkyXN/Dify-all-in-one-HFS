@@ -24,10 +24,12 @@
 4. `sandbox-image`
    - 来源：`langgenius/dify-sandbox:0.2.15`
    - 最终复制 `/main`、`/conf` 和 `/dependencies`。
+   - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
 5. `runtime`
    - 来源：`python:3.12-slim-bookworm`
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv 等运行时依赖。
+   - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
    - 将 Sandbox binary 设置为 setuid root，满足 sandbox runtime 需求。
 
