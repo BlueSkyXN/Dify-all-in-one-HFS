@@ -81,6 +81,8 @@ curl "https://your-space.hf.space/_ops/health?token=$OPS_TOKEN"
 https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 ```
 
+`/_ops/` dashboard 支持 English / 中文切换，并会默认跟随浏览器语言；选择会保存在浏览器本地。
+
 `?token=` 适合临时调试，不适合长期使用，因为 URL 可能进入浏览器历史或代理日志。CLI 和自动化脚本优先使用 `X-Ops-Token`。
 
 需要 `ADMIN_TOKEN` 的管理入口，默认关闭：
@@ -119,7 +121,7 @@ ADMIN_TOKEN=$ADMIN_TOKEN \
 scripts/admin-smoke.sh https://your-space.hf.space
 ```
 
-浏览器访问 `/_admin/` 会用 `ADMIN_TOKEN` 登录并换取 signed HttpOnly cookie。不要把 `ADMIN_TOKEN` 放进 URL query。
+浏览器访问 `/_admin/` 会用 `ADMIN_TOKEN` 登录并换取 signed HttpOnly cookie。`/_admin/` 管理页面支持 English / 中文切换，并会默认跟随浏览器语言；选择会保存在浏览器本地。不要把 `ADMIN_TOKEN` 放进 URL query。
 
 ## 配置项
 
