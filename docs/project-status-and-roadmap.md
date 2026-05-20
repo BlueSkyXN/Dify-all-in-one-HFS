@@ -30,9 +30,11 @@ scripts/static-check.sh
 
 Docker build、local container smoke 和 Hugging Face live smoke 仍是最终运行证据，但它们依赖 Docker daemon、网络、HF CLI 登录态和 live Space 状态，不应被包装成每次小改动的默认本地门禁。
 
-## 最新已回读证据
+## 发布证据口径
 
-最近一次已回读发布快照：
+本文件不是自动更新的 release log，不应把下方历史快照当成任意新提交的运行证据。每次发布或推送 Hugging Face 后，都必须用目标 commit 重新回读 `hf spaces info`，并按实际 token/权限跑 smoke。
+
+最近一次完整带 `OPS_TOKEN` 的线上 smoke 快照：
 
 ```text
 Date: 2026-05-20
@@ -44,14 +46,14 @@ HF runtime.stage: RUNNING
 HF runtime.raw.sha: d398057683de11335fdfe666678ededc36298828
 ```
 
-该快照的线上 smoke 已覆盖 public health、iframe headers、`/_admin/` 默认关闭、`/_admin/terminal/` 默认关闭、setup/init API，以及带当前 Space `OPS_TOKEN` 的 `/_ops/health`、`/_ops/system`、`/_ops/metrics`、`/_ops/errors`。每次新发布仍必须按目标 commit 重新回读 runtime metadata 和 smoke；不要复用旧 SHA 证据证明新变更。
+该快照覆盖 public health、iframe headers、`/_admin/` 默认关闭、`/_admin/terminal/` 默认关闭、setup/init API，以及带 Space `OPS_TOKEN` 的 `/_ops/health`、`/_ops/system`、`/_ops/metrics`、`/_ops/errors`。若后续是 docs-only 发布，仍要至少确认 GitHub/HF head、`runtime.stage`、`runtime.raw.sha` 和无需 token 的 public smoke；没有 `OPS_TOKEN` 时，不要声称 token-protected `/_ops/*` 已完成线上验证。
 
 ## 后续验证项
 
 | Priority | Item | Current state | Next evidence needed |
 | --- | --- | --- | --- |
 | P0 | 本地 build/run/smoke 证据 | 静态检查可跑；完整 Docker build/run 未在本次文档审计阶段作为默认动作执行 | `scripts/build.sh`、`scripts/run-demo.sh`、`OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080` |
-| P0 | Hugging Face runtime 回读 | 最近一次 `d398057` 已回读 `RUNNING` 并完成线上 smoke；每个新发布仍必须重新验证 | `hf spaces info BlueSkyXN/dify-all-in-one` 中 `runtime.stage=RUNNING` 且 `runtime.raw.sha=<expected sha>` |
+| P0 | Hugging Face runtime 回读 | 每个新发布都必须按目标 commit 单独验证；不要用历史 SHA 证明当前 head | `hf spaces info BlueSkyXN/dify-all-in-one` 中 `runtime.stage=RUNNING` 且 `runtime.raw.sha=<expected sha>` |
 | P1 | Admin/File Manager 场景验证 | 默认关闭状态已在线上 smoke 覆盖；代码和 docs 已实现 token、CSRF、白名单 action、file root 限制 | admin enabled smoke、file manager read/write/protected path smoke |
 | P1 | bucket-lite 持久化演练 | 已有演练模板；代码支持 `/persist`、PostgreSQL fallback 和 dump restore；仍需要场景实测 | 独立 volume 或 live Space 上的 PGDATA、fallback、dump restore 记录 |
 | P1 | 发布证据留存 | 已有最小 CI 和 release checklist；仍需要每次发布按模板记录结果 | 记录 static check、build/smoke、runtime SHA 和 skipped checks |
