@@ -2,7 +2,7 @@
 
 ## 项目目的
 
-`dify-all-in-one` 是面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把 Dify Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service`、默认关闭的 `/_admin` 管理面（由 `admin-service` 承载）和 Web terminal placeholder 收敛到一个 Docker 容器中，用于企业内训、课程演示、PoC 和快速功能验证。
+`dify-all-in-one` 是面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把 Dify Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service`、默认关闭的 `/_admin` 管理面（由 `admin-service` 承载）和默认关闭的 Web terminal 收敛到一个 Docker 容器中，用于企业内训、课程演示、PoC 和快速功能验证。
 
 本仓库不是生产部署方案。生产环境应回到官方 Docker Compose、Kubernetes 或企业内网拆分式部署，并单独设计高可用、备份、鉴权、审计和正式监控。
 
@@ -26,7 +26,7 @@
 | `.dockerignore` | Docker build context 过滤 | No | 修改哪些文件进入 Docker build context 时 |
 | `.gitattributes` | Git/LFS 文件处理规则 | No | 修改大文件、二进制文件或 LFS 跟踪规则时 |
 | `.gitignore` | 本地 generated/cache 忽略规则 | No | 新增 `.DS_Store`、浏览器 profile、Python cache 等本地 artifact 时 |
-| `docker/` | 容器 runtime 合同：entrypoint、env defaults、Supervisor、Nginx、ops-service、admin-service、web terminal placeholder、PostgreSQL backup loop、healthcheck | Yes | 修改 `docker/` 下任何文件前 |
+| `docker/` | 容器 runtime 合同：entrypoint、env defaults、Supervisor、Nginx、ops-service、admin-service、默认关闭的 web terminal、PostgreSQL backup loop、healthcheck | Yes | 修改 `docker/` 下任何文件前 |
 | `scripts/` | 本地 build/run wrapper 和 HF/local smoke 脚本 | No | 修改命令包装、smoke 预期、重试策略、默认 image tag 或默认 Space URL 时 |
 | `docs/` | 工程文档、部署指南、运维 runbook、配置和安全说明 | No | 修改用户/运维文档时；先用真实 runtime 文件核对事实 |
 | `local/` | 如果存在，为本地计划或 scratch 材料 | No | 除非用户明确要求本地计划材料，否则不要编辑 |
@@ -49,7 +49,7 @@ cat docker/AGENTS.md
 | Command | Purpose | Scope | Sandbox notes |
 | --- | --- | --- | --- |
 | `scripts/static-check.sh` | 聚合轻量静态检查：shell 语法、Python 语法和 diff whitespace | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
-| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop docker/webssh_entrypoint.sh scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/hf-space-smoke.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
+| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop docker/webssh_entrypoint.sh scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/webssh-smoke.sh scripts/hf-space-smoke.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
 | `python3 -m py_compile docker/ops_service.py docker/admin_service.py` | 检查 ops/admin Python 服务语法 | `docker/ops_service.py`, `docker/admin_service.py` | 需要 Python 3 |
 | `git diff --check` | 检查 diff whitespace 问题 | repo | 只读；如果有无关 dirty diff，使用 path-limited 形式 |
 | `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:1.14.1` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
@@ -59,6 +59,7 @@ cat docker/AGENTS.md
 | `OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space` | smoke 线上 HF Space | live Space | 需要网络和有效 demo 或配置后的 `OPS_TOKEN` |
 | `SMOKE_ADMIN_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh <base-url>` | smoke 已开启的 `/_admin` 管理面 | local/live Space | 仅在 `ADMIN_ENABLED=true` 且有有效 `ADMIN_TOKEN` 时使用；写 action 还需显式 `SMOKE_ADMIN_ACTIONS=true` |
 | `ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/admin-smoke.sh <base-url>` | 单独 smoke `/_admin` 鉴权、CSRF、action confirm 和 file manager 边界 | local/live Space | 默认不执行真实 action；写 action 需显式 `ADMIN_SMOKE_ACTIONS=true` |
+| `ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/webssh-smoke.sh <base-url>` | 单独 smoke `/_admin/terminal/` 鉴权和 `ttyd` 入口 | local/live Space | 仅在 `ADMIN_ENABLED=true`、`WEBSSH_ENABLED=true` 且有有效 `ADMIN_TOKEN` 时使用 |
 | `hf spaces info BlueSkyXN/dify-all-in-one` | 查看 Space runtime metadata | deployment | 需要 HF CLI、网络和必要登录态 |
 | `hf spaces logs BlueSkyXN/dify-all-in-one -n 220` | 查看 app logs | deployment | 需要 HF CLI 和网络 |
 | `hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220` | 查看 build logs | deployment | 需要 HF CLI 和网络 |
@@ -91,7 +92,7 @@ cat docker/AGENTS.md
 - CLI 和自动化示例优先使用 `X-Ops-Token` 或 `Authorization: Bearer`；`?token=` 只适合临时浏览器调试。
 - Nginx 路由修改必须保护 `/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/_admin/terminal/`、`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/socket.io/`、`/e/`、`/explore` 和 `/`，除非用户明确要求重做路由。
 - `/socket.io/` 必须保留 WebSocket `Upgrade` / `Connection` header。
-- `/_admin/terminal/` 必须保留 `auth_request /_admin_auth_terminal` 和 WebSocket `Upgrade` / `Connection` header；当前镜像没有 `ttyd`，默认只是 disabled placeholder。
+- `/_admin/terminal/` 必须保留 `auth_request /_admin_auth_terminal` 和 WebSocket `Upgrade` / `Connection` header；默认 `WEBSSH_ENABLED=false` 时返回 disabled placeholder，开启后代理到镜像内置 `ttyd`。
 - `/e/` 必须保留 `Dify-Hook-Url`，用于 Plugin Daemon endpoint hook。
 - `NGINX_PORT` 和 `NGINX_CLIENT_MAX_BODY_SIZE` 是 env defaults；除非实现模板渲染，不要声称它们会动态改变静态 `docker/nginx.conf`。
 - Shell 脚本保持 Bash 和 `set -euo pipefail` 风格，修改后跑 `bash -n`。
@@ -148,6 +149,7 @@ bash -n \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
+  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 python3 -m py_compile docker/ops_service.py

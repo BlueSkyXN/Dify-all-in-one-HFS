@@ -5,6 +5,26 @@ CONTAINER_NAME=${CONTAINER_NAME:-dify-aio-hf-demo}
 PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
 PERSIST_VOLUME=${PERSIST_VOLUME:-dify-hf-demo-persist}
 
+env_passthrough=(-e "PUBLIC_URL=$PUBLIC_URL")
+for name in \
+  OPS_TOKEN \
+  ADMIN_ENABLED \
+  ADMIN_TOKEN \
+  ADMIN_FILES_ENABLED \
+  ADMIN_FILES_ROOT \
+  ADMIN_FILES_WRITE_ENABLED \
+  WEBSSH_ENABLED \
+  WEBSSH_HOST \
+  WEBSSH_PORT \
+  WEBSSH_BASE_PATH \
+  WEBSSH_SHELL \
+  WEBSSH_MAX_CLIENTS
+do
+  if [ "${!name+x}" = "x" ]; then
+    env_passthrough+=(-e "$name=${!name}")
+  fi
+done
+
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 docker run -d \
@@ -12,7 +32,7 @@ docker run -d \
   -p 8080:7860 \
   -v "$PERSIST_VOLUME":/persist \
   --env-file docker/dify.env.demo \
-  -e PUBLIC_URL="$PUBLIC_URL" \
+  "${env_passthrough[@]}" \
   "$IMAGE_TAG"
 
 echo "Dify all-in-one demo started: $PUBLIC_URL"

@@ -162,12 +162,22 @@ ADMIN_FILES_MAX_UPLOAD_BYTES=10485760
 WEBSSH_ENABLED=false
 WEBSSH_HOST=127.0.0.1
 WEBSSH_PORT=7681
+WEBSSH_BASE_PATH=/_admin/terminal
 WEBSSH_SHELL=/bin/bash
 WEBSSH_MAX_CLIENTS=1
 ```
 
 公开 Space 不建议开启 admin。确需开启时，至少使用 Private/Protected Space、强随机 `ADMIN_TOKEN`，并保持 file writes 关闭，除非正在做受控排障。
-`/_admin/terminal/` 当前只代理到 disabled placeholder；镜像不安装 `ttyd`，`WEBSSH_ENABLED=true` 但缺少 binary 时会返回 503。
+`/_admin/terminal/` 默认返回 404。确需启用 terminal 时，设置 `WEBSSH_ENABLED=true` 并通过 `ADMIN_TOKEN` 鉴权访问；当前镜像内置 `ttyd`，Nginx 只把鉴权通过的请求代理到 `127.0.0.1:7681`。
+
+Web terminal smoke：
+
+```bash
+ADMIN_EXPECTED_ENABLED=true \
+WEBSSH_EXPECTED_ENABLED=true \
+ADMIN_TOKEN=<admin-token> \
+scripts/webssh-smoke.sh https://your-space.hf.space
+```
 
 ## 版本和构建元数据
 
@@ -186,6 +196,7 @@ version.build.dify_web_image
 version.build.plugin_daemon_image
 version.build.sandbox_image
 version.build.uv_version
+version.build.ttyd_version
 version.sandbox.python_path
 version.sandbox.requirements.sha256
 version.sandbox.requirements.package_count

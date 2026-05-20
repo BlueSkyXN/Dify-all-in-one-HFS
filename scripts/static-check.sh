@@ -51,6 +51,7 @@ bash -n \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
+  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 

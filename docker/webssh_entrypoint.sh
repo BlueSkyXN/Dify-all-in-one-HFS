@@ -41,6 +41,7 @@ PY_PLACEHOLDER
 
 WEBSSH_HOST=${WEBSSH_HOST:-127.0.0.1}
 WEBSSH_PORT=${WEBSSH_PORT:-7681}
+WEBSSH_BASE_PATH=${WEBSSH_BASE_PATH:-/_admin/terminal}
 WEBSSH_SHELL=${WEBSSH_SHELL:-/bin/bash}
 WEBSSH_MAX_CLIENTS=${WEBSSH_MAX_CLIENTS:-1}
 
@@ -52,9 +53,11 @@ if ! command -v ttyd >/dev/null 2>&1; then
   run_placeholder 503 "WEBSSH_ENABLED=true but ttyd is not installed in this image"
 fi
 
+echo "[dify-aio-webssh] starting ttyd on http://${WEBSSH_HOST}:${WEBSSH_PORT}${WEBSSH_BASE_PATH}/" >&2
 exec ttyd \
   --interface "$WEBSSH_HOST" \
   --port "$WEBSSH_PORT" \
+  --base-path "$WEBSSH_BASE_PATH" \
   --max-clients "$WEBSSH_MAX_CLIENTS" \
   --writable \
   "$WEBSSH_SHELL"
