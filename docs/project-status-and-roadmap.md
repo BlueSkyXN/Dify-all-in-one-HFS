@@ -36,7 +36,7 @@ Docker build、local container smoke 和 Hugging Face live smoke 仍是最终运
 | P0 | 本地 build/run/smoke 证据 | 静态检查可跑；完整 Docker build/run 未在本次静态审计阶段作为默认动作执行 | `scripts/build.sh`、`scripts/run-demo.sh`、`OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080` |
 | P0 | Hugging Face runtime 回读 | 文档和脚本已覆盖流程；是否接管最新 commit 必须 live 回读 | `hf spaces info BlueSkyXN/dify-all-in-one` 中 `runtime.stage=RUNNING` 且 `runtime.raw.sha=<expected sha>` |
 | P1 | Admin/File Manager 场景验证 | 代码和 docs 已实现默认关闭、token、CSRF、白名单 action、file root 限制 | admin disabled/enabled smoke、file manager read/write/protected path smoke |
-| P1 | bucket-lite 持久化演练 | 代码支持 `/persist`、PostgreSQL fallback 和 dump restore；仍需要场景实测 | 独立 volume 或 live Space 上的 PGDATA、fallback、dump restore 记录 |
+| P1 | bucket-lite 持久化演练 | 已有演练模板；代码支持 `/persist`、PostgreSQL fallback 和 dump restore；仍需要场景实测 | 独立 volume 或 live Space 上的 PGDATA、fallback、dump restore 记录 |
 | P1 | 发布证据留存 | 已有最小 CI 和 release checklist；仍需要每次发布按模板记录结果 | 记录 static check、build/smoke、runtime SHA 和 skipped checks |
 | P2 | Web terminal 决策 | 当前只有 disabled/503 placeholder；没有安装 `ttyd` | owner 明确保持 placeholder，或单独设计 terminal binary、auth、audit、WebSocket smoke |
 | P2 | `/_ops` 增强 | 当前诊断面已覆盖 health/status/system/config/logs/errors/metrics | 增加版本漂移提示、日志过滤、Plugin Daemon schema 只读检查或 warmup 状态 |
@@ -45,7 +45,7 @@ Docker build、local container smoke 和 Hugging Face live smoke 仍是最终运
 
 1. P0 先补运行证据：先跑 `scripts/static-check.sh`，再在具备 Docker daemon 的环境跑 build/run/local smoke；如果要验证线上，先确认 GitHub 与 Hugging Face remote 分叉关系，再回读 Space runtime SHA。
 2. P1 扩展 smoke 覆盖 admin/file manager：保持无额外依赖，用 shell + curl 先覆盖默认关闭、token 鉴权、action catalog、CSRF、protected path 和 root escape。
-3. P1 做 bucket-lite 演练：使用新的临时 Docker volume 或独立测试 Space，避免破坏现有 demo 数据；记录每组 env、commit SHA、日志关键行、`/_ops/health` 和 `/_ops/errors`。
+3. P1 按 bucket-lite 演练模板执行实测：使用新的临时 Docker volume 或独立测试 Space，避免破坏现有 demo 数据；记录每组 env、commit SHA、日志关键行、`/_ops/health` 和 `/_ops/errors`。
 4. P1 持续使用发布证据模板：把 static/build/smoke/runtime SHA 的输出格式固定，保证每次 PR 或发布可以复核。
 5. P2 再决定 Web terminal 和 `/_ops` 增强：除非 owner 明确需要真实 terminal，否则继续把它定义为 placeholder，避免把高风险能力误写成已交付。
 
