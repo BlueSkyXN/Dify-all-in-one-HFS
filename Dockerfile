@@ -170,8 +170,8 @@ COPY --from=sandbox-image --chown=user:user /conf /conf
 COPY --from=sandbox-image --chown=user:user /dependencies /dependencies
 COPY docker/sandbox-python-requirements.txt /dependencies/python-requirements.txt
 
-RUN python3 -m pip install --no-cache-dir -r /dependencies/python-requirements.txt \
-    && python3 -m pip check
+RUN /usr/local/bin/python3 -m pip install --no-cache-dir -r /dependencies/python-requirements.txt \
+    && /usr/local/bin/python3 -m pip check
 
 # Runtime scripts and config.
 RUN mkdir -p /etc/dify
