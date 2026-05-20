@@ -624,8 +624,11 @@ def html_index(authenticated: bool) -> str:
     }
     button, input, select { min-height: 36px; padding: 0 10px; }
     button { cursor: pointer; }
+    button:disabled, input:disabled { cursor: not-allowed; opacity: 0.58; }
     textarea { width: 100%; min-height: 260px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
     .toolbar, .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .field { display: grid; gap: 6px; margin: 10px 0; }
+    .field label { color: var(--muted); font-size: 13px; }
     .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
     .panel { grid-column: span 6; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
     .wide { grid-column: span 12; }
@@ -655,9 +658,20 @@ def html_index(authenticated: bool) -> str:
   <main>
     <section id="loginPanel" class="panel __LOGIN_CLASS__">
       <h1>Dify Admin</h1>
-      <p class="muted">Sign in with ADMIN_TOKEN.</p>
-      <input id="loginToken" type="password" autocomplete="current-password" placeholder="ADMIN_TOKEN">
-      <button id="loginButton" type="button">Sign in</button>
+      <div class="toolbar" style="justify-content: flex-end;">
+        <select id="loginLanguageSelect" aria-label="Language">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+        </select>
+      </div>
+      <p class="muted" data-i18n="signInHint">Sign in with ADMIN_TOKEN.</p>
+      <form id="loginForm">
+        <div class="field">
+          <label for="loginToken">ADMIN_TOKEN</label>
+          <input id="loginToken" type="password" autocomplete="current-password" placeholder="ADMIN_TOKEN">
+        </div>
+        <button id="loginButton" type="submit" data-i18n="signIn">Sign in</button>
+      </form>
       <div id="loginMessage" class="bad"></div>
     </section>
 
@@ -669,41 +683,45 @@ def html_index(authenticated: bool) -> str:
         </div>
         <div class="toolbar">
           <span id="overall" class="pill">Loading</span>
-          <button id="terminalButton" type="button" class="hidden">Terminal</button>
-          <button id="refreshButton" type="button">Refresh</button>
-          <button id="logoutButton" type="button">Logout</button>
+          <select id="languageSelect" aria-label="Language">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+          </select>
+          <button id="terminalButton" type="button" class="hidden" data-i18n="terminal">Terminal</button>
+          <button id="refreshButton" type="button" data-i18n="refresh">Refresh</button>
+          <button id="logoutButton" type="button" data-i18n="logout">Logout</button>
         </div>
       </header>
       <section class="grid">
         <section class="panel">
-          <h2>Actions</h2>
+          <h2 data-i18n="actions">Actions</h2>
           <div class="row">
-            <select id="serviceSelect"></select>
-            <button id="restartButton" type="button">Restart</button>
+            <select id="serviceSelect" aria-label="Service"></select>
+            <button id="restartButton" type="button" data-i18n="restart">Restart</button>
           </div>
           <div class="row" style="margin-top: 8px;">
-            <button id="reloadNginxButton" type="button">Reload Nginx</button>
-            <button id="healthButton" type="button">Run Health Checks</button>
+            <button id="reloadNginxButton" type="button" data-i18n="reloadNginx">Reload Nginx</button>
+            <button id="healthButton" type="button" data-i18n="runHealthChecks">Run Health Checks</button>
           </div>
-          <pre id="actionOutput">No action yet.</pre>
+          <pre id="actionOutput" data-i18n="noActionYet">No action yet.</pre>
         </section>
         <section class="panel">
-          <h2>Supervisor</h2>
+          <h2 data-i18n="supervisor">Supervisor</h2>
           <div id="services"></div>
         </section>
         <section class="panel wide">
-          <h2>Files</h2>
+          <h2 data-i18n="files">Files</h2>
           <div class="row">
             <input id="filePath" value="/" aria-label="Path">
-            <button id="listFilesButton" type="button">List</button>
-            <button id="newDirButton" type="button">New Dir</button>
-            <input id="uploadFile" type="file">
+            <button id="listFilesButton" type="button" data-i18n="list">List</button>
+            <button id="newDirButton" type="button" data-i18n="newDir">New Dir</button>
+            <input id="uploadFile" type="file" aria-label="Upload file">
           </div>
           <div id="files"></div>
           <textarea id="fileText" class="hidden"></textarea>
           <div class="row hidden" id="textActions">
-            <button id="saveTextButton" type="button">Save</button>
-            <button id="downloadButton" type="button">Download</button>
+            <button id="saveTextButton" type="button" data-i18n="save">Save</button>
+            <button id="downloadButton" type="button" data-i18n="download">Download</button>
           </div>
         </section>
       </section>
@@ -713,10 +731,159 @@ def html_index(authenticated: bool) -> str:
     let csrfToken = "";
     let writeEnabled = false;
     let currentTextPath = "";
+    const I18N = {
+      en: {
+        signInHint: "Sign in with ADMIN_TOKEN.",
+        signIn: "Sign in",
+        terminal: "Terminal",
+        refresh: "Refresh",
+        logout: "Logout",
+        actions: "Actions",
+        service: "Service",
+        restart: "Restart",
+        reloadNginx: "Reload Nginx",
+        runHealthChecks: "Run Health Checks",
+        noActionYet: "No action yet.",
+        supervisor: "Supervisor",
+        files: "Files",
+        path: "Path",
+        uploadFile: "Upload file",
+        list: "List",
+        newDir: "New Dir",
+        save: "Save",
+        download: "Download",
+        loadingRuntime: "Loading runtime summary...",
+        loading: "Loading",
+        ready: "Ready",
+        unknown: "unknown",
+        enabled: "enabled",
+        disabled: "disabled",
+        admin: "admin",
+        fileManager: "files",
+        terminalState: "terminal",
+        fileManagerDisabled: "File manager is disabled.",
+        program: "Program",
+        state: "State",
+        description: "Description",
+        noSupervisorStatus: "No supervisor status yet.",
+        name: "Name",
+        type: "Type",
+        size: "Size",
+        open: "Open",
+        text: "Text",
+        protected: "protected",
+        unableToList: "unable to list files",
+        directoryEmpty: "Directory is empty.",
+        directoryPrompt: "Directory path",
+        languageLabel: "Language",
+        loginFailed: "login failed"
+      },
+      zh: {
+        signInHint: "使用 ADMIN_TOKEN 登录。",
+        signIn: "登录",
+        terminal: "终端",
+        refresh: "刷新",
+        logout: "退出登录",
+        actions: "操作",
+        service: "服务",
+        restart: "重启",
+        reloadNginx: "重载 Nginx",
+        runHealthChecks: "运行健康检查",
+        noActionYet: "还没有执行操作。",
+        supervisor: "Supervisor 进程",
+        files: "文件",
+        path: "路径",
+        uploadFile: "上传文件",
+        list: "列出",
+        newDir: "新建目录",
+        save: "保存",
+        download: "下载",
+        loadingRuntime: "正在加载运行摘要...",
+        loading: "加载中",
+        ready: "就绪",
+        unknown: "未知",
+        enabled: "已开启",
+        disabled: "已关闭",
+        admin: "管理面",
+        fileManager: "文件",
+        terminalState: "终端",
+        fileManagerDisabled: "文件管理器已关闭。",
+        program: "程序",
+        state: "状态",
+        description: "描述",
+        noSupervisorStatus: "暂无 Supervisor 状态。",
+        name: "名称",
+        type: "类型",
+        size: "大小",
+        open: "打开",
+        text: "文本",
+        protected: "受保护",
+        unableToList: "无法列出文件",
+        directoryEmpty: "目录为空。",
+        directoryPrompt: "目录路径",
+        languageLabel: "语言",
+        loginFailed: "登录失败"
+      }
+    };
+    let locale = detectLocale();
     const byId = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[char]));
+
+    function detectLocale() {
+      const saved = localStorage.getItem("dify_admin_locale");
+      if (saved === "zh" || saved === "en") return saved;
+      return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+    }
+
+    function t(key, values = {}) {
+      let text = (I18N[locale] && I18N[locale][key]) || I18N.en[key] || key;
+      Object.entries(values).forEach(([name, value]) => {
+        text = text.replaceAll(`{${name}}`, value);
+      });
+      return text;
+    }
+
+    function syncLanguageControls() {
+      ["languageSelect", "loginLanguageSelect"].forEach((id) => {
+        const control = byId(id);
+        if (control) {
+          control.value = locale;
+          control.setAttribute("aria-label", t("languageLabel"));
+        }
+      });
+    }
+
+    function applyI18n() {
+      document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+      syncLanguageControls();
+      byId("serviceSelect").setAttribute("aria-label", t("service"));
+      byId("filePath").setAttribute("aria-label", t("path"));
+      byId("uploadFile").setAttribute("aria-label", t("uploadFile"));
+      document.querySelectorAll("[data-i18n]").forEach((node) => {
+        node.textContent = t(node.getAttribute("data-i18n"));
+      });
+      if (byId("runtimeLine").textContent === "Loading runtime summary..." || byId("runtimeLine").textContent === I18N.zh.loadingRuntime) {
+        byId("runtimeLine").textContent = t("loadingRuntime");
+      }
+      if (byId("overall").textContent === "Loading" || byId("overall").textContent === I18N.zh.loading) {
+        byId("overall").textContent = t("loading");
+      }
+    }
+
+    function setLocale(value) {
+      locale = value === "zh" ? "zh" : "en";
+      localStorage.setItem("dify_admin_locale", locale);
+      applyI18n();
+      if (!byId("app").classList.contains("hidden")) refresh();
+    }
+
+    function updateWriteControls() {
+      byId("newDirButton").disabled = !writeEnabled;
+      byId("uploadFile").disabled = !writeEnabled;
+      byId("saveTextButton").disabled = !writeEnabled || !currentTextPath;
+    }
 
     async function api(path, options = {}) {
       const headers = options.headers || {};
@@ -737,7 +904,7 @@ def html_index(authenticated: bool) -> str:
       const token = byId("loginToken").value;
       const payload = await api("api/login", {method: "POST", json: {token}});
       if (!payload.ok) {
-        byId("loginMessage").textContent = payload.error || "login failed";
+        byId("loginMessage").textContent = payload.error || t("loginFailed");
         return;
       }
       csrfToken = payload.csrf_token;
@@ -759,9 +926,10 @@ def html_index(authenticated: bool) -> str:
       }
       csrfToken = payload.auth.csrf_token;
       writeEnabled = payload.files.write_enabled;
-      byId("overall").textContent = "Ready";
+      updateWriteControls();
+      byId("overall").textContent = t("ready");
       byId("overall").className = "pill ok";
-      byId("runtimeLine").textContent = `${payload.dify_version || "unknown"} · admin ${payload.admin.enabled ? "enabled" : "disabled"} · files ${payload.files.enabled ? "enabled" : "disabled"} · terminal ${payload.webssh.enabled ? "enabled" : "disabled"}`;
+      byId("runtimeLine").textContent = `${payload.dify_version || t("unknown")} · ${t("admin")} ${payload.admin.enabled ? t("enabled") : t("disabled")} · ${t("fileManager")} ${payload.files.enabled ? t("enabled") : t("disabled")} · ${t("terminalState")} ${payload.webssh.enabled ? t("enabled") : t("disabled")}`;
       const terminalButton = byId("terminalButton");
       if (payload.webssh.enabled) {
         const terminalPath = payload.webssh.base_path || "/_admin/terminal";
@@ -777,7 +945,7 @@ def html_index(authenticated: bool) -> str:
       if (payload.files.enabled) {
         listFiles();
       } else {
-        byId("files").innerHTML = `<p class="muted">File manager is disabled.</p>`;
+        byId("files").innerHTML = `<p class="muted">${esc(t("fileManagerDisabled"))}</p>`;
       }
     }
 
@@ -789,10 +957,10 @@ def html_index(authenticated: bool) -> str:
 
     function renderServices(programs) {
       if (!programs.length) {
-        byId("services").innerHTML = `<p class="muted">No supervisor status yet.</p>`;
+        byId("services").innerHTML = `<p class="muted">${esc(t("noSupervisorStatus"))}</p>`;
         return;
       }
-      byId("services").innerHTML = `<table><thead><tr><th>Program</th><th>State</th><th>Description</th></tr></thead><tbody>${programs.map((program) =>
+      byId("services").innerHTML = `<table><thead><tr><th>${esc(t("program"))}</th><th>${esc(t("state"))}</th><th>${esc(t("description"))}</th></tr></thead><tbody>${programs.map((program) =>
         `<tr><td>${esc(program.name)}</td><td class="${program.ok ? "ok" : "bad"}">${esc(program.state)}</td><td>${esc(program.description)}</td></tr>`
       ).join("")}</tbody></table>`;
     }
@@ -807,19 +975,19 @@ def html_index(authenticated: bool) -> str:
       const path = byId("filePath").value || "/";
       const payload = await api(`api/files/list?path=${encodeURIComponent(path)}`);
       if (!payload.ok) {
-        byId("files").innerHTML = `<p class="bad">${esc(payload.error || "unable to list files")}</p>`;
+        byId("files").innerHTML = `<p class="bad">${esc(payload.error || t("unableToList"))}</p>`;
         return;
       }
       byId("filePath").value = payload.path;
       if (!payload.entries.length) {
-        byId("files").innerHTML = `<p class="muted">Directory is empty.</p>`;
+        byId("files").innerHTML = `<p class="muted">${esc(t("directoryEmpty"))}</p>`;
         return;
       }
-      byId("files").innerHTML = `<table><thead><tr><th>Name</th><th>Type</th><th>Size</th><th></th></tr></thead><tbody>${payload.entries.map((entry) => {
+      byId("files").innerHTML = `<table><thead><tr><th>${esc(t("name"))}</th><th>${esc(t("type"))}</th><th>${esc(t("size"))}</th><th></th></tr></thead><tbody>${payload.entries.map((entry) => {
         const open = entry.type === "directory"
-          ? `<button type="button" data-dir="${esc(entry.path)}">Open</button>`
-          : `<button type="button" data-text="${esc(entry.path)}" ${entry.protected ? "disabled" : ""}>Text</button>`;
-        return `<tr><td>${esc(entry.name)}${entry.protected ? " <span class='muted'>protected</span>" : ""}</td><td>${esc(entry.type)}</td><td>${esc(entry.size)}</td><td>${open}</td></tr>`;
+          ? `<button type="button" data-dir="${esc(entry.path)}">${esc(t("open"))}</button>`
+          : `<button type="button" data-text="${esc(entry.path)}" ${entry.protected ? "disabled" : ""}>${esc(t("text"))}</button>`;
+        return `<tr><td>${esc(entry.name)}${entry.protected ? ` <span class='muted'>${esc(t("protected"))}</span>` : ""}</td><td>${esc(entry.type)}</td><td>${esc(entry.size)}</td><td>${open}</td></tr>`;
       }).join("")}</tbody></table>`;
       byId("files").querySelectorAll("[data-dir]").forEach((button) => button.addEventListener("click", () => {
         byId("filePath").value = button.getAttribute("data-dir");
@@ -838,7 +1006,7 @@ def html_index(authenticated: bool) -> str:
       byId("fileText").value = payload.content;
       byId("fileText").classList.remove("hidden");
       byId("textActions").classList.remove("hidden");
-      byId("saveTextButton").disabled = !writeEnabled;
+      updateWriteControls();
     }
 
     async function saveText() {
@@ -848,7 +1016,8 @@ def html_index(authenticated: bool) -> str:
     }
 
     async function makeDir() {
-      const name = prompt("Directory path");
+      if (!writeEnabled) return;
+      const name = prompt(t("directoryPrompt"));
       if (!name) return;
       const payload = await api("api/files/mkdir", {method: "POST", json: {path: name, parents: true, exist_ok: true}});
       byId("actionOutput").textContent = JSON.stringify(payload, null, 2);
@@ -856,6 +1025,7 @@ def html_index(authenticated: bool) -> str:
     }
 
     async function uploadFile() {
+      if (!writeEnabled) return;
       const file = byId("uploadFile").files[0];
       if (!file) return;
       const base = byId("filePath").value.replace(/\/$/, "");
@@ -870,9 +1040,13 @@ def html_index(authenticated: bool) -> str:
       listFiles();
     }
 
-    byId("loginButton").addEventListener("click", login);
-    byId("loginToken").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
+    byId("loginForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      login();
+    });
     byId("refreshButton").addEventListener("click", refresh);
+    byId("languageSelect").addEventListener("change", () => setLocale(byId("languageSelect").value));
+    byId("loginLanguageSelect").addEventListener("change", () => setLocale(byId("loginLanguageSelect").value));
     byId("logoutButton").addEventListener("click", async () => {
       await api("api/logout", {method: "POST"});
       location.reload();
@@ -885,6 +1059,8 @@ def html_index(authenticated: bool) -> str:
     byId("saveTextButton").addEventListener("click", saveText);
     byId("downloadButton").addEventListener("click", () => { if (currentTextPath) location.href = `api/files/download?path=${encodeURIComponent(currentTextPath)}`; });
     byId("uploadFile").addEventListener("change", uploadFile);
+    applyI18n();
+    updateWriteControls();
     if (!byId("app").classList.contains("hidden")) refresh();
   </script>
 </body>
