@@ -554,8 +554,38 @@ restore_postgres_backup_if_needed() {
 }
 
 stop_temp_postgres() {
+  source_runtime_env
   log "Stopping temporary PostgreSQL..."
-  /usr/lib/postgresql/15/bin/pg_ctl -D /data/postgres -m fast -w stop >/data/logs/postgres-init-stop.log 2>&1 || true
+  /usr/lib/postgresql/15/bin/pg_ctl -D /data/postgres -m fast -w -t 30 stop >/data/logs/postgres-init-stop.log 2>&1 || true
+
+  local pid_file=/data/postgres/postmaster.pid
+  local pid=
+  if [ -s "$pid_file" ]; then
+    pid=$(sed -n '1p' "$pid_file" | tr -dc '0-9')
+  fi
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    local cmdline=
+    if [ -r "/proc/${pid}/cmdline" ]; then
+      cmdline=$(tr '\0' ' ' < "/proc/${pid}/cmdline")
+    fi
+    if printf '%s' "$cmdline" | grep -q 'postgres'; then
+      log "Temporary PostgreSQL still running as PID ${pid}; sending TERM before continuing."
+      kill "$pid" 2>/dev/null || true
+      local attempt
+      for attempt in $(seq 1 30); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        log "Temporary PostgreSQL PID ${pid} did not stop after TERM; sending KILL."
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+    fi
+  fi
+
+  rm -f \
+    "/data/run/postgresql/.s.PGSQL.${DB_PORT}" \
+    "/data/run/postgresql/.s.PGSQL.${DB_PORT}.lock"
 }
 
 init_postgres() {
