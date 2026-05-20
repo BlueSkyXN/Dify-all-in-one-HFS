@@ -110,7 +110,7 @@ ADMIN_FILES_WRITE_ENABLED=false
 
 `/_admin/api/files/*` 是 admin file manager，不属于 ops-service。它默认以 `/data` 为 root，并把请求 path 当成相对 root 的路径处理；解析后的路径必须仍在 `ADMIN_FILES_ROOT` 内。默认拒绝读取或写入 `generated.env`、`*.pem`、`*.key`、`*secret*`、`*token*`。写入能力还需要额外开启 `ADMIN_FILES_WRITE_ENABLED=true`。
 
-WebSSH 或 interactive shell 风险明显高于受控 action catalog。当前镜像暴露 `/_admin/terminal/` 路由，但默认只代理到 disabled placeholder；镜像不安装 `ttyd`，所以不会提供可交互 shell。后续如果真正启用，只建议 Private/Protected 环境开启，并需要独立强 token、session timeout、审计日志和清晰的命令风险说明。
+WebSSH 或 interactive shell 风险明显高于受控 action catalog。当前镜像内置 `ttyd`，但 `WEBSSH_ENABLED=false` 是默认值，`/_admin/terminal/` 默认返回 404。确需启用时必须同时开启 `ADMIN_ENABLED=true`、设置独立强 `ADMIN_TOKEN`，并通过 Nginx `auth_request` 鉴权后才代理到 `ttyd`。只建议在 Private/Protected 环境做受控排障，并保留 session timeout、审计日志和清晰的命令风险说明。
 
 ## Hugging Face iframe 嵌入
 

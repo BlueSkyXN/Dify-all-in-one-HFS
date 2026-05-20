@@ -12,7 +12,7 @@ flowchart TD
     nginx --> plugin["Plugin Daemon :5002"]
     nginx --> ops["ops-service :8081"]
     nginx --> admin["admin-service :8082"]
-    nginx --> terminal["web terminal placeholder :7681"]
+    nginx --> terminal["web terminal :7681"]
     api --> postgres["PostgreSQL 15 + pgvector :5432"]
     api --> redis["Redis :6379"]
     api --> sandbox["Sandbox :8194"]
@@ -80,7 +80,7 @@ flowchart TD
 | `dify-web` | `0.0.0.0:3000` | Next.js Web UI | stdout/stderr |
 | `ops-service` | `127.0.0.1:8081` | 只读诊断服务 | stdout/stderr |
 | `admin-service` | `127.0.0.1:8082` | 默认关闭的受控管理面 | stdout/stderr |
-| `web-terminal` | `127.0.0.1:7681` | 默认关闭的 Web terminal placeholder；启用需镜像内有 `ttyd` | stdout/stderr |
+| `web-terminal` | `127.0.0.1:7681` | 默认关闭的 Web terminal；启用后运行 `ttyd` | stdout/stderr |
 | `nginx` | `0.0.0.0:7860` | 外部单入口反向代理 | `/data/logs/nginx.log`, stderr |
 
 ## Nginx 路由
@@ -95,7 +95,7 @@ flowchart TD
 | `/_ops/` | `127.0.0.1:8081` | 只读运维诊断入口 |
 | `/_admin` | redirect `/_admin/` | 保留 query string |
 | `/_admin/` | `127.0.0.1:8082` | Admin 管理面；默认由 admin-service 返回 404 |
-| `/_admin/terminal/` | `127.0.0.1:7681` | Web terminal route；默认代理到 disabled placeholder |
+| `/_admin/terminal/` | `127.0.0.1:7681` | Web terminal route；默认 404，启用后需 admin 鉴权 |
 | `/console/api` | `127.0.0.1:5001` | Dify console API |
 | `/api` | `127.0.0.1:5001` | Dify API |
 | `/v1` | `127.0.0.1:5001` | OpenAPI style endpoint |
@@ -131,7 +131,7 @@ flowchart TD
     supervisor --> nginx["nginx"]
     supervisor --> ops["ops-service"]
     supervisor --> admin["admin-service"]
-    supervisor --> terminal["web-terminal placeholder"]
+    supervisor --> terminal["web-terminal"]
 ```
 
 长期运行阶段的依赖由 `docker/wait-for-core` 控制：
@@ -248,4 +248,4 @@ run-health-checks
 
 File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
 
-WebSSH 或 interactive shell 只能作为最后阶段的独立模块，并且默认关闭。当前镜像不安装 terminal binary；`WEBSSH_ENABLED=false` 时 `web-terminal` 只返回 disabled placeholder，`WEBSSH_ENABLED=true` 但缺少 `ttyd` 时返回 503 placeholder。
+WebSSH 或 interactive shell 是独立的高风险模块，并且默认关闭。当前镜像内置 `ttyd`，但只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时，`/_admin/terminal/` 才会通过 Nginx `auth_request` 代理到 terminal；默认 `WEBSSH_ENABLED=false` 时只返回 404。

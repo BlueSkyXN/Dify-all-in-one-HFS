@@ -237,6 +237,7 @@ def status_payload(auth: AuthContext) -> dict[str, Any]:
             "enabled": webssh_enabled(),
             "host": env("WEBSSH_HOST", "127.0.0.1"),
             "port": parse_int(env("WEBSSH_PORT"), 7681, minimum=1, maximum=65535),
+            "base_path": env("WEBSSH_BASE_PATH", "/_admin/terminal"),
             "shell": env("WEBSSH_SHELL", "/bin/bash"),
             "max_clients": parse_int(env("WEBSSH_MAX_CLIENTS"), 1, minimum=1, maximum=16),
         },
@@ -668,6 +669,7 @@ def html_index(authenticated: bool) -> str:
         </div>
         <div class="toolbar">
           <span id="overall" class="pill">Loading</span>
+          <button id="terminalButton" type="button" class="hidden">Terminal</button>
           <button id="refreshButton" type="button">Refresh</button>
           <button id="logoutButton" type="button">Logout</button>
         </div>
@@ -759,7 +761,16 @@ def html_index(authenticated: bool) -> str:
       writeEnabled = payload.files.write_enabled;
       byId("overall").textContent = "Ready";
       byId("overall").className = "pill ok";
-      byId("runtimeLine").textContent = `${payload.dify_version || "unknown"} · admin ${payload.admin.enabled ? "enabled" : "disabled"} · files ${payload.files.enabled ? "enabled" : "disabled"}`;
+      byId("runtimeLine").textContent = `${payload.dify_version || "unknown"} · admin ${payload.admin.enabled ? "enabled" : "disabled"} · files ${payload.files.enabled ? "enabled" : "disabled"} · terminal ${payload.webssh.enabled ? "enabled" : "disabled"}`;
+      const terminalButton = byId("terminalButton");
+      if (payload.webssh.enabled) {
+        const terminalPath = payload.webssh.base_path || "/_admin/terminal";
+        terminalButton.classList.remove("hidden");
+        terminalButton.onclick = () => window.open(terminalPath.endsWith("/") ? terminalPath : `${terminalPath}/`, "_blank", "noreferrer");
+      } else {
+        terminalButton.classList.add("hidden");
+        terminalButton.onclick = null;
+      }
       renderServices(payload.supervisor.programs || []);
       const actions = await api("api/actions");
       renderActions(actions.actions || []);

@@ -16,6 +16,7 @@
 
 ARG DIFY_VERSION=1.14.1
 ARG UV_VERSION=0.8.9
+ARG TTYD_VERSION=1.7.7
 ARG DIFY_API_IMAGE=langgenius/dify-api
 ARG DIFY_WEB_IMAGE=langgenius/dify-web
 ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
@@ -57,6 +58,8 @@ COPY --from=api-image /tmp/api-builder.done /tmp/api-builder.done
 
 ARG DIFY_VERSION
 ARG UV_VERSION
+ARG TTYD_VERSION
+ARG TARGETARCH
 ARG DIFY_API_IMAGE
 ARG DIFY_WEB_IMAGE
 ARG PLUGIN_DAEMON_IMAGE
@@ -65,6 +68,7 @@ ARG SANDBOX_IMAGE
 ENV DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_UV_VERSION=${UV_VERSION}
+ENV DIFY_AIO_BUILD_TTYD_VERSION=${TTYD_VERSION}
 ENV DIFY_AIO_BUILD_DIFY_API_IMAGE=${DIFY_API_IMAGE}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE=${DIFY_WEB_IMAGE}
 ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE=${PLUGIN_DAEMON_IMAGE}
@@ -116,6 +120,24 @@ RUN apt-get update \
     && python3 -m pip install --no-cache-dir \
        "httpx[socks]==0.27.2" requests==2.32.3 jinja2==3.1.6 PySocks \
     && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "$target_arch" in \
+      amd64) ttyd_asset="ttyd.x86_64" ;; \
+      arm64) ttyd_asset="ttyd.aarch64" ;; \
+      arm) ttyd_asset="ttyd.arm" ;; \
+      *) echo "unsupported TARGETARCH for ttyd: ${target_arch}" >&2; exit 1 ;; \
+    esac; \
+    release_url="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}"; \
+    curl -fsSL "${release_url}/${ttyd_asset}" -o /usr/local/bin/ttyd; \
+    curl -fsSL "${release_url}/SHA256SUMS" -o /tmp/ttyd.SHA256SUMS; \
+    grep "  ${ttyd_asset}$" /tmp/ttyd.SHA256SUMS \
+      | sed "s#  ${ttyd_asset}$#  /usr/local/bin/ttyd#" \
+      | sha256sum -c -; \
+    chmod 0755 /usr/local/bin/ttyd; \
+    ttyd --version; \
+    rm -f /tmp/ttyd.SHA256SUMS
 
 # Dedicated non-root runtime user. Hugging Face Docker Spaces run containers as UID 1000.
 RUN groupadd --gid 1000 user \

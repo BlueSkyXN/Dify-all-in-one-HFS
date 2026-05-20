@@ -95,6 +95,7 @@ SAFE_CONFIG_KEYS = [
     "WEBSSH_ENABLED",
     "WEBSSH_HOST",
     "WEBSSH_PORT",
+    "WEBSSH_BASE_PATH",
     "WEBSSH_SHELL",
     "WEBSSH_MAX_CLIENTS",
 ]
@@ -531,6 +532,7 @@ def version_payload() -> dict[str, Any]:
         "build": {
             "dify_version": env("DIFY_AIO_BUILD_DIFY_VERSION"),
             "uv_version": env("DIFY_AIO_BUILD_UV_VERSION"),
+            "ttyd_version": env("DIFY_AIO_BUILD_TTYD_VERSION"),
             "dify_api_image": env("DIFY_AIO_BUILD_DIFY_API_IMAGE"),
             "dify_web_image": env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE"),
             "plugin_daemon_image": env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE"),

@@ -7,6 +7,7 @@ OPS_TOKEN=${OPS_TOKEN:-}
 ADMIN_TOKEN=${ADMIN_TOKEN:-}
 SMOKE_ADMIN_ENABLED=${SMOKE_ADMIN_ENABLED:-${ADMIN_ENABLED:-false}}
 SMOKE_ADMIN_ACTIONS=${SMOKE_ADMIN_ACTIONS:-false}
+SMOKE_WEBSSH_ENABLED=${SMOKE_WEBSSH_ENABLED:-${WEBSSH_ENABLED:-false}}
 SMOKE_RETRIES=${SMOKE_RETRIES:-30}
 SMOKE_DELAY=${SMOKE_DELAY:-5}
 
@@ -124,6 +125,38 @@ check_admin_action() {
   exit 1
 }
 
+check_webssh() {
+  local label=$1
+  local expected=$2
+  local token=$3
+  local status
+  local attempt
+
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    if [ -n "$token" ]; then
+      status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+        -H "X-Admin-Token: $token" \
+        "$BASE_URL/_admin/terminal/" || true)
+    else
+      status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+        "$BASE_URL/_admin/terminal/" || true)
+    fi
+    if [ "$status" = "$expected" ]; then
+      printf 'PASS %s: HTTP %s\n' "$label" "$status"
+      return
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected HTTP %s, got %s (%s/%s)\n' \
+        "$label" "$expected" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
+  printf 'FAIL %s: expected HTTP %s, got %s\n' "$label" "$expected" "$status" >&2
+  sed -n '1,80p' "$tmp_body" >&2 || true
+  exit 1
+}
+
 check_space_frame_headers() {
   local label="space-frame-headers"
   local url="$BASE_URL/apps"
@@ -177,8 +210,15 @@ if [ "$SMOKE_ADMIN_ENABLED" = "true" ]; then
   check_admin "admin-status" "/_admin/api/status"
   check_admin "admin-actions" "/_admin/api/actions"
   check_admin_action
+  if [ "$SMOKE_WEBSSH_ENABLED" = "true" ]; then
+    check_webssh "webssh-terminal-unauthorized" "401" ""
+    check_webssh "webssh-terminal" "200" "$ADMIN_TOKEN"
+  else
+    check_webssh "webssh-disabled" "404" ""
+  fi
 else
   check_status "admin-disabled" "$BASE_URL/_admin/" "404"
+  check_webssh "webssh-disabled" "404" ""
 fi
 check_status "setup-api" "$BASE_URL/console/api/setup" "200"
 check_status "init-api" "$BASE_URL/console/api/init" "200"
