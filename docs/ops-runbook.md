@@ -165,6 +165,30 @@ WEBSSH_MAX_CLIENTS=1
 公开 Space 不建议开启 admin。确需开启时，至少使用 Private/Protected Space、强随机 `ADMIN_TOKEN`，并保持 file writes 关闭，除非正在做受控排障。
 `/_admin/terminal/` 当前只代理到 disabled placeholder；镜像不安装 `ttyd`，`WEBSSH_ENABLED=true` 但缺少 binary 时会返回 503。
 
+## 版本和构建元数据
+
+`/_ops/version` 返回只读版本摘要：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" https://your-space.hf.space/_ops/version
+```
+
+重点字段：
+
+```text
+version.dify_version
+version.build.dify_api_image
+version.build.dify_web_image
+version.build.plugin_daemon_image
+version.build.sandbox_image
+version.build.uv_version
+version.sandbox.python_path
+version.sandbox.requirements.sha256
+version.sandbox.requirements.package_count
+```
+
+这些字段用于判断 live 镜像使用的上游 image 来源和 Sandbox requirements 摘要。它们不替代 Docker build log，也不证明 Hugging Face runtime 已接管目标 commit；发布时仍需对照 `hf spaces info` 的 `runtime.raw.sha`。
+
 ## 健康检查语义
 
 `/healthz` 是对外综合健康探针，内部实际由 `ops-service` 执行以下检查：

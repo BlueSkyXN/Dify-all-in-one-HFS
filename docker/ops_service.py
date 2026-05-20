@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import html
 import hmac
+import hashlib
 import json
 import os
 import socket
@@ -47,6 +48,12 @@ DEFAULT_SERVICE_LOGS = {
 
 SAFE_CONFIG_KEYS = [
     "DIFY_VERSION",
+    "DIFY_AIO_BUILD_DIFY_VERSION",
+    "DIFY_AIO_BUILD_UV_VERSION",
+    "DIFY_AIO_BUILD_DIFY_API_IMAGE",
+    "DIFY_AIO_BUILD_DIFY_WEB_IMAGE",
+    "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE",
+    "DIFY_AIO_BUILD_SANDBOX_IMAGE",
     "DEPLOY_ENV",
     "PUBLIC_URL",
     "SPACE_HOST",
@@ -91,6 +98,8 @@ SAFE_CONFIG_KEYS = [
     "WEBSSH_SHELL",
     "WEBSSH_MAX_CLIENTS",
 ]
+
+SANDBOX_REQUIREMENTS_PATH = Path("/dependencies/python-requirements.txt")
 
 SECRET_KEYS = [
     "SECRET_KEY",
@@ -212,6 +221,52 @@ def truncate_text(value: str, limit: int = 2048) -> str:
     if len(value) <= limit:
         return value
     return value[:limit] + "...<truncated>"
+
+
+def file_sha256(path: Path, max_bytes: int = 1_000_000) -> str | None:
+    try:
+        with path.open("rb") as file:
+            digest = hashlib.sha256()
+            read_bytes = 0
+            while True:
+                chunk = file.read(65536)
+                if not chunk:
+                    break
+                read_bytes += len(chunk)
+                if read_bytes > max_bytes:
+                    return None
+                digest.update(chunk)
+            return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def requirements_summary(path: Path) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+    }
+    if not path.exists():
+        return summary
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        summary["error"] = str(exc)
+        return summary
+    packages = [
+        line.strip()
+        for line in lines
+        if line.strip() and not line.strip().startswith("#") and not line.strip().startswith("-")
+    ]
+    summary.update(
+        {
+            "line_count": len(lines),
+            "package_count": len(packages),
+            "sha256": file_sha256(path),
+            "packages": packages[:200],
+        }
+    )
+    return summary
 
 
 def run_cmd(args: list[str], timeout: float = 2.0) -> dict[str, Any]:
@@ -473,6 +528,21 @@ def version_payload() -> dict[str, Any]:
         "space_host": env("SPACE_HOST"),
         "space_id": env("SPACE_ID"),
         "python": sys.version.split()[0],
+        "build": {
+            "dify_version": env("DIFY_AIO_BUILD_DIFY_VERSION"),
+            "uv_version": env("DIFY_AIO_BUILD_UV_VERSION"),
+            "dify_api_image": env("DIFY_AIO_BUILD_DIFY_API_IMAGE"),
+            "dify_web_image": env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE"),
+            "plugin_daemon_image": env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE"),
+            "sandbox_image": env("DIFY_AIO_BUILD_SANDBOX_IMAGE"),
+        },
+        "sandbox": {
+            "python_path": env("SANDBOX_PYTHON_PATH"),
+            "nodejs_path": env("SANDBOX_NODEJS_PATH"),
+            "enable_network": env("SANDBOX_ENABLE_NETWORK"),
+            "python_deps_update_interval": env("SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL"),
+            "requirements": requirements_summary(SANDBOX_REQUIREMENTS_PATH),
+        },
         "started_at": STARTED_AT,
         "uptime_seconds": int(time.time() - STARTED_AT),
     }
