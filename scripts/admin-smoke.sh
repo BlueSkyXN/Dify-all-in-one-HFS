@@ -51,6 +51,7 @@ expect_status "admin-status-unauthorized" "401" "$BASE_URL/_admin/api/status"
 expect_status "admin-status-bad-token" "401" -H "X-Admin-Token: invalid-admin-token" "$BASE_URL/_admin/api/status"
 expect_status "admin-status" "200" -H "X-Admin-Token: $ADMIN_TOKEN" "$BASE_URL/_admin/api/status"
 expect_status "admin-actions" "200" -H "X-Admin-Token: $ADMIN_TOKEN" "$BASE_URL/_admin/api/actions"
+expect_status "admin-audit" "200" -H "X-Admin-Token: $ADMIN_TOKEN" "$BASE_URL/_admin/api/audit?limit=5"
 expect_status "admin-action-missing-csrf" "403" \
   -X POST \
   -H "X-Admin-Token: $ADMIN_TOKEN" \

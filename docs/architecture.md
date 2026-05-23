@@ -257,7 +257,7 @@ reload-nginx
 run-health-checks
 ```
 
-每个写 action 都需要 CSRF header，重启和 reload 需要 `confirm=true`，并写入 `ADMIN_AUDIT_LOG`。请求不能传任意 shell command。
+每个写 action 都需要 CSRF header，重启和 reload 需要 `confirm=true`，并写入 `ADMIN_AUDIT_LOG`。`/_admin/api/audit` 只读展示最近审计事件，便于追踪管理操作。请求不能传任意 shell command。
 
 File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
 

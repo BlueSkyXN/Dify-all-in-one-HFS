@@ -221,6 +221,7 @@ curl -i <base>/_admin/
 ```bash
 curl -H "X-Admin-Token: $ADMIN_TOKEN" <base>/_admin/api/status
 curl -H "X-Admin-Token: $ADMIN_TOKEN" <base>/_admin/api/actions
+curl -H "X-Admin-Token: $ADMIN_TOKEN" "<base>/_admin/api/audit?limit=5"
 ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=$ADMIN_TOKEN scripts/admin-smoke.sh <base>
 ```
 
@@ -229,6 +230,7 @@ ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=$ADMIN_TOKEN scripts/admin-smoke.sh <bas
 - `ADMIN_ENABLED=false` 时 `/_admin/` 必须返回 404。
 - `ADMIN_ENABLED=true` 时必须设置 `ADMIN_TOKEN`。
 - 不复用 `OPS_TOKEN`。
+- audit endpoint 只能读取 `ADMIN_AUDIT_LOG` 的最近事件，不得读取任意文件。
 - action 必须是白名单，不允许请求传入任意 shell command。
 - 写 action 必须有 CSRF header，重启和 reload 必须要求 `confirm=true`。
 - file manager path 必须限制在 `ADMIN_FILES_ROOT` 内。

@@ -209,6 +209,7 @@ if [ "$SMOKE_ADMIN_ENABLED" = "true" ]; then
   check_status "admin-root" "$BASE_URL/_admin/" "200"
   check_admin "admin-status" "/_admin/api/status"
   check_admin "admin-actions" "/_admin/api/actions"
+  check_admin "admin-audit" "/_admin/api/audit?limit=5"
   check_admin_action
   if [ "$SMOKE_WEBSSH_ENABLED" = "true" ]; then
     check_webssh "webssh-terminal-unauthorized" "401" ""

@@ -105,7 +105,7 @@ ADMIN_FILES_WRITE_ENABLED=false
 - 只允许白名单 action，例如 restart service、reload nginx、run health checks。
 - 写 action 要求显式确认参数，例如 `confirm=true`。
 - 写请求要求 CSRF header。
-- 记录审计日志，返回 action id 和 result。
+- 记录审计日志，返回 action id 和 result；`/_admin/api/audit` 只读展示最近审计事件，不能读取任意文件，也不是完整合规审计系统。
 - 不从请求参数接收任意 shell command。
 
 当前没有提供 run migration、clear cache、SQL、任意 command 或配置修改。Dify migration 命令涉及上游 runtime 语义，不能在未确认真实命令前加入 action catalog。

@@ -111,8 +111,9 @@ https://<space>.hf.space/
 ```text
 /_admin/
 /_admin/api/status
+/_admin/api/audit
 ```
 
-开启 `ADMIN_ENABLED=true` 后，`/_admin/` 登录页和管理页同样支持 English / 中文切换。默认关闭状态下入口返回 404。
+开启 `ADMIN_ENABLED=true` 后，`/_admin/` 登录页和管理页同样支持 English / 中文切换，并可查看最近 admin 审计事件。默认关闭状态下入口返回 404。
 
 完整排障流程见 [Operations Runbook](./ops-runbook.md)。

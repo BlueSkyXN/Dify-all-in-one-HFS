@@ -93,6 +93,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/logout
 /_admin/api/status
 /_admin/api/actions
+/_admin/api/audit
 /_admin/api/actions/restart-service
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
@@ -106,13 +107,16 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/files/delete
 ```
 
-登录和登出是浏览器 dashboard 使用的 session 接口，`/_admin/api/auth/terminal` 只给 Nginx `auth_request` 和 Web terminal smoke 使用。`files/text` 同时支持读取和写入，写入需要 `ADMIN_FILES_WRITE_ENABLED=true`。
+登录和登出是浏览器 dashboard 使用的 session 接口，`/_admin/api/audit` 只读返回最近的 admin 审计事件；日志不存在时返回 200、`exists=false` 和空 `events`，但它不是完整合规审计系统。`/_admin/api/auth/terminal` 只给 Nginx `auth_request` 和 Web terminal smoke 使用。`files/text` 同时支持读取和写入，写入需要 `ADMIN_FILES_WRITE_ENABLED=true`。
 
 CLI 示例：
 
 ```bash
 curl -H "X-Admin-Token: $ADMIN_TOKEN" \
   https://your-space.hf.space/_admin/api/status
+
+curl -H "X-Admin-Token: $ADMIN_TOKEN" \
+  "https://your-space.hf.space/_admin/api/audit?limit=50"
 
 curl -X POST \
   -H "X-Admin-Token: $ADMIN_TOKEN" \
@@ -502,6 +506,7 @@ admin-disabled
 webssh-disabled
 admin-status        # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-actions       # 仅 SMOKE_ADMIN_ENABLED=true 时
+admin-audit         # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-run-health-checks # 仅 SMOKE_ADMIN_ENABLED=true 且 SMOKE_ADMIN_ACTIONS=true 时
 webssh-terminal     # 仅 SMOKE_ADMIN_ENABLED=true 且 SMOKE_WEBSSH_ENABLED=true 时
 setup-api

@@ -28,6 +28,7 @@ SUPERVISOR_CONFIG = "/etc/supervisor/conf.d/supervisord.conf"
 SESSION_COOKIE = "dify_admin_session"
 MAX_JSON_BYTES = 1024 * 1024
 MAX_TEXT_READ_BYTES = 1024 * 1024
+MAX_AUDIT_EVENTS = 500
 
 ALLOWED_RESTART_SERVICES = [
     "dify-api",
@@ -46,6 +47,17 @@ PROTECTED_NAME_PATTERNS = [
     "*secret*",
     "*token*",
 ]
+
+SENSITIVE_DETAIL_KEYS = (
+    "authorization",
+    "apikey",
+    "cookie",
+    "credential",
+    "privatekey",
+    "secret",
+    "token",
+    "password",
+)
 
 
 @dataclass
@@ -224,7 +236,7 @@ def status_payload(auth: AuthContext) -> dict[str, Any]:
             "host": env("ADMIN_HOST", "127.0.0.1"),
             "port": parse_int(env("ADMIN_PORT"), 8082, minimum=1, maximum=65535),
             "session_ttl_seconds": session_ttl_seconds(),
-            "audit_log": env("ADMIN_AUDIT_LOG", "/data/logs/admin-audit.jsonl"),
+            "audit_log": str(audit_log_path()),
         },
         "files": {
             "enabled": admin_files_enabled(),
@@ -276,6 +288,10 @@ def new_action_id(action: str) -> str:
     return f"{int(time.time() * 1000)}-{action}-{secrets.token_hex(4)}"
 
 
+def audit_log_path() -> Path:
+    return Path(env("ADMIN_AUDIT_LOG", "/data/logs/admin-audit.jsonl"))
+
+
 def audit_event(action: str, ok: bool, actor: str, target: str = "", details: dict[str, Any] | None = None) -> None:
     entry = {
         "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -285,7 +301,7 @@ def audit_event(action: str, ok: bool, actor: str, target: str = "", details: di
         "target": target,
         "details": details or {},
     }
-    path = Path(env("ADMIN_AUDIT_LOG", "/data/logs/admin-audit.jsonl"))
+    path = audit_log_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as file:
@@ -293,6 +309,100 @@ def audit_event(action: str, ok: bool, actor: str, target: str = "", details: di
     except OSError as exc:
         sys.stderr.write(f"[dify-aio-admin] audit write failed: {exc}\n")
         sys.stderr.flush()
+
+
+def tail_lines(path: Path, lines: int) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        with path.open("rb") as file:
+            file.seek(0, os.SEEK_END)
+            end = file.tell()
+            block_size = 8192
+            blocks = []
+            newline_count = 0
+            position = end
+            while position > 0 and newline_count <= lines:
+                read_size = min(block_size, position)
+                position -= read_size
+                file.seek(position)
+                block = file.read(read_size)
+                blocks.append(block)
+                newline_count += block.count(b"\n")
+        data = b"".join(reversed(blocks))
+    except OSError as exc:
+        raise AdminError(500, f"unable to read audit log: {exc}") from exc
+    return data.decode("utf-8", errors="replace").splitlines()[-lines:]
+
+
+def redact_sensitive_details(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            key_text = str(key)
+            normalized_key = key_text.lower().replace("_", "").replace("-", "")
+            if any(marker in normalized_key for marker in SENSITIVE_DETAIL_KEYS):
+                redacted[key_text] = "[redacted]"
+            else:
+                redacted[key_text] = redact_sensitive_details(item)
+        return redacted
+    if isinstance(value, list):
+        return [redact_sensitive_details(item) for item in value[:100]]
+    if isinstance(value, str):
+        return truncate_text(value, 1000)
+    return value
+
+
+def audit_payload(query: dict[str, list[str]]) -> dict[str, Any]:
+    limit = parse_int(query.get("limit", ["100"])[0], 100, minimum=1, maximum=MAX_AUDIT_EVENTS)
+    path = audit_log_path()
+    if not path.exists():
+        return {
+            "ok": True,
+            "path": str(path),
+            "exists": False,
+            "limit": limit,
+            "returned": 0,
+            "invalid_lines": 0,
+            "events": [],
+        }
+
+    invalid_lines = 0
+    events: list[dict[str, Any]] = []
+    for line in reversed(tail_lines(path, limit * 4)):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            invalid_lines += 1
+            continue
+        if not isinstance(event, dict):
+            invalid_lines += 1
+            continue
+        events.append(
+            {
+                "time": str(event.get("time", "")),
+                "action": str(event.get("action", "")),
+                "ok": bool(event.get("ok", False)),
+                "actor": str(event.get("actor", "")),
+                "target": str(event.get("target", "")),
+                "details": redact_sensitive_details(event.get("details", {})),
+            }
+        )
+        if len(events) >= limit:
+            break
+
+    events.reverse()
+    return {
+        "ok": True,
+        "path": str(path),
+        "exists": True,
+        "limit": limit,
+        "returned": len(events),
+        "invalid_lines": invalid_lines,
+        "events": events,
+    }
 
 
 def confirmed(payload: dict[str, Any]) -> bool:
@@ -710,6 +820,14 @@ def html_index(authenticated: bool) -> str:
           <div id="services"></div>
         </section>
         <section class="panel wide">
+          <h2 data-i18n="audit">Audit</h2>
+          <div class="row">
+            <input id="auditLimit" type="number" min="1" max="500" value="50" aria-label="Audit event limit">
+            <button id="loadAuditButton" type="button" data-i18n="loadAudit">Load Audit</button>
+          </div>
+          <div id="auditEvents" style="margin-top: 10px;"></div>
+        </section>
+        <section class="panel wide">
           <h2 data-i18n="files">Files</h2>
           <div class="row">
             <input id="filePath" value="/" aria-label="Path">
@@ -745,6 +863,9 @@ def html_index(authenticated: bool) -> str:
         runHealthChecks: "Run Health Checks",
         noActionYet: "No action yet.",
         supervisor: "Supervisor",
+        audit: "Audit",
+        loadAudit: "Load Audit",
+        auditLimitLabel: "Audit event limit",
         files: "Files",
         path: "Path",
         uploadFile: "Upload file",
@@ -772,6 +893,14 @@ def html_index(authenticated: bool) -> str:
         open: "Open",
         text: "Text",
         protected: "protected",
+        time: "Time",
+        action: "Action",
+        actor: "Actor",
+        target: "Target",
+        details: "Details",
+        noAuditEvents: "No audit events yet.",
+        auditLogMissing: "Audit log does not exist yet.",
+        unableToLoadAudit: "unable to load audit log",
         unableToList: "unable to list files",
         directoryEmpty: "Directory is empty.",
         directoryPrompt: "Directory path",
@@ -791,6 +920,9 @@ def html_index(authenticated: bool) -> str:
         runHealthChecks: "运行健康检查",
         noActionYet: "还没有执行操作。",
         supervisor: "Supervisor 进程",
+        audit: "审计",
+        loadAudit: "加载审计",
+        auditLimitLabel: "审计事件数量",
         files: "文件",
         path: "路径",
         uploadFile: "上传文件",
@@ -818,6 +950,14 @@ def html_index(authenticated: bool) -> str:
         open: "打开",
         text: "文本",
         protected: "受保护",
+        time: "时间",
+        action: "操作",
+        actor: "操作者",
+        target: "目标",
+        details: "详情",
+        noAuditEvents: "暂无审计事件。",
+        auditLogMissing: "审计日志尚不存在。",
+        unableToLoadAudit: "无法加载审计日志",
         unableToList: "无法列出文件",
         directoryEmpty: "目录为空。",
         directoryPrompt: "目录路径",
@@ -861,6 +1001,7 @@ def html_index(authenticated: bool) -> str:
       byId("serviceSelect").setAttribute("aria-label", t("service"));
       byId("filePath").setAttribute("aria-label", t("path"));
       byId("uploadFile").setAttribute("aria-label", t("uploadFile"));
+      byId("auditLimit").setAttribute("aria-label", t("auditLimitLabel"));
       document.querySelectorAll("[data-i18n]").forEach((node) => {
         node.textContent = t(node.getAttribute("data-i18n"));
       });
@@ -942,6 +1083,7 @@ def html_index(authenticated: bool) -> str:
       renderServices(payload.supervisor.programs || []);
       const actions = await api("api/actions");
       renderActions(actions.actions || []);
+      loadAudit();
       if (payload.files.enabled) {
         listFiles();
       } else {
@@ -963,6 +1105,31 @@ def html_index(authenticated: bool) -> str:
       byId("services").innerHTML = `<table><thead><tr><th>${esc(t("program"))}</th><th>${esc(t("state"))}</th><th>${esc(t("description"))}</th></tr></thead><tbody>${programs.map((program) =>
         `<tr><td>${esc(program.name)}</td><td class="${program.ok ? "ok" : "bad"}">${esc(program.state)}</td><td>${esc(program.description)}</td></tr>`
       ).join("")}</tbody></table>`;
+    }
+
+    function renderAudit(payload) {
+      const events = payload.events || [];
+      if (!payload.ok) {
+        byId("auditEvents").innerHTML = `<p class="bad">${esc(payload.error || t("unableToLoadAudit"))}</p>`;
+        return;
+      }
+      if (payload.exists === false) {
+        byId("auditEvents").innerHTML = `<p class="muted">${esc(t("auditLogMissing"))}</p>`;
+        return;
+      }
+      if (!events.length) {
+        byId("auditEvents").innerHTML = `<p class="muted">${esc(t("noAuditEvents"))}</p>`;
+        return;
+      }
+      byId("auditEvents").innerHTML = `<table><thead><tr><th>${esc(t("status"))}</th><th>${esc(t("time"))}</th><th>${esc(t("action"))}</th><th>${esc(t("actor"))}</th><th>${esc(t("target"))}</th><th>${esc(t("details"))}</th></tr></thead><tbody>${events.map((event) =>
+        `<tr><td class="${event.ok ? "ok" : "bad"}">${event.ok ? esc(t("ok")) : esc(t("fail"))}</td><td>${esc(event.time)}</td><td>${esc(event.action)}</td><td>${esc(event.actor)}</td><td>${esc(event.target)}</td><td>${esc(JSON.stringify(event.details || {}))}</td></tr>`
+      ).join("")}</tbody></table>`;
+    }
+
+    async function loadAudit() {
+      const limit = byId("auditLimit").value || "50";
+      const payload = await api(`api/audit?limit=${encodeURIComponent(limit)}`);
+      renderAudit(payload);
     }
 
     async function runAction(path, payload) {
@@ -1054,6 +1221,7 @@ def html_index(authenticated: bool) -> str:
     byId("restartButton").addEventListener("click", () => runAction("api/actions/restart-service", {service: byId("serviceSelect").value}));
     byId("reloadNginxButton").addEventListener("click", () => runAction("api/actions/reload-nginx", {}));
     byId("healthButton").addEventListener("click", () => runAction("api/actions/run-health-checks", {}));
+    byId("loadAuditButton").addEventListener("click", loadAudit);
     byId("listFilesButton").addEventListener("click", listFiles);
     byId("newDirButton").addEventListener("click", makeDir);
     byId("saveTextButton").addEventListener("click", saveText);
@@ -1232,6 +1400,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(status_payload(auth))
             elif path == "/api/actions":
                 self.send_json(actions_payload())
+            elif path == "/api/audit":
+                self.send_json(audit_payload(query))
             elif path == "/api/auth/terminal":
                 if webssh_enabled():
                     self.send_response(204)

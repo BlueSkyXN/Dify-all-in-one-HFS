@@ -223,7 +223,7 @@ Nginx 路由和日志配置。
 - 使用 `ADMIN_TOKEN`、signed HttpOnly cookie 和 CSRF header 保护写操作。
 - 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks。
 - 可选提供 `/_admin/api/files/*` 文件管理；path 限制在 `ADMIN_FILES_ROOT` 内。
-- 写入 `ADMIN_AUDIT_LOG`，但不记录 token、secret 或文件内容。
+- 写入 `ADMIN_AUDIT_LOG`，并通过 `/api/audit` 鉴权只读展示最近审计事件；不记录 token、secret 或文件内容。
 - 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 
 ### `docker/postgres-backup-loop`
@@ -376,7 +376,7 @@ env-file=docker/dify.env.demo
 职责：
 
 - 默认验证 `ADMIN_ENABLED=false` 时 `/_admin/` 和 `/_admin/api/status` 返回 404。
-- `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、action catalog、CSRF、`confirm=true` 和 file manager 边界。
+- `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、action catalog、audit endpoint、CSRF、`confirm=true` 和 file manager 边界。
 - 默认不执行真实 admin action；只有 `ADMIN_SMOKE_ACTIONS=true` 时才调用 `run-health-checks`。
 
 ### `scripts/webssh-smoke.sh`
