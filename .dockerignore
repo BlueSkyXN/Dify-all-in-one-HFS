@@ -6,3 +6,8 @@ README.hf-space.md
 *.zip
 .DS_Store
 local/
+**/local/
+.env.local
+*.secret
+*.key
+*.pem

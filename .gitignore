@@ -4,3 +4,8 @@
 
 # Local environment and secret snapshots.
 /.env.local
+/local/
+**/local/
+.env.local
+.env.*.local
+*.local
