@@ -2,6 +2,16 @@
 
 本文档描述当前单容器 Dify Demo 的组件拓扑、请求路由、启动依赖和数据流。
 
+## 组件来源
+
+镜像里的组件可以分成三类。本仓库只维护第三类；前两类锁定版本后整体引入。
+
+| 类别 | 引入方式 | 组件 |
+| --- | --- | --- |
+| Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 4 个 build stage，由 `DIFY_VERSION` / `PLUGIN_DAEMON_IMAGE` / `SANDBOX_IMAGE` 锁版本 | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon:0.6.0-local` 的 `/app`；`langgenius/dify-sandbox:0.2.15` 的 `main` + `conf` + `dependencies` |
+| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv`、`ttyd` |
+| 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`webssh_entrypoint.sh`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
+
 ## 总体拓扑
 
 ```mermaid
@@ -65,13 +75,13 @@ flowchart TD
 
 ## 容器内进程
 
-所有长期运行进程由 `supervisord` 管理：
+容器以 `/usr/bin/tini --` 作为 PID 1，包裹 `docker/entrypoint.sh`；初始化完成后由 `supervisord` 接管所有长期运行进程（详见 `runtime-lifecycle.md`）。镜像内创建 UID `1000` 的 `user` 与 UID `65537` 的 `sandbox` 两个非 root 账号，匹配 Hugging Face Docker Space 的非 root 约束；除了 `/opt/dify/sandbox/main`（setuid root，sandbox runtime 需要）以外，全部 program 均以 `user` 运行。
 
 | program | 端口 | 作用 | 日志 |
 | --- | --- | --- | --- |
 | `postgres` | `127.0.0.1:5432` | Dify 主库、plugin 库、pgvector | `/data/logs/postgres.log`, `/data/logs/postgres.err` |
 | `redis` | `127.0.0.1:6379` | Celery broker/cache/plugin 协调 | `/data/logs/redis.log`, `/data/logs/redis.err` |
-| `postgres-backup` | none | bucket-lite 下定期 `pg_dumpall` 到 `/persist/postgres-backups/latest.sql.gz` | `/data/logs/postgres-backup.log`, `/data/logs/postgres-backup.err` |
+| `postgres-backup` | none | 常驻进程：`POSTGRES_BACKUP_ENABLED=auto` 时仅在 bucket-lite 激活后定期 `pg_dumpall` 到 `/persist/postgres-backups/latest.sql.gz`；其余状态 `exec sleep infinity` 空闲。默认 60s 首跑、3600s 间隔，可由 `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` / `POSTGRES_BACKUP_INTERVAL_SECONDS` 覆盖 | `/data/logs/postgres-backup.log`, `/data/logs/postgres-backup.err` |
 | `plugin-daemon` | `0.0.0.0:5002`, `0.0.0.0:5003` | Dify plugin runtime 和 remote install | `/data/logs/plugin-daemon.log`, `/data/logs/plugin-daemon.err` |
 | `sandbox` | `127.0.0.1:8194` | Code execution sandbox | stdout/stderr |
 | `dify-api` | `0.0.0.0:5001` | Dify API server | `/data/logs/dify-api.log`, `/data/logs/dify-api.err` |
@@ -95,7 +105,8 @@ flowchart TD
 | `/_ops/` | `127.0.0.1:8081` | 只读运维诊断入口 |
 | `/_admin` | redirect `/_admin/` | 保留 query string |
 | `/_admin/` | `127.0.0.1:8082` | Admin 管理面；默认由 admin-service 返回 404 |
-| `/_admin/terminal/` | `127.0.0.1:7681` | Web terminal route；默认 404，启用后需 admin 鉴权 |
+| `/_admin_auth_terminal` | `127.0.0.1:8082` `/api/auth/terminal`（`internal`，外部不可访问） | `/_admin/terminal/` 的 `auth_request` 子请求；只传 cookie / `Authorization` / `X-Admin-Token`，不带 body |
+| `/_admin/terminal/` | `127.0.0.1:7681` | Web terminal route；默认 404，启用后先由 `/_admin_auth_terminal` 校验再代理到 ttyd |
 | `/console/api` | `127.0.0.1:5001` | Dify console API |
 | `/api` | `127.0.0.1:5001` | Dify API |
 | `/v1` | `127.0.0.1:5001` | OpenAPI style endpoint |
@@ -113,7 +124,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    entry["entrypoint.sh"] --> dirs["prepare /data, /conf, /dependencies"]
+    tini["tini (PID 1)"] --> entry["entrypoint.sh"]
+    entry --> dirs["prepare /data, /conf, /dependencies"]
     entry --> secrets["write /data/config/generated.env"]
     entry --> redis_conf["render redis.conf"]
     entry --> sandbox_conf["render /conf/config.yaml"]
@@ -134,11 +146,11 @@ flowchart TD
     supervisor --> terminal["web-terminal"]
 ```
 
-长期运行阶段的依赖由 `docker/wait-for-core` 控制：
+长期运行阶段的依赖由 `docker/wait-for-core` 控制，每个 program 在 `command=` 里把自己依赖的探针名传给它，未达成时按 1s 间隔轮询，达成后 `exec` 真正的服务进程：
 
-- `plugin-daemon` 等待 `postgres` 和 `redis`。
-- `dify-api`、`dify-worker`、`dify-beat` 等待 `postgres` 和 `redis`。
-- `dify-web` 等待 Dify API `/health`。
+- `plugin-daemon` 等待 `postgres`、`redis`：`pg_isready -h $DB_HOST` + `redis-cli ping` 返回 `PONG`。
+- `dify-api`、`dify-worker`、`dify-beat` 等待 `postgres`、`redis`：同上。
+- `dify-web` 等待 `api`：`curl http://127.0.0.1:5001/health` 200。
 
 ## 数据库布局
 
