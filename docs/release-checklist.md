@@ -54,7 +54,7 @@ Reason if skipped:
 ```bash
 scripts/build.sh
 scripts/run-demo.sh
-OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
+ALLOW_DEMO_OPS_TOKEN=true OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
 ```
 
 如果 PR 改动了 `docker/sandbox-python-requirements.txt`，至少记录目标 Python wheel 检查：

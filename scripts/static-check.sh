@@ -56,5 +56,6 @@ bash -n \
   scripts/static-check.sh
 
 python3 -m py_compile docker/ops_service.py docker/admin_service.py
+python3 -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check
 check_changed_file_trailing_whitespace

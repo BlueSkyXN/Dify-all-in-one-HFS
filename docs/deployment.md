@@ -86,7 +86,7 @@ OPS_TOKEN=your-configured-ops-token \
   scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 ```
 
-`dify_ops_demo_token` 只是未覆盖 `OPS_TOKEN` 时的镜像默认值。线上 Space 通常会在 Secrets 中覆盖它；发布验收必须使用 Space 当前配置的 token，否则 `/_ops/*` 会返回 401。
+`dify_ops_demo_token` 只是本地 demo 默认值。未显式设置 `ALLOW_DEMO_OPS_TOKEN=true` 时，默认 token 会让 ops-service 进入 locked mode，`/healthz` 与 `/_ops/*` 返回 503。线上 Space 必须在 Secrets 中覆盖强随机 `OPS_TOKEN`；发布验收必须使用 Space 当前配置的 token，否则 `/_ops/*` 会返回 401。
 
 脚本检查：
 

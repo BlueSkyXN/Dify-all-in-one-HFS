@@ -49,25 +49,69 @@ wait_for_postgres() {
   done
 }
 
+backup_retain_count() {
+  local retain=${POSTGRES_BACKUP_RETAIN_COUNT:-5}
+  if ! [[ "$retain" =~ ^[0-9]+$ ]] || [ "$retain" -lt 1 ]; then
+    retain=5
+  fi
+  if [ "$retain" -gt 50 ]; then
+    retain=50
+  fi
+  printf '%s\n' "$retain"
+}
+
+prune_old_backups() {
+  local retain=$1
+  local -a backups=()
+  local backup
+  mapfile -t backups < <(find "${POSTGRES_BACKUP_DIR}" -maxdepth 1 -type f -name '[0-9]*T[0-9]*Z.sql.gz' | sort -r)
+  if [ "${#backups[@]}" -le "$retain" ]; then
+    return
+  fi
+  for backup in "${backups[@]:$retain}"; do
+    rm -f "$backup" "${backup%.sql.gz}.sha256" "${backup%.sql.gz}.err"
+  done
+}
+
 run_backup_once() {
   source_env
   mkdir -p "${POSTGRES_BACKUP_DIR}"
-  local target="${POSTGRES_BACKUP_DIR}/latest.sql.gz"
-  local tmp="${target}.tmp"
+  local retain
+  retain=$(backup_retain_count)
   local stamp
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  local target="${POSTGRES_BACKUP_DIR}/${stamp}.sql.gz"
+  local tmp="${target}.tmp"
+  local err="${POSTGRES_BACKUP_DIR}/${stamp}.err"
 
   log "Writing PostgreSQL dump to ${target}"
-  pg_dumpall \
+  if ! pg_dumpall \
     -h /data/run/postgresql \
     -p "${DB_PORT:-5432}" \
     -U user \
     --no-role-passwords \
-    2>"${POSTGRES_BACKUP_DIR}/latest.err" \
-    | gzip -c > "$tmp"
+    2>"$err" \
+    | gzip -c > "$tmp"; then
+    cp "$err" "${POSTGRES_BACKUP_DIR}/latest.err"
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! gzip -t "$tmp" >/dev/null 2>&1 || [ ! -s "$tmp" ]; then
+    printf 'invalid or empty backup artifact\n' > "$err"
+    cp "$err" "${POSTGRES_BACKUP_DIR}/latest.err"
+    rm -f "$tmp"
+    return 1
+  fi
+  local sha
+  sha=$(sha256sum "$tmp" | awk '{print $1}')
   mv "$tmp" "$target"
+  printf '%s  %s\n' "$sha" "$(basename "$target")" > "${target%.sql.gz}.sha256"
+  cp "$target" "${POSTGRES_BACKUP_DIR}/latest.sql.gz.tmp"
+  mv "${POSTGRES_BACKUP_DIR}/latest.sql.gz.tmp" "${POSTGRES_BACKUP_DIR}/latest.sql.gz"
   printf '%s\n' "$stamp" > "${POSTGRES_BACKUP_DIR}/latest.created_at"
-  rm -f "${POSTGRES_BACKUP_DIR}/latest.err"
+  printf '%s\n' "$sha" > "${POSTGRES_BACKUP_DIR}/latest.sha256"
+  rm -f "$err" "${POSTGRES_BACKUP_DIR}/latest.err"
+  prune_old_backups "$retain"
 }
 
 main() {

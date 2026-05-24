@@ -21,12 +21,17 @@
 
 - runtime rootless；可写状态只在 `/data` 或明确的 persistence mount。
 - Docker/HF env 优先于 defaults 和 generated secrets；secrets 不原文返回。
+- `OPS_TOKEN=dify_ops_demo_token` 默认 locked；本地 demo 需要显式 `ALLOW_DEMO_OPS_TOKEN=true`。
+- `/_ops/` dashboard 不能内联完整 `OPS_TOKEN`，query token 只能作为临时 cookie migration 入口。
 - `HF_HOME` / `HF_HUB_CACHE` 默认在 `${RUNTIME_ROOT}/hf-cache`，属于 runtime cache，不是 bucket-lite 核心持久状态。
 - PostgreSQL identifier 先校验再拼 SQL。
 - Plugin Daemon migration 后再启动 `main`。
 - `SANDBOX_ENABLE_NETWORK=false` 是默认值；改变时同步 security docs。
 - `/_admin` 默认 disabled；写 action 只能留在 admin 白名单，不能进入 `/_ops`。
+- admin header token auth 跳过 CSRF；browser cookie session 写操作必须校验 CSRF。登录失败应写 audit 并受内存级限速保护。
+- admin file manager rename/delete 必须继续受 `ADMIN_FILES_DESTRUCTIVE_ENABLED` 单独 gate。
 - Web terminal 默认关闭；只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时才能通过 `/_admin/terminal/` 进入。
+- `WEBSSH_ENABLED` 运行中变化后需要重启 `web-terminal` supervisor program 或容器。
 - Nginx 保留 `listen 7860`、`/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/_admin/terminal/`、`/socket.io/`、`/e/`。
 - `/_ops/logs` 只读 service 白名单；`ops-service` 保持只读。
 

@@ -52,7 +52,7 @@ test -f /data/config/generated.env
 确认健康和错误摘要：
 
 ```bash
-OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
+OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080
 curl -H "X-Ops-Token: dify_ops_demo_token" http://localhost:8080/_ops/health
 curl -H "X-Ops-Token: dify_ops_demo_token" http://localhost:8080/_ops/errors
 ```

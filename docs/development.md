@@ -60,6 +60,7 @@ Python 语法：
 
 ```bash
 python3 -m py_compile docker/ops_service.py docker/admin_service.py
+python3 -m unittest discover -s docker/tests -p 'test_*.py'
 ```
 
 Git whitespace：
@@ -92,6 +93,7 @@ Smoke：
 
 ```bash
 OPS_TOKEN=dify_ops_demo_token \
+  ALLOW_DEMO_OPS_TOKEN=true \
   scripts/hf-space-smoke.sh http://localhost:8080
 ```
 
@@ -232,10 +234,10 @@ ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=$ADMIN_TOKEN scripts/admin-smoke.sh <bas
 - 不复用 `OPS_TOKEN`。
 - audit endpoint 只能读取 `ADMIN_AUDIT_LOG` 的最近事件，不得读取任意文件。
 - action 必须是白名单，不允许请求传入任意 shell command。
-- 写 action 必须有 CSRF header，重启和 reload 必须要求 `confirm=true`。
+- Browser cookie session 写 action 必须有 CSRF header；header token auth 跳过 CSRF，但重启和 reload 仍必须要求 `confirm=true`。
 - file manager path 必须限制在 `ADMIN_FILES_ROOT` 内。
 - 不读取或写入 generated secret、pem/key、secret/token 类路径。
-- 删除只支持文件或空目录，不做递归删除。
+- rename/delete 必须受 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true` gate；删除只支持文件或空目录，不做递归删除。
 
 ## 修改配置变量
 
@@ -275,7 +277,7 @@ git diff --check
 ```bash
 scripts/build.sh
 scripts/run-demo.sh
-OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
+OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080
 ADMIN_ENABLED=true WEBSSH_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/run-demo.sh
 ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> \
   scripts/webssh-smoke.sh http://localhost:8080

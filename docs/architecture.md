@@ -36,7 +36,7 @@ flowchart TD
     plugin --> data_plugin["/data/plugin_daemon"]
     api --> data_storage["/data/dify/storage"]
     ops --> logs["read-only log tail: OPS_LOG_DIR"]
-    ops --> supervisor["supervisorctl"]
+    ops --> supervisor["Supervisor XML-RPC"]
     admin --> admin_actions["whitelisted admin actions"]
     admin --> admin_files["optional file manager: ADMIN_FILES_ROOT"]
     admin --> admin_audit["ADMIN_AUDIT_LOG"]
@@ -64,7 +64,7 @@ flowchart TD
     health --> tcp_checks["TCP checks: plugin-daemon, sandbox"]
     health --> http_checks["HTTP checks: API, Web, Nginx, setup/init"]
     health --> extra_checks["optional extra checks from env JSON"]
-    status --> supervisor_status["supervisorctl status"]
+    status --> supervisor_status["Supervisor XML-RPC over unix socket"]
     system --> procfs["/proc + statvfs resource summary"]
     metrics --> prom_text["Prometheus-style text format"]
     config --> env_summary["safe env values + secret presence"]
@@ -81,7 +81,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `postgres` | `127.0.0.1:5432` | Dify 主库、plugin 库、pgvector | `/data/logs/postgres.log`, `/data/logs/postgres.err` |
 | `redis` | `127.0.0.1:6379` | Celery broker/cache/plugin 协调 | `/data/logs/redis.log`, `/data/logs/redis.err` |
-| `postgres-backup` | none | 常驻进程：`POSTGRES_BACKUP_ENABLED=auto` 时仅在 bucket-lite 激活后定期 `pg_dumpall` 到 `/persist/postgres-backups/latest.sql.gz`；其余状态 `exec sleep infinity` 空闲。默认 60s 首跑、3600s 间隔，可由 `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` / `POSTGRES_BACKUP_INTERVAL_SECONDS` 覆盖 | `/data/logs/postgres-backup.log`, `/data/logs/postgres-backup.err` |
+| `postgres-backup` | none | 常驻进程：`POSTGRES_BACKUP_ENABLED=auto` 时仅在 bucket-lite 激活后定期 `pg_dumpall` 到 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验后更新 `latest.sql.gz` / `latest.created_at` / `latest.sha256`；其余状态 `exec sleep infinity` 空闲。默认 60s 首跑、3600s 间隔、保留 5 份，可由 `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` / `POSTGRES_BACKUP_INTERVAL_SECONDS` / `POSTGRES_BACKUP_RETAIN_COUNT` 覆盖 | `/data/logs/postgres-backup.log`, `/data/logs/postgres-backup.err` |
 | `plugin-daemon` | `0.0.0.0:5002`, `0.0.0.0:5003` | Dify plugin runtime 和 remote install | `/data/logs/plugin-daemon.log`, `/data/logs/plugin-daemon.err` |
 | `sandbox` | `127.0.0.1:8194` | Code execution sandbox | stdout/stderr |
 | `dify-api` | `0.0.0.0:5001` | Dify API server | `/data/logs/dify-api.log`, `/data/logs/dify-api.err` |
@@ -192,7 +192,7 @@ Plugin Daemon 迁移在其 supervisor program 启动时执行：
 | `/data/redis` | `/tmp/dify-aio/redis` | Redis 数据，默认不持久化 |
 | `/data/plugin_daemon/plugin_packages` | `/tmp/dify-aio/plugin_packages` | 插件包缓存 |
 | `HF_HOME` / `HF_HUB_CACHE` | `/tmp/dify-aio/hf-cache` / `/tmp/dify-aio/hf-cache/hub` | Hugging Face cache，默认不持久化 |
-| `/persist/postgres-backups/latest.sql.gz` | `/persist/postgres-backups/latest.sql.gz` | PostgreSQL 普通文件兜底备份 |
+| `/persist/postgres-backups/latest.sql.gz` | `/persist/postgres-backups/latest.sql.gz` | PostgreSQL 普通文件兜底备份；同目录保留 timestamped dump 和 `latest.sha256` |
 | `/conf/config.yaml` | image filesystem | Sandbox runtime config |
 | `/dependencies` | image filesystem | Sandbox 依赖文件占位 |
 
@@ -203,7 +203,7 @@ Hugging Face Space 如果没有挂载 `/persist`，`auto` 会回退旧 `/data` �
 `ops-service` 不直接暴露公网端口，只绑定 `127.0.0.1:8081`，由 Nginx 代理到 `/_ops/`。它的能力包括：
 
 - HTTP/TCP/command 健康检查。
-- `supervisorctl status` 解析。
+- Supervisor XML-RPC over `/data/run/supervisor.sock`。
 - CPU load、memory、disk、`/data`、uptime 和 process count。
 - Prometheus-style text metrics。
 - 非敏感配置摘要。
@@ -257,10 +257,10 @@ reload-nginx
 run-health-checks
 ```
 
-每个写 action 都需要 CSRF header，重启和 reload 需要 `confirm=true`，并写入 `ADMIN_AUDIT_LOG`。`/_admin/api/audit` 只读展示最近审计事件，便于追踪管理操作。请求不能传任意 shell command。
+Browser cookie session 的写 action 需要 CSRF header；CLI header token auth 显式跳过 CSRF，但仍需要白名单 action 和 `confirm=true`。登录失败、重启和 reload 都写入 `ADMIN_AUDIT_LOG`。`/_admin/api/audit` 只读展示最近审计事件，便于追踪管理操作。请求不能传任意 shell command。
 
-File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
+File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`，rename/delete 还要 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
 
 Admin 登录页和管理 dashboard 支持 English / 中文切换。改 UI 文案时必须同时维护两种语言，避免管理操作含义在不同语言下不一致。
 
-WebSSH 或 interactive shell 是独立的高风险模块，并且默认关闭。当前镜像内置 `ttyd`，但只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时，`/_admin/terminal/` 才会通过 Nginx `auth_request` 代理到 terminal；默认 `WEBSSH_ENABLED=false` 时只返回 404。
+WebSSH 或 interactive shell 是独立的高风险模块，并且默认关闭。当前镜像内置 `ttyd`，但只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时，`/_admin/terminal/` 才会通过 Nginx `auth_request` 代理到 terminal；默认 `WEBSSH_ENABLED=false` 时只返回 404。`web-terminal` 启动时在 placeholder 与 `ttyd` 之间二选一，运行中变更 env 需要重启该 supervisor program 或容器。

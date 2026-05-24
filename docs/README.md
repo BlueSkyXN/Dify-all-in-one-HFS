@@ -50,4 +50,4 @@ scripts/static-check.sh
 scripts/run-demo.sh
 ```
 
-公开 Space 建议在 Space Settings -> Secrets 中覆盖 `OPS_TOKEN`，并将 Space 设置为 Private 或 Protected。`dify_ops_demo_token` 只是未覆盖时的 demo 默认值，线上命令应使用 Space 当前配置的 token。
+公开 Space 建议在 Space Settings -> Secrets 中覆盖 `OPS_TOKEN`，并将 Space 设置为 Private 或 Protected。`dify_ops_demo_token` 只是本地 demo 默认值；未显式设置 `ALLOW_DEMO_OPS_TOKEN=true` 时，ops-service 会进入 locked mode 并让 `/healthz` 与 `/_ops/*` 返回 503。

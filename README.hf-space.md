@@ -27,7 +27,7 @@ POSTGRES_BUCKET_FAILURE_MODE=exit
 建议 Secrets：
 
 ```env
-OPS_TOKEN=<固定 demo 值或强随机值>
+OPS_TOKEN=<强随机值>
 DB_PASSWORD=<固定 demo 值或强随机值>
 REDIS_PASSWORD=<固定 demo 值或强随机值>
 SECRET_KEY=<固定 demo 值或强随机值>
@@ -49,11 +49,12 @@ bucket-lite 模式下会持久化：
 /persist/plugin_daemon/plugin
 /persist/plugin_daemon/assets
 /persist/postgres-backups/latest.sql.gz
+/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz
 ```
 
 如果显式设置 `PLUGIN_CWD_PERSISTENCE=true`，还会持久化 `/persist/plugin_daemon/cwd`。
 
-默认会先尝试把 `/persist/postgres` 当 live PostgreSQL data directory 使用。若 bucket mount 的文件系统语义导致 PostgreSQL 无法启动，`POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会让容器退回 `/tmp/dify-aio/postgres`，并继续把周期 dump 写到 `/persist/postgres-backups/latest.sql.gz`。
+默认会先尝试把 `/persist/postgres` 当 live PostgreSQL data directory 使用。若 bucket mount 的文件系统语义导致 PostgreSQL 无法启动，`POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会让容器退回 `/tmp/dify-aio/postgres`，并继续把周期 dump 写到 `/persist/postgres-backups/`，校验后更新 `latest.sql.gz`。
 
 这些目录不会占用 bucket：
 
@@ -83,10 +84,10 @@ OPS_TOKEN=<fixed-random-token> \
   scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
-`/_ops/` 是只读诊断入口，主要用于查看 dashboard、supervisor 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 建议设置为 Private 或 Protected。
+`/_ops/` 是只读诊断入口，主要用于查看 dashboard、Supervisor XML-RPC 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 必须覆盖默认 token，并建议设置为 Private 或 Protected。
 
 `/_ops/` 和 `/_admin/` dashboard 均支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 
-`/_admin/` 是独立管理入口，默认 `ADMIN_ENABLED=false` 并返回 404。只有在 Private/Protected Space 或受控演示场景中才建议设置 `ADMIN_ENABLED=true` 和强随机 `ADMIN_TOKEN`；开启后可查看最近 admin 审计事件，文件管理由 `ADMIN_FILES_*` 独立控制。`/_admin/terminal/` 默认关闭并返回 404；确需 break-glass terminal 时，设置 `WEBSSH_ENABLED=true` 后由 admin 鉴权代理到镜像内置的 `ttyd`。
+`/_admin/` 是独立管理入口，默认 `ADMIN_ENABLED=false` 并返回 404。只有在 Private/Protected Space 或受控演示场景中才建议设置 `ADMIN_ENABLED=true` 和强随机 `ADMIN_TOKEN`；开启后可查看最近 admin 审计事件，文件管理由 `ADMIN_FILES_*` 独立控制，rename/delete 还要 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。`/_admin/terminal/` 默认关闭并返回 404；确需 break-glass terminal 时，设置 `WEBSSH_ENABLED=true` 后由 admin 鉴权代理到镜像内置的 `ttyd`，运行中变更需要重启 `web-terminal` 或容器。
 
 完整工程文档见 [docs/README.md](./docs/README.md)。其中 [Deployment Guide](./docs/deployment.md) 覆盖部署流程，[Operations Runbook](./docs/ops-runbook.md) 覆盖运维、502 排障、日志入口和发布后验收。

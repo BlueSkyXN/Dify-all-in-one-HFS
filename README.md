@@ -99,7 +99,7 @@ POSTGRES_BUCKET_FAILURE_MODE=exit
 推荐 Secrets：
 
 ```env
-OPS_TOKEN=<固定 demo 值或强随机值>
+OPS_TOKEN=<强随机值>
 DB_PASSWORD=<固定 demo 值或强随机值>
 REDIS_PASSWORD=<固定 demo 值或强随机值>
 SECRET_KEY=<固定 demo 值或强随机值>
@@ -182,7 +182,7 @@ docker exec -it dify-aio-hf supervisorctl status
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-`/persist/postgres-backups/latest.sql.gz` 会由 `postgres-backup` 进程定期生成，作为 live PostgreSQL data directory 的普通文件备份。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，然后把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并在有 dump 时先从 `latest.sql.gz` 恢复。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
+`/persist/postgres-backups/` 会由 `postgres-backup` 进程定期生成 timestamped dump，并在校验通过后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，然后把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并在有可用 dump 时先从 `latest.sql.gz` 恢复。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
 
 如果显式设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
@@ -197,13 +197,14 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 /_admin/               受控管理入口，默认关闭
 ```
 
-`/_ops/` 默认需要 `OPS_TOKEN`。Demo 默认值是：
+`/_ops/` 默认需要 `OPS_TOKEN`。镜像仍保留 demo 默认值，但除非显式设置 `ALLOW_DEMO_OPS_TOKEN=true`，否则 ops-service 会进入 locked mode 并返回 503：
 
 ```env
 OPS_TOKEN=dify_ops_demo_token
+ALLOW_DEMO_OPS_TOKEN=true
 ```
 
-如果 Space 是公开的，建议在 Space Settings → Secrets 中覆盖成你自己的固定值：
+如果 Space 是公开的，必须在 Space Settings → Secrets 中覆盖成你自己的固定值，并不要开启 `ALLOW_DEMO_OPS_TOKEN`：
 
 ```env
 OPS_TOKEN=<fixed-random-token>
@@ -216,9 +217,9 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://your-space.hf.space/_ops/health
 ```
 
-`/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言，选择会保存在浏览器本地。
+`/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言，选择会保存在浏览器本地。Dashboard 使用 signed HttpOnly cookie，不会把完整 `OPS_TOKEN` 注入页面脚本。
 
-浏览器临时访问可使用：
+浏览器临时访问可使用；成功后会跳转到无 query 的 `/_ops/`：
 
 ```text
 https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
@@ -228,7 +229,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 ```text
 /_ops/health           综合健康、内部端口、API/Web 探针
-/_ops/status           supervisor 进程状态
+/_ops/status           Supervisor XML-RPC 进程状态
 /_ops/system           CPU、memory、disk、/data、uptime、process count
 /_ops/config           非敏感配置摘要与密钥存在性
 /_ops/version          运行版本与 Space 元数据

@@ -11,6 +11,26 @@ elif [ -f /etc/dify/generated.env ]; then
   # shellcheck disable=SC1091
   . /etc/dify/generated.env
 fi
+
+sandbox_python_lib_path_default() {
+  local arch
+  local triplet
+  arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
+  case "$arch" in
+    amd64|x86_64) triplet="x86_64-linux-gnu" ;;
+    arm64|aarch64) triplet="aarch64-linux-gnu" ;;
+    *)
+      printf 'Unsupported architecture for SANDBOX_PYTHON_LIB_PATH auto detection: %s\n' "$arch" >&2
+      return 1
+      ;;
+  esac
+  printf '/usr/local/lib/python3.12,/usr/lib/%s,/lib/%s,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone' "$triplet" "$triplet"
+}
+
+if [ -z "${SANDBOX_PYTHON_LIB_PATH:-}" ]; then
+  SANDBOX_PYTHON_LIB_PATH=$(sandbox_python_lib_path_default)
+fi
+
 export API_KEY="${SANDBOX_API_KEY:-${CODE_EXECUTION_API_KEY}}"
 export GIN_MODE="${SANDBOX_GIN_MODE:-release}"
 export WORKER_TIMEOUT="${SANDBOX_WORKER_TIMEOUT:-15}"
@@ -18,7 +38,7 @@ export ENABLE_NETWORK="${SANDBOX_ENABLE_NETWORK:-false}"
 export SANDBOX_PORT="${SANDBOX_PORT:-8194}"
 export PYTHON_PATH="${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}"
 export NODEJS_PATH="${SANDBOX_NODEJS_PATH:-/usr/bin/node}"
-export PYTHON_LIB_PATH="${SANDBOX_PYTHON_LIB_PATH:-/usr/local/lib/python3.12,/usr/lib/x86_64-linux-gnu,/lib/x86_64-linux-gnu,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone}"
+export PYTHON_LIB_PATH="${SANDBOX_PYTHON_LIB_PATH}"
 export PYTHON_DEPS_UPDATE_INTERVAL="${SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL:-876000h}"
 export HTTP_PROXY="${SANDBOX_HTTP_PROXY:-}"
 export HTTPS_PROXY="${SANDBOX_HTTPS_PROXY:-}"

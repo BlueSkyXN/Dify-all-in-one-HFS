@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import html
 import hmac
+import http.client
 import hashlib
 import json
 import os
@@ -17,15 +18,23 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from typing import Any
+import xmlrpc.client
 
 
 STARTED_AT = time.time()
 LOG_DIR = Path(os.environ.get("OPS_LOG_DIR", "/data/logs"))
 SUPERVISOR_CONFIG = "/etc/supervisor/conf.d/supervisord.conf"
+SUPERVISOR_SOCKET = "/data/run/supervisor.sock"
 MAX_CHECKS = 32
+DEMO_OPS_TOKEN = "dify_ops_demo_token"
+OPS_SESSION_COOKIE = "dify_ops_session"
+OPS_CACHE: dict[str, tuple[float, Any]] = {}
+OPS_CACHE_LOCK = Lock()
 
 DEFAULT_SERVICE_LOGS = {
     "supervisord": "supervisord.log",
@@ -67,6 +76,8 @@ SAFE_CONFIG_KEYS = [
     "POSTGRES_BACKUP_ENABLED",
     "POSTGRES_BACKUP_DIR",
     "POSTGRES_BACKUP_INTERVAL_SECONDS",
+    "POSTGRES_BACKUP_INITIAL_DELAY_SECONDS",
+    "POSTGRES_BACKUP_RETAIN_COUNT",
     "MARKETPLACE_ENABLED",
     "FORCE_VERIFYING_SIGNATURE",
     "SANDBOX_ENABLE_NETWORK",
@@ -81,16 +92,28 @@ SAFE_CONFIG_KEYS = [
     "PLUGIN_DAEMON_URL",
     "CODE_EXECUTION_ENDPOINT",
     "OPS_PORT",
+    "OPS_CACHE_TTL_SECONDS",
+    "OPS_SESSION_TTL_SECONDS",
+    "OPS_COOKIE_SECURE",
+    "OPS_HTTP_TIMEOUT_SECONDS",
+    "ALLOW_DEMO_OPS_TOKEN",
     "OPS_DEFAULT_CHECKS_ENABLED",
     "OPS_LOG_DIR",
     "ADMIN_ENABLED",
     "ADMIN_HOST",
     "ADMIN_PORT",
     "ADMIN_SESSION_TTL_SECONDS",
+    "ADMIN_COOKIE_SECURE",
+    "ADMIN_HTTP_TIMEOUT_SECONDS",
+    "ADMIN_LOGIN_RATE_LIMIT_WINDOW_SECONDS",
+    "ADMIN_LOGIN_RATE_LIMIT_BLOCK_SECONDS",
+    "ADMIN_LOGIN_RATE_LIMIT_MAX_PER_IP",
+    "ADMIN_LOGIN_RATE_LIMIT_MAX_GLOBAL",
     "ADMIN_AUDIT_LOG",
     "ADMIN_FILES_ENABLED",
     "ADMIN_FILES_ROOT",
     "ADMIN_FILES_WRITE_ENABLED",
+    "ADMIN_FILES_DESTRUCTIVE_ENABLED",
     "ADMIN_FILES_MAX_UPLOAD_BYTES",
     "WEBSSH_ENABLED",
     "WEBSSH_HOST",
@@ -205,6 +228,63 @@ def parse_bool(value: str, default: bool = False) -> bool:
     if value == "":
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def ops_session_ttl_seconds() -> int:
+    return parse_int(env("OPS_SESSION_TTL_SECONDS"), 3600, minimum=60, maximum=86400)
+
+
+def ops_cache_ttl_seconds() -> float:
+    return parse_float(env("OPS_CACHE_TTL_SECONDS", "5"), 5.0, minimum=0.0, maximum=300.0)
+
+
+def ops_lock_reason() -> str:
+    token = env("OPS_TOKEN")
+    if not token:
+        return "OPS_TOKEN is not set"
+    if token == DEMO_OPS_TOKEN and not parse_bool(env("ALLOW_DEMO_OPS_TOKEN", "false"), default=False):
+        return "default OPS_TOKEN is locked; set OPS_TOKEN to a strong value or explicitly set ALLOW_DEMO_OPS_TOKEN=true for local demo use"
+    return ""
+
+
+def sign_ops_message(*parts: str) -> str:
+    token = env("OPS_TOKEN")
+    payload = "|".join(parts).encode("utf-8")
+    return hmac.new(token.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def make_ops_session() -> tuple[str, int]:
+    expires_at = int(time.time()) + ops_session_ttl_seconds()
+    nonce = hashlib.sha256(f"{time.time()}:{os.urandom(16).hex()}".encode("utf-8")).hexdigest()[:32]
+    signature = sign_ops_message("ops-session", str(expires_at), nonce)
+    return f"{expires_at}.{nonce}.{signature}", expires_at
+
+
+def parse_ops_session(cookie_value: str) -> bool:
+    try:
+        expires_raw, nonce, signature = cookie_value.split(".", 2)
+        expires_at = int(expires_raw)
+    except (ValueError, AttributeError):
+        return False
+    if expires_at < int(time.time()) or not nonce or not signature or not env("OPS_TOKEN"):
+        return False
+    expected = sign_ops_message("ops-session", str(expires_at), nonce)
+    return hmac.compare_digest(signature, expected)
+
+
+def cached_payload(key: str, builder: Any) -> Any:
+    ttl = ops_cache_ttl_seconds()
+    if ttl <= 0:
+        return builder()
+    now = time.time()
+    with OPS_CACHE_LOCK:
+        cached = OPS_CACHE.get(key)
+        if cached and cached[0] > now:
+            return cached[1]
+    payload = builder()
+    with OPS_CACHE_LOCK:
+        OPS_CACHE[key] = (now + ttl, payload)
+    return payload
 
 
 def load_json_list(name: str) -> list[Any]:
@@ -428,23 +508,74 @@ def extra_command_checks() -> list[Any]:
     return checks
 
 
+class UnixSocketHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, socket_path: str, timeout: float = 3.0) -> None:
+        super().__init__("localhost", timeout=timeout)
+        self.socket_path = socket_path
+
+    def connect(self) -> None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self.socket_path)
+        self.sock = sock
+
+
+class UnixSocketTransport(xmlrpc.client.Transport):
+    def __init__(self, socket_path: str, timeout: float = 3.0) -> None:
+        super().__init__()
+        self.socket_path = socket_path
+        self.timeout = timeout
+
+    def make_connection(self, host: str) -> UnixSocketHTTPConnection:
+        return UnixSocketHTTPConnection(self.socket_path, timeout=self.timeout)
+
+
 def supervisor_status() -> dict[str, Any]:
-    result = run_cmd(["supervisorctl", "-c", SUPERVISOR_CONFIG, "status"], timeout=3.0)
+    started = time.time()
+    try:
+        proxy = xmlrpc.client.ServerProxy(
+            "http://localhost/RPC2",
+            transport=UnixSocketTransport(SUPERVISOR_SOCKET, timeout=3.0),
+            allow_none=True,
+        )
+        info = proxy.supervisor.getAllProcessInfo()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": truncate_text(str(exc)),
+            "duration_ms": round((time.time() - started) * 1000),
+            "programs": [],
+            "socket": SUPERVISOR_SOCKET,
+        }
+
     programs = []
-    for line in result["stdout"].splitlines():
-        parts = line.split(None, 2)
-        if len(parts) >= 2:
-            programs.append(
-                {
-                    "name": parts[0],
-                    "state": parts[1],
-                    "description": parts[2] if len(parts) > 2 else "",
-                    "ok": parts[1] == "RUNNING",
-                }
-            )
-    result["programs"] = programs
-    result["ok"] = result["ok"] and all(program["ok"] for program in programs)
-    return result
+    for item in info:
+        state = str(item.get("statename", "UNKNOWN"))
+        name = str(item.get("name", ""))
+        group = str(item.get("group", ""))
+        programs.append(
+            {
+                "name": f"{group}:{name}" if group and group != name else name,
+                "state": state,
+                "description": str(item.get("description", "")),
+                "ok": state == "RUNNING",
+            }
+        )
+    return {
+        "ok": bool(programs) and all(program["ok"] for program in programs),
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "duration_ms": round((time.time() - started) * 1000),
+        "programs": programs,
+        "socket": SUPERVISOR_SOCKET,
+    }
+
+
+def supervisor_payload() -> dict[str, Any]:
+    return cached_payload("supervisor", supervisor_status)
 
 
 def redis_check() -> dict[str, Any]:
@@ -487,6 +618,14 @@ def collect_checks(checks_to_run: list[Any]) -> list[dict[str, Any]]:
 
 
 def health_payload(public: bool = False) -> dict[str, Any]:
+    payload = dict(cached_payload("health:checks", _health_checks_payload))
+    if not public:
+        payload["supervisor"] = supervisor_payload()
+        payload["version"] = version_payload()
+    return payload
+
+
+def _health_checks_payload() -> dict[str, Any]:
     checks_to_run = []
     if parse_bool(env("OPS_DEFAULT_CHECKS_ENABLED", "true"), default=True):
         checks_to_run.extend(
@@ -514,10 +653,15 @@ def health_payload(public: bool = False) -> dict[str, Any]:
     }
     if not checks:
         payload["error"] = "no checks configured"
-    if not public:
-        payload["supervisor"] = supervisor_status()
-        payload["version"] = version_payload()
     return payload
+
+
+def status_payload() -> dict[str, Any]:
+    return cached_payload("status", _status_payload)
+
+
+def _status_payload() -> dict[str, Any]:
+    return {"ok": True, "supervisor": supervisor_payload(), "health": health_payload(public=True)}
 
 
 def version_payload() -> dict[str, Any]:
@@ -654,6 +798,10 @@ def cpu_payload() -> dict[str, Any]:
 
 
 def system_payload() -> dict[str, Any]:
+    return cached_payload("system", _system_payload)
+
+
+def _system_payload() -> dict[str, Any]:
     paths = ["/", "/data"]
     for configured in [env("PERSIST_ROOT"), env("RUNTIME_ROOT")]:
         if configured and configured not in paths:
@@ -874,7 +1022,7 @@ def errors_payload(query: dict[str, list[str]]) -> dict[str, Any]:
     }
 
 
-def html_index(token: str) -> str:
+def html_index() -> str:
     service_options = "\n".join(
         f'<option value="{html.escape(service)}">{html.escape(service)}</option>' for service in sorted(SERVICE_LOGS)
     )
@@ -1077,8 +1225,7 @@ def html_index(token: str) -> str:
     </section>
   </main>
   <script>
-    const TOKEN = __TOKEN_JSON__;
-    const HEADERS = {"X-Ops-Token": TOKEN};
+    const HEADERS = {};
     const I18N = {
       en: {
         autoRefresh: "Auto refresh",
@@ -1368,7 +1515,7 @@ def html_index(token: str) -> str:
       refreshAll();
     });
     byId("loadLog").addEventListener("click", loadLog);
-    byId("metricsLink").href = `metrics?token=${encodeURIComponent(TOKEN)}`;
+    byId("metricsLink").href = "metrics";
     applyI18n();
     refreshAll().catch((error) => {
       byId("overall").textContent = t("error");
@@ -1380,11 +1527,17 @@ def html_index(token: str) -> str:
 </body>
 </html>
 """
-    return template.replace("__TOKEN_JSON__", json.dumps(token)).replace("__SERVICE_OPTIONS__", service_options)
+    return template.replace("__SERVICE_OPTIONS__", service_options)
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "dify-aio-ops/1.0"
+
+    def setup(self) -> None:
+        super().setup()
+        timeout = parse_float(env("OPS_HTTP_TIMEOUT_SECONDS", "30"), 30.0, minimum=1.0, maximum=600.0)
+        self.request.settimeout(timeout)
+        self.ops_auth_source = ""
 
     def log_message(self, fmt: str, *args: Any) -> None:
         message = fmt % args
@@ -1401,11 +1554,56 @@ class Handler(BaseHTTPRequestHandler):
         )
         sys.stdout.flush()
 
+    def send_locked(self) -> None:
+        self.send_json(
+            {
+                "ok": False,
+                "error": "ops service is locked",
+                "reason": ops_lock_reason(),
+                "hint": "Set OPS_TOKEN to a strong value. For local demo only, set ALLOW_DEMO_OPS_TOKEN=true.",
+            },
+            status=503,
+        )
+
+    def cookie_secure_enabled(self) -> bool:
+        mode = env("OPS_COOKIE_SECURE", "auto").strip().lower()
+        if mode in {"1", "true", "yes", "on"}:
+            return True
+        if mode in {"0", "false", "no", "off"}:
+            return False
+        proto = self.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip().lower()
+        return proto == "https"
+
+    def session_cookie_header(self) -> str:
+        value, expires_at = make_ops_session()
+        max_age = max(expires_at - int(time.time()), 0)
+        secure = "; Secure" if self.cookie_secure_enabled() else ""
+        return f"{OPS_SESSION_COOKIE}={value}; Path=/_ops/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}"
+
+    def maybe_send_session_cookie(self) -> None:
+        if self.ops_auth_source in {"header", "query"}:
+            self.send_header("Set-Cookie", self.session_cookie_header())
+
+    def maybe_send_query_token_headers(self) -> None:
+        if self.ops_auth_source == "query":
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+
+    def send_query_redirect(self) -> None:
+        self.send_response(303)
+        self.send_header("Location", "/_ops/")
+        self.maybe_send_session_cookie()
+        self.maybe_send_query_token_headers()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.maybe_send_session_cookie()
+        self.maybe_send_query_token_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -1414,6 +1612,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        self.maybe_send_session_cookie()
+        self.maybe_send_query_token_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -1421,20 +1621,43 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         return parsed.path, urllib.parse.parse_qs(parsed.query)
 
-    def is_authorized(self, query: dict[str, list[str]]) -> bool:
+    def cookie_auth(self) -> bool:
+        raw = self.headers.get("Cookie", "")
+        if not raw:
+            return False
+        cookie = SimpleCookie()
+        try:
+            cookie.load(raw)
+        except Exception:
+            return False
+        morsel = cookie.get(OPS_SESSION_COOKIE)
+        return bool(morsel and parse_ops_session(morsel.value))
+
+    def auth_source(self, query: dict[str, list[str]]) -> str:
         expected = env("OPS_TOKEN")
         if not expected:
-            return False
+            return ""
         auth = self.headers.get("Authorization", "")
-        provided = ""
         if auth.startswith("Bearer "):
             provided = auth.removeprefix("Bearer ").strip()
-        provided = provided or self.headers.get("X-Ops-Token", "").strip()
-        provided = provided or query.get("token", [""])[0]
-        return hmac.compare_digest(provided, expected)
+            if provided and hmac.compare_digest(provided, expected):
+                return "header"
+        provided = self.headers.get("X-Ops-Token", "").strip()
+        if provided and hmac.compare_digest(provided, expected):
+            return "header"
+        provided = query.get("token", [""])[0]
+        if provided and hmac.compare_digest(provided, expected):
+            return "query"
+        if self.cookie_auth():
+            return "cookie"
+        return ""
 
     def require_auth(self, query: dict[str, list[str]]) -> bool:
-        if self.is_authorized(query):
+        if ops_lock_reason():
+            self.send_locked()
+            return False
+        self.ops_auth_source = self.auth_source(query)
+        if self.ops_auth_source:
             return True
         self.send_json(
             {
@@ -1449,6 +1672,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path, query = self.parsed()
         if path in {"/healthz", "/readyz"}:
+            if ops_lock_reason():
+                self.send_locked()
+                return
             payload = health_payload(public=True)
             self.send_json(payload, status=200 if payload["ok"] else 503)
             return
@@ -1456,13 +1682,17 @@ class Handler(BaseHTTPRequestHandler):
         if not self.require_auth(query):
             return
 
+        if path in {"/", ""} and self.ops_auth_source == "query":
+            self.send_query_redirect()
+            return
+
         if path in {"/", ""}:
-            self.send_text(html_index(env("OPS_TOKEN")), content_type="text/html; charset=utf-8")
+            self.send_text(html_index(), content_type="text/html; charset=utf-8")
         elif path == "/health":
             payload = health_payload(public=False)
             self.send_json(payload, status=200 if payload["ok"] else 503)
         elif path == "/status":
-            self.send_json({"ok": True, "supervisor": supervisor_status(), "health": health_payload(public=True)})
+            self.send_json(status_payload())
         elif path == "/system":
             self.send_json({"ok": True, "system": system_payload()})
         elif path == "/config":

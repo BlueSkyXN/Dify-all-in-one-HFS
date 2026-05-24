@@ -52,7 +52,7 @@ HF runtime.raw.sha: d398057683de11335fdfe666678ededc36298828
 
 | Priority | Item | Current state | Next evidence needed |
 | --- | --- | --- | --- |
-| P0 | 本地 build/run/smoke 证据 | 静态检查可跑；完整 Docker build/run 未在本次文档审计阶段作为默认动作执行 | `scripts/build.sh`、`scripts/run-demo.sh`、`OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080` |
+| P0 | 本地 build/run/smoke 证据 | 静态检查可跑；完整 Docker build/run 未在本次文档审计阶段作为默认动作执行 | `scripts/build.sh`、`scripts/run-demo.sh`、`OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080` |
 | P0 | Hugging Face runtime 回读 | 每个新发布都必须按目标 commit 单独验证；不要用历史 SHA 证明当前 head | `hf spaces info BlueSkyXN/dify-all-in-one` 中 `runtime.stage=RUNNING` 且 `runtime.raw.sha=<expected sha>` |
 | P1 | Admin/File Manager 场景验证 | 默认关闭状态已在线上 smoke 覆盖；代码和 docs 已实现 token、CSRF、白名单 action、audit 只读查看、file root 限制 | admin enabled smoke、audit endpoint、file manager read/write/protected path smoke |
 | P1 | bucket-lite 持久化演练 | 已有演练模板；代码支持 `/persist`、PostgreSQL fallback 和 dump restore；仍需要场景实测 | 独立 volume 或 live Space 上的 PGDATA、fallback、dump restore 记录 |
@@ -75,5 +75,5 @@ HF runtime.raw.sha: d398057683de11335fdfe666678ededc36298828
 | 1 | `space-frame-headers` smoke 没有重试，冷启动短暂 502 会被误判为 header 回归 | 为 header 检查补齐 `SMOKE_RETRIES` / `SMOKE_DELAY` 重试逻辑 | Python stdlib stub server 模拟 `/apps` 首次 503 后恢复 200；`scripts/static-check.sh` |
 | 2 | 新增验证入口和 roadmap 后，根 README、AGENTS 和项目目录图需要同步 | 增加 `scripts/static-check.sh` 作为单一轻量验证入口，并同步 README、AGENTS、docs index 和 file reference | `scripts/static-check.sh` |
 | 3 | 项目状态和 roadmap 需要受版本控制；新增文件在未 staged 时也需要 whitespace 覆盖 | 新增本文档，并让 `scripts/static-check.sh` 额外扫描 changed/untracked 文件的 trailing whitespace | `scripts/static-check.sh` |
-| 4 | live Space 已覆盖自定义 `OPS_TOKEN`，文档继续写死 demo token 会造成 401 误判 | 线上命令统一改为 `your-configured-ops-token` 或 `$OPS_TOKEN`，本地 demo 才保留 `dify_ops_demo_token` | `rg -n "dify_ops_demo_token" README.md README.hf-space.md docs/*.md AGENTS.md` |
+| 4 | live Space 已覆盖自定义 `OPS_TOKEN`，文档继续写死 demo token 会造成 401/503 误判 | 线上命令统一改为 `your-configured-ops-token` 或 `$OPS_TOKEN`，本地 demo 才保留 `dify_ops_demo_token` 和 `ALLOW_DEMO_OPS_TOKEN=true` | `rg -n "dify_ops_demo_token" README.md README.hf-space.md docs/*.md AGENTS.md` |
 | 5 | ops/admin 已补中英双语 UI，AGENTS 和文件职责说明需要同步该维护约束 | 文档补充 English / 中文切换能力，AGENTS 增加双语文案同步规则 | `scripts/static-check.sh`；`git diff --check` |

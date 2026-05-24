@@ -5,11 +5,13 @@ BASE_URL=${1:-${ADMIN_SMOKE_BASE_URL:-http://localhost:8080}}
 BASE_URL=${BASE_URL%/}
 ADMIN_EXPECTED_ENABLED=${ADMIN_EXPECTED_ENABLED:-${ADMIN_ENABLED:-false}}
 ADMIN_FILES_EXPECTED_ENABLED=${ADMIN_FILES_EXPECTED_ENABLED:-${ADMIN_FILES_ENABLED:-false}}
+ADMIN_FILES_DESTRUCTIVE_EXPECTED_ENABLED=${ADMIN_FILES_DESTRUCTIVE_EXPECTED_ENABLED:-${ADMIN_FILES_DESTRUCTIVE_ENABLED:-false}}
 ADMIN_SMOKE_ACTIONS=${ADMIN_SMOKE_ACTIONS:-false}
 ADMIN_TOKEN=${ADMIN_TOKEN:-}
 
 tmp_body=$(mktemp)
-trap 'rm -f "$tmp_body"' EXIT
+tmp_cookie=$(mktemp)
+trap 'rm -f "$tmp_body" "$tmp_cookie"' EXIT
 
 curl_status() {
   curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 "$@" || true
@@ -38,6 +40,15 @@ require_admin_token() {
   exit 1
 }
 
+admin_login_payload() {
+  ADMIN_TOKEN="$ADMIN_TOKEN" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({"token": os.environ["ADMIN_TOKEN"]}))
+PY
+}
+
 if [ "$ADMIN_EXPECTED_ENABLED" != "true" ]; then
   expect_status "admin-disabled-root" "404" "$BASE_URL/_admin/"
   expect_status "admin-disabled-status" "404" "$BASE_URL/_admin/api/status"
@@ -52,16 +63,26 @@ expect_status "admin-status-bad-token" "401" -H "X-Admin-Token: invalid-admin-to
 expect_status "admin-status" "200" -H "X-Admin-Token: $ADMIN_TOKEN" "$BASE_URL/_admin/api/status"
 expect_status "admin-actions" "200" -H "X-Admin-Token: $ADMIN_TOKEN" "$BASE_URL/_admin/api/actions"
 expect_status "admin-audit" "200" -H "X-Admin-Token: $ADMIN_TOKEN" "$BASE_URL/_admin/api/audit?limit=5"
-expect_status "admin-action-missing-csrf" "403" \
+expect_status "admin-token-action-missing-confirm" "400" \
   -X POST \
   -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  "$BASE_URL/_admin/api/actions/run-health-checks"
+expect_status "admin-login-cookie" "200" \
+  -c "$tmp_cookie" \
+  -H "Content-Type: application/json" \
+  -d "$(admin_login_payload)" \
+  "$BASE_URL/_admin/api/login"
+expect_status "admin-cookie-action-missing-csrf" "403" \
+  -b "$tmp_cookie" \
+  -X POST \
   -H "Content-Type: application/json" \
   -d '{"confirm":true}' \
   "$BASE_URL/_admin/api/actions/run-health-checks"
 expect_status "admin-action-missing-confirm" "400" \
   -X POST \
   -H "X-Admin-Token: $ADMIN_TOKEN" \
-  -H "X-Admin-CSRF: smoke" \
   -H "Content-Type: application/json" \
   -d '{}' \
   "$BASE_URL/_admin/api/actions/run-health-checks"
@@ -82,6 +103,14 @@ if [ "$ADMIN_FILES_EXPECTED_ENABLED" = "true" ]; then
   expect_status "admin-files-root-escape" "400" \
     -H "X-Admin-Token: $ADMIN_TOKEN" \
     "$BASE_URL/_admin/api/files/list?path=.."
+  if [ "$ADMIN_FILES_DESTRUCTIVE_EXPECTED_ENABLED" != "true" ]; then
+    expect_status "admin-files-destructive-disabled" "403" \
+      -X PATCH \
+      -H "X-Admin-Token: $ADMIN_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"path":"/missing","new_path":"/still-missing","confirm":true}' \
+      "$BASE_URL/_admin/api/files/rename"
+  fi
 else
   expect_status "admin-files-disabled" "404" \
     -H "X-Admin-Token: $ADMIN_TOKEN" \

@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 import urllib.parse
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 
@@ -29,6 +31,9 @@ SESSION_COOKIE = "dify_admin_session"
 MAX_JSON_BYTES = 1024 * 1024
 MAX_TEXT_READ_BYTES = 1024 * 1024
 MAX_AUDIT_EVENTS = 500
+LOGIN_FAILURES_BY_IP: dict[str, deque[float]] = defaultdict(deque)
+LOGIN_FAILURES_GLOBAL: deque[float] = deque()
+LOGIN_RATE_LOCK = Lock()
 
 ALLOWED_RESTART_SERVICES = [
     "dify-api",
@@ -120,6 +125,10 @@ def admin_files_write_enabled() -> bool:
     return parse_bool(env("ADMIN_FILES_WRITE_ENABLED", "false"), default=False)
 
 
+def admin_files_destructive_enabled() -> bool:
+    return parse_bool(env("ADMIN_FILES_DESTRUCTIVE_ENABLED", "false"), default=False)
+
+
 def webssh_enabled() -> bool:
     return parse_bool(env("WEBSSH_ENABLED", "false"), default=False)
 
@@ -130,6 +139,68 @@ def session_ttl_seconds() -> int:
 
 def upload_limit_bytes() -> int:
     return parse_int(env("ADMIN_FILES_MAX_UPLOAD_BYTES"), 10 * 1024 * 1024, minimum=1, maximum=512 * 1024 * 1024)
+
+
+def login_rate_limit_window_seconds() -> int:
+    return parse_int(env("ADMIN_LOGIN_RATE_LIMIT_WINDOW_SECONDS"), 300, minimum=10, maximum=3600)
+
+
+def login_rate_limit_block_seconds() -> int:
+    return parse_int(env("ADMIN_LOGIN_RATE_LIMIT_BLOCK_SECONDS"), 300, minimum=10, maximum=3600)
+
+
+def login_rate_limit_max_per_ip() -> int:
+    return parse_int(env("ADMIN_LOGIN_RATE_LIMIT_MAX_PER_IP"), 5, minimum=1, maximum=1000)
+
+
+def login_rate_limit_max_global() -> int:
+    return parse_int(env("ADMIN_LOGIN_RATE_LIMIT_MAX_GLOBAL"), 30, minimum=1, maximum=10000)
+
+
+def trusted_remote_addr(headers: Any, client_address: Any) -> str:
+    real_ip = str(headers.get("X-Real-IP", "")).strip()
+    if real_ip:
+        return real_ip
+    try:
+        return str(client_address[0]) if client_address else ""
+    except (IndexError, TypeError):
+        return ""
+
+
+def prune_failures(values: deque[float], now: float, window: int) -> None:
+    while values and values[0] <= now - window:
+        values.popleft()
+
+
+def login_retry_after(remote_addr: str) -> int:
+    now = time.time()
+    window = login_rate_limit_window_seconds()
+    block = login_rate_limit_block_seconds()
+    with LOGIN_RATE_LOCK:
+        ip_failures = LOGIN_FAILURES_BY_IP[remote_addr]
+        prune_failures(ip_failures, now, max(window, block))
+        prune_failures(LOGIN_FAILURES_GLOBAL, now, max(window, block))
+        if len(ip_failures) >= login_rate_limit_max_per_ip() and now - ip_failures[-1] < block:
+            return max(1, int(block - (now - ip_failures[-1])))
+        if len(LOGIN_FAILURES_GLOBAL) >= login_rate_limit_max_global() and now - LOGIN_FAILURES_GLOBAL[-1] < block:
+            return max(1, int(block - (now - LOGIN_FAILURES_GLOBAL[-1])))
+    return 0
+
+
+def record_login_failure(remote_addr: str) -> None:
+    now = time.time()
+    window = login_rate_limit_window_seconds()
+    with LOGIN_RATE_LOCK:
+        ip_failures = LOGIN_FAILURES_BY_IP[remote_addr]
+        prune_failures(ip_failures, now, window)
+        prune_failures(LOGIN_FAILURES_GLOBAL, now, window)
+        ip_failures.append(now)
+        LOGIN_FAILURES_GLOBAL.append(now)
+
+
+def clear_login_failures(remote_addr: str) -> None:
+    with LOGIN_RATE_LOCK:
+        LOGIN_FAILURES_BY_IP.pop(remote_addr, None)
 
 
 def sign_message(*parts: str) -> str:
@@ -241,6 +312,7 @@ def status_payload(auth: AuthContext) -> dict[str, Any]:
         "files": {
             "enabled": admin_files_enabled(),
             "write_enabled": admin_files_write_enabled(),
+            "destructive_enabled": admin_files_destructive_enabled(),
             "root": str(admin_files_root()),
             "max_upload_bytes": upload_limit_bytes(),
             "max_text_read_bytes": MAX_TEXT_READ_BYTES,
@@ -518,6 +590,12 @@ def require_files_write_enabled() -> None:
         raise AdminError(403, "file manager write operations are disabled")
 
 
+def require_files_destructive_enabled() -> None:
+    require_files_write_enabled()
+    if not admin_files_destructive_enabled():
+        raise AdminError(403, "file manager destructive operations are disabled")
+
+
 def require_unprotected(target: Path) -> None:
     if is_protected_path(target):
         raise AdminError(403, "path is protected")
@@ -573,6 +651,7 @@ def files_list_payload(query: dict[str, list[str]]) -> dict[str, Any]:
         "root": str(root),
         "path": "/" if str(rel) == "." else f"/{rel}",
         "write_enabled": admin_files_write_enabled(),
+        "destructive_enabled": admin_files_destructive_enabled(),
         "entries": entries,
     }
 
@@ -656,7 +735,9 @@ def upload_payload(raw_path: str | None, body: bytes, auth: AuthContext) -> dict
 
 
 def rename_payload(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]:
-    require_files_write_enabled()
+    require_files_destructive_enabled()
+    if not confirmed(payload):
+        raise AdminError(400, "confirm=true is required")
     root, _rel, source = resolve_admin_path(str(payload.get("path", "")))
     _root, _new_rel, target = resolve_admin_path(str(payload.get("new_path", "")))
     require_unprotected(source)
@@ -679,7 +760,9 @@ def rename_payload(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]
 
 
 def delete_payload(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]:
-    require_files_write_enabled()
+    require_files_destructive_enabled()
+    if not confirmed(payload):
+        raise AdminError(400, "confirm=true is required")
     root, rel, target = resolve_admin_path(str(payload.get("path", "")))
     if str(rel) == ".":
         raise AdminError(400, "cannot delete ADMIN_FILES_ROOT")
@@ -1246,6 +1329,11 @@ def html_index(authenticated: bool) -> str:
 class Handler(BaseHTTPRequestHandler):
     server_version = "dify-aio-admin/1.0"
 
+    def setup(self) -> None:
+        super().setup()
+        timeout = parse_int(env("ADMIN_HTTP_TIMEOUT_SECONDS"), 30, minimum=1, maximum=600)
+        self.request.settimeout(timeout)
+
     def log_message(self, fmt: str, *args: Any) -> None:
         path = urllib.parse.urlparse(self.path).path
         message = fmt % args
@@ -1346,6 +1434,9 @@ class Handler(BaseHTTPRequestHandler):
             return AuthContext(kind="token", csrf_token="1")
         return None
 
+    def remote_addr(self) -> str:
+        return trusted_remote_addr(self.headers, self.client_address)
+
     def authenticate(self) -> AuthContext | None:
         return self.header_auth() or self.cookie_auth()
 
@@ -1366,22 +1457,37 @@ class Handler(BaseHTTPRequestHandler):
     def require_csrf(self, auth: AuthContext) -> bool:
         provided = self.headers.get("X-Admin-CSRF", "") or self.headers.get("X-CSRF-Token", "")
         if auth.kind == "token":
-            if provided:
-                return True
+            return True
         elif hmac.compare_digest(provided, auth.csrf_token):
             return True
         self.send_json({"ok": False, "error": "missing or invalid CSRF header"}, status=403)
         return False
 
+    def cookie_secure_enabled(self) -> bool:
+        mode = env("ADMIN_COOKIE_SECURE", "auto").strip().lower()
+        if mode in {"1", "true", "yes", "on"}:
+            return True
+        if mode in {"0", "false", "no", "off"}:
+            return False
+        proto = self.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip().lower()
+        return proto == "https"
+
     def set_session_cookie(self, value: str, expires_at: int) -> None:
         max_age = max(expires_at - int(time.time()), 0)
+        secure = "; Secure" if self.cookie_secure_enabled() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE}={value}; Path=/_admin; Max-Age={max_age}; HttpOnly; SameSite=Lax",
+            f"{SESSION_COOKIE}={value}; Path=/_admin/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}",
+        )
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE}=; Path=/_admin; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
         )
 
     def clear_session_cookie(self) -> None:
-        self.send_header("Set-Cookie", f"{SESSION_COOKIE}=; Path=/_admin; Max-Age=0; HttpOnly; SameSite=Lax")
+        secure = "; Secure" if self.cookie_secure_enabled() else ""
+        self.send_header("Set-Cookie", f"{SESSION_COOKIE}=; Path=/_admin/; Max-Age=0; HttpOnly; SameSite=Lax{secure}")
+        self.send_header("Set-Cookie", f"{SESSION_COOKIE}=; Path=/_admin; Max-Age=0; HttpOnly; SameSite=Lax{secure}")
 
     def do_GET(self) -> None:
         path, query = self.parsed()
@@ -1434,11 +1540,32 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             if path == "/api/login":
+                remote_addr = self.remote_addr()
+                retry_after = login_retry_after(remote_addr)
+                if retry_after:
+                    audit_event(
+                        "login",
+                        False,
+                        "cookie",
+                        "login",
+                        {"remote_addr": remote_addr, "reason": "rate-limited", "retry_after_seconds": retry_after},
+                    )
+                    self.send_json({"ok": False, "error": "rate limited", "retry_after_seconds": retry_after}, status=429)
+                    return
                 payload = self.read_json()
                 token = str(payload.get("token", ""))
                 if not hmac.compare_digest(token, admin_token()):
+                    record_login_failure(remote_addr)
+                    audit_event(
+                        "login",
+                        False,
+                        "cookie",
+                        "login",
+                        {"remote_addr": remote_addr, "reason": "invalid-token"},
+                    )
                     self.send_json({"ok": False, "error": "invalid token"}, status=401)
                     return
+                clear_login_failures(remote_addr)
                 cookie_value, csrf_token, expires_at = make_session()
                 body = json.dumps({"ok": True, "csrf_token": csrf_token, "expires_at": expires_at}, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
@@ -1447,7 +1574,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.set_session_cookie(cookie_value, expires_at)
                 self.end_headers()
                 self.wfile.write(body)
-                audit_event("login", True, "cookie")
+                audit_event("login", True, "cookie", "login", {"remote_addr": remote_addr})
                 return
 
             auth = self.require_auth()

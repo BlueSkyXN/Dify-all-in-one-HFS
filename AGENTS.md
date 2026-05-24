@@ -56,7 +56,7 @@ cat docker/AGENTS.md
 | `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:1.14.1` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
 | `scripts/build.sh [tag]` | 构建默认/自定义 tag 镜像 | repo | 需要 Docker daemon 和构建网络 |
 | `scripts/run-demo.sh` | 本地启动 demo，默认 `http://localhost:8080` | repo | 需要 Docker daemon 和已构建镜像；会删除同名 `dify-aio-hf-demo` 容器 |
-| `OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080` | smoke 本地运行容器 | repo | 需要本地容器正在运行 |
+| `OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080` | smoke 本地运行容器 | repo | 需要本地容器正在运行；默认 demo token 必须显式允许 |
 | `OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space` | smoke 线上 HF Space | live Space | 需要网络和 Space 当前有效 `OPS_TOKEN`；默认 demo token 可能已被覆盖 |
 | `SMOKE_ADMIN_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh <base-url>` | smoke 已开启的 `/_admin` | local/live Space | 仅在 `ADMIN_ENABLED=true` 时使用；写 action 需 `SMOKE_ADMIN_ACTIONS=true` |
 | `ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/admin-smoke.sh <base-url>` | smoke admin 鉴权、CSRF、confirm 和 file manager 边界 | local/live Space | 文件管理加 `ADMIN_FILES_EXPECTED_ENABLED=true`；写 action 加 `ADMIN_SMOKE_ACTIONS=true` |
@@ -91,7 +91,11 @@ cat docker/AGENTS.md
 - `ops-service` 是只读诊断面。`/_ops` 不能新增重启服务、修改配置、执行 SQL、删除数据、任意命令执行、任意文件读取或返回 secret 原文的能力。
 - `/_ops/` 和 `/_admin/` dashboard 支持 English / 中文；改 UI 文案、状态、按钮、表头或空状态时必须同步双语并保留语言检测与 `localStorage`。
 - `OPS_TOKEN` 只是 demo/lightweight diagnostic gate，不是生产级鉴权系统，不能用它为写操作背书。
+- `OPS_TOKEN=dify_ops_demo_token` 默认会让 ops-service locked 并返回 503；只有本地 demo 才设置 `ALLOW_DEMO_OPS_TOKEN=true`。
+- `/_ops/` dashboard 使用 signed HttpOnly cookie；不要重新把完整 `OPS_TOKEN` 注入 HTML/JS 或生成 `?token=` 链接。
 - `admin-service` 承载独立 `/_admin` 管理面，默认 `ADMIN_ENABLED=false`。管理 action 必须保留白名单、`ADMIN_TOKEN`、CSRF/confirm 和审计边界；不要把写操作搬到 `/_ops`。
+- admin header token auth 显式跳过 CSRF；browser cookie session 写操作必须校验 CSRF。不要把 header token 模式描述成传统 CSRF 漏洞。
+- admin file manager 的 rename/delete 受 `ADMIN_FILES_DESTRUCTIVE_ENABLED` 单独 gate，默认关闭。
 - `/_ops/logs` 必须保持 service 白名单，不要从请求参数读取任意文件路径。
 - CLI 和自动化示例优先使用 `X-Ops-Token` 或 `Authorization: Bearer`；`?token=` 只适合临时浏览器调试。
 - Nginx 路由修改必须保护 `/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/_admin/terminal/`、`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/socket.io/`、`/e/`、`/explore` 和 `/`，除非用户明确要求重做路由。
@@ -168,7 +172,7 @@ git diff --check
 ```bash
 scripts/build.sh
 scripts/run-demo.sh
-OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
+OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080
 ```
 
 如果修改已部署到 Hugging Face，先确认 runtime metadata：

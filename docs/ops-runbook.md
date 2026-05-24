@@ -83,7 +83,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 `/_ops/` dashboard 支持 English / 中文切换，并会默认跟随浏览器语言；选择会保存在浏览器本地。
 
-`?token=` 适合临时调试，不适合长期使用，因为 URL 可能进入浏览器历史或代理日志。CLI 和自动化脚本优先使用 `X-Ops-Token`。
+`?token=` 适合临时调试，不适合长期使用，因为 URL 可能进入浏览器历史。Dashboard 会在 query token 验证成功后设置 signed HttpOnly cookie，并跳转到无 query 的 `/_ops/`；CLI 和自动化脚本优先使用 `X-Ops-Token`。
 
 需要 `ADMIN_TOKEN` 的管理入口，默认关闭：
 
@@ -120,7 +120,6 @@ curl -H "X-Admin-Token: $ADMIN_TOKEN" \
 
 curl -X POST \
   -H "X-Admin-Token: $ADMIN_TOKEN" \
-  -H "X-Admin-CSRF: cli" \
   -H "Content-Type: application/json" \
   -d '{"service":"dify-api","confirm":true}' \
   https://your-space.hf.space/_admin/api/actions/restart-service
@@ -140,6 +139,10 @@ scripts/admin-smoke.sh https://your-space.hf.space
 OPS_HOST=127.0.0.1
 OPS_PORT=8081
 OPS_TOKEN=dify_ops_demo_token
+ALLOW_DEMO_OPS_TOKEN=false
+OPS_CACHE_TTL_SECONDS=5
+OPS_SESSION_TTL_SECONDS=3600
+OPS_COOKIE_SECURE=auto
 OPS_DEFAULT_CHECKS_ENABLED=true
 OPS_EXTRA_HTTP_CHECKS_JSON=
 OPS_EXTRA_TCP_CHECKS_JSON=
@@ -155,7 +158,7 @@ OPS_LOG_LINES_MAX=1000
 OPS_TOKEN=<fixed-random-token>
 ```
 
-`OPS_TOKEN` 只适合演示和轻量诊断，不应当被当成生产级安全边界。公开场景建议同时将 Space 设置为 Private 或 Protected。
+`OPS_TOKEN` 只适合演示和轻量诊断，不应当被当成生产级安全边界。默认 `dify_ops_demo_token` 在没有 `ALLOW_DEMO_OPS_TOKEN=true` 时会让 ops-service locked 并返回 503；公开场景必须设置强随机 `OPS_TOKEN`，并建议同时将 Space 设置为 Private 或 Protected。
 
 Admin 默认配置：
 
@@ -165,10 +168,12 @@ ADMIN_HOST=127.0.0.1
 ADMIN_PORT=8082
 ADMIN_TOKEN=
 ADMIN_SESSION_TTL_SECONDS=3600
+ADMIN_COOKIE_SECURE=auto
 ADMIN_AUDIT_LOG=/data/logs/admin-audit.jsonl
 ADMIN_FILES_ENABLED=false
 ADMIN_FILES_ROOT=/data
 ADMIN_FILES_WRITE_ENABLED=false
+ADMIN_FILES_DESTRUCTIVE_ENABLED=false
 ADMIN_FILES_MAX_UPLOAD_BYTES=10485760
 WEBSSH_ENABLED=false
 WEBSSH_HOST=127.0.0.1
@@ -179,7 +184,7 @@ WEBSSH_MAX_CLIENTS=1
 ```
 
 公开 Space 不建议开启 admin。确需开启时，至少使用 Private/Protected Space、强随机 `ADMIN_TOKEN`，并保持 file writes 关闭，除非正在做受控排障。
-`/_admin/terminal/` 默认返回 404。确需启用 terminal 时，设置 `WEBSSH_ENABLED=true` 并通过 `ADMIN_TOKEN` 鉴权访问；当前镜像内置 `ttyd`，Nginx 只把鉴权通过的请求代理到 `127.0.0.1:7681`。
+`/_admin/terminal/` 默认返回 404。确需启用 terminal 时，设置 `WEBSSH_ENABLED=true` 并通过 `ADMIN_TOKEN` 鉴权访问；当前镜像内置 `ttyd`，Nginx 只把鉴权通过的请求代理到 `127.0.0.1:7681`。运行中变更 `WEBSSH_ENABLED` 后执行 `supervisorctl -c /etc/supervisor/conf.d/supervisord.conf restart web-terminal` 或重启容器。
 
 Web terminal smoke：
 
@@ -233,7 +238,7 @@ dify-init           HTTP 127.0.0.1:5001/console/api/init
 
 `/_ops/health` 会额外返回：
 
-- supervisor 进程状态
+- Supervisor XML-RPC 进程状态
 - Dify / Space 版本摘要
 - 每个探针的耗时、HTTP 状态和短样本
 
@@ -528,4 +533,4 @@ ops-errors
 - 增加只读数据库 schema 检查，例如 plugin-daemon 必需表是否存在。
 - 增加显式 warmup 状态，区分启动中和真正失败。
 
-涉及执行迁移、清理缓存、SQL、配置修改等新写操作时，仍应放在 `/_admin/*`，并继续使用独立 `ADMIN_TOKEN`、白名单 action、`confirm=true`、CSRF header、审计日志和 action id / result。不要把任意 shell command 放进请求参数。WebSSH 或 interactive shell 只能作为最后阶段能力，默认关闭并与 OPS 权限隔离。
+涉及执行迁移、清理缓存、SQL、配置修改等新写操作时，仍应放在 `/_admin/*`，并继续使用独立 `ADMIN_TOKEN`、白名单 action、`confirm=true`、cookie session CSRF、审计日志和 action id / result。不要把任意 shell command 放进请求参数。WebSSH 或 interactive shell 只能作为最后阶段能力，默认关闭并与 OPS 权限隔离。

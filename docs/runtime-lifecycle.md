@@ -285,6 +285,6 @@ curl -fsS http://127.0.0.1:7860/
 
 - bucket-lite 下 `/data/postgres`、`/data/config/generated.env`、`/data/dify/storage`、`/data/plugin_daemon/plugin`、`/data/plugin_daemon/assets` 会通过 `/persist` 保留。
 - `/data/redis`、`/data/logs`、`/data/run`、`/data/plugin_daemon/plugin_packages`、`/data/plugin_daemon/cwd` 和 Hugging Face cache 默认在 `/tmp/dify-aio`，重启后会重新生成。
-- `postgres-backup` 会定期写 `/persist/postgres-backups/latest.sql.gz`，作为 live PostgreSQL data directory 的普通文件兜底备份。
+- `postgres-backup` 会定期写 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验 gzip 和非空后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，作为 live PostgreSQL data directory 的普通文件兜底备份。
 - `entrypoint.sh` 会跳过 `initdb`，继续更新 role 密码和确保数据库存在。
 - Dify API migration 和 Plugin Daemon migration 仍会执行，应当保持幂等。

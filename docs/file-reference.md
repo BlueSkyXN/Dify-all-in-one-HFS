@@ -201,6 +201,7 @@ Nginx 路由和日志配置。
 - 监听 `OPS_HOST:OPS_PORT`，默认 `127.0.0.1:8081`。
 - 提供 `/healthz`、`/readyz`、`/health`、`/status`、`/system`、`/config`、`/version`、`/logs`、`/errors`、`/metrics`。
 - 使用 `OPS_TOKEN` 鉴权保护非公开 endpoint。
+- 默认 demo token 未显式允许时进入 locked mode；dashboard 使用 signed HttpOnly cookie，不在 HTML/JS 中内联完整 token。
 - 首页是单文件 HTML/CSS/原生 JS dashboard，不需要前端构建。
 - 支持通过 `OPS_EXTRA_*_CHECKS_JSON` 增加 HTTP、TCP 和只读 command 健康探针。
 - 返回 CPU load、memory、disk、uptime 和 process count 的只读系统摘要。
@@ -220,9 +221,10 @@ Nginx 路由和日志配置。
 
 - 监听 `ADMIN_HOST:ADMIN_PORT`，默认 `127.0.0.1:8082`。
 - `ADMIN_ENABLED=false` 时所有入口返回 404。
-- 使用 `ADMIN_TOKEN`、signed HttpOnly cookie 和 CSRF header 保护写操作。
+- 使用 `ADMIN_TOKEN`、signed HttpOnly cookie、cookie session CSRF、登录失败 audit 和内存级限速保护管理入口。
 - 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks。
 - 可选提供 `/_admin/api/files/*` 文件管理；path 限制在 `ADMIN_FILES_ROOT` 内。
+- rename/delete 由 `ADMIN_FILES_DESTRUCTIVE_ENABLED` 单独 gate。
 - 写入 `ADMIN_AUDIT_LOG`，并通过 `/api/audit` 鉴权只读展示最近审计事件；不记录 token、secret 或文件内容。
 - 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 
@@ -234,7 +236,7 @@ bucket-lite PostgreSQL dump 备份循环。
 
 - 在 bucket-lite 或显式开启备份时等待 PostgreSQL ready。
 - 周期执行 `pg_dumpall --no-role-passwords`。
-- 写入 `${POSTGRES_BACKUP_DIR}/latest.sql.gz` 和 `latest.created_at`。
+- 写入 timestamped dump，校验后更新 `${POSTGRES_BACKUP_DIR}/latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，并按 `POSTGRES_BACKUP_RETAIN_COUNT` 轮转。
 
 ### `docker/webssh_entrypoint.sh`
 
@@ -337,7 +339,7 @@ volume=dify-hf-demo-persist:/persist
 env-file=docker/dify.env.demo
 ```
 
-脚本会额外透传当前 shell 中已设置的 `OPS_TOKEN`、`ADMIN_*` 和 `WEBSSH_*` 变量，便于本地启动开启 admin 或 terminal 的临时 demo。
+脚本会额外透传当前 shell 中已设置的 `POSTGRES_BACKUP_RETAIN_COUNT`、`OPS_TOKEN`、`ALLOW_DEMO_OPS_TOKEN`、`OPS_*` session/cache/cookie/timeout 变量、常用 `ADMIN_*` 开关和 `WEBSSH_*` 变量，便于本地启动开启 admin 或 terminal 的临时 demo。
 
 ### `scripts/hf-space-smoke.sh`
 
@@ -348,6 +350,7 @@ env-file=docker/dify.env.demo
 - 第一个参数：base URL。
 - 或 `HF_SPACE_URL`。
 - `OPS_TOKEN` 可选，用于检查 `/_ops`。
+- 设置 `OPS_TOKEN` 时会额外验证 query token 迁移到 cookie-backed dashboard，且 HTML 不再包含完整 token。
 - `ADMIN_TOKEN` + `SMOKE_ADMIN_ENABLED=true` 可选，用于检查已开启的 `/_admin`。
 - `SMOKE_WEBSSH_ENABLED=true` 可选，用于检查已开启的 `/_admin/terminal/`。
 - `SMOKE_RETRIES` 和 `SMOKE_DELAY` 控制重试。
@@ -376,7 +379,7 @@ env-file=docker/dify.env.demo
 职责：
 
 - 默认验证 `ADMIN_ENABLED=false` 时 `/_admin/` 和 `/_admin/api/status` 返回 404。
-- `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、action catalog、audit endpoint、CSRF、`confirm=true` 和 file manager 边界。
+- `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、cookie session CSRF、action catalog、audit endpoint、`confirm=true` 和 file manager 边界。
 - 默认不执行真实 admin action；只有 `ADMIN_SMOKE_ACTIONS=true` 时才调用 `run-health-checks`。
 
 ### `scripts/webssh-smoke.sh`
@@ -397,6 +400,7 @@ env-file=docker/dify.env.demo
 
 - 对 `docker/` 和 `scripts/` 下所有 shell helper 运行 `bash -n`。
 - 对 `docker/ops_service.py` 和 `docker/admin_service.py` 运行 `python3 -m py_compile`。
+- 使用 Python stdlib `unittest` 运行 `docker/tests/` 纯函数回归。
 - 运行 `git diff --check`。
 - 对 changed/untracked 文件额外检查 trailing whitespace，覆盖新文件未 staged 时 `git diff --check` 看不到的情况。
 

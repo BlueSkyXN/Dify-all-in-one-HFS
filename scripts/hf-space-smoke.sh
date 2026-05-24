@@ -13,7 +13,8 @@ SMOKE_DELAY=${SMOKE_DELAY:-5}
 
 tmp_body=$(mktemp)
 tmp_headers=$(mktemp)
-trap 'rm -f "$tmp_body" "$tmp_headers"' EXIT
+tmp_cookie=$(mktemp)
+trap 'rm -f "$tmp_body" "$tmp_headers" "$tmp_cookie"' EXIT
 
 check_status() {
   local label=$1
@@ -67,6 +68,38 @@ check_ops() {
   printf 'FAIL %s: expected HTTP 200, got %s\n' "$label" "$status" >&2
   sed -n '1,80p' "$tmp_body" >&2 || true
   exit 1
+}
+
+check_ops_cookie_migration() {
+  local status
+  if [ -z "$OPS_TOKEN" ]; then
+    printf 'SKIP ops-cookie-migration: OPS_TOKEN is not set\n'
+    return
+  fi
+
+  status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+    -c "$tmp_cookie" \
+    --get --data-urlencode "token=$OPS_TOKEN" \
+    "$BASE_URL/_ops/" || true)
+  if [ "$status" != "303" ]; then
+    printf 'FAIL ops-cookie-query-redirect: expected HTTP 303, got %s\n' "$status" >&2
+    sed -n '1,80p' "$tmp_body" >&2 || true
+    exit 1
+  fi
+
+  status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+    -b "$tmp_cookie" \
+    "$BASE_URL/_ops/" || true)
+  if [ "$status" != "200" ]; then
+    printf 'FAIL ops-cookie-dashboard: expected HTTP 200, got %s\n' "$status" >&2
+    sed -n '1,80p' "$tmp_body" >&2 || true
+    exit 1
+  fi
+  if grep -Fq "$OPS_TOKEN" "$tmp_body"; then
+    printf 'FAIL ops-cookie-dashboard: OPS_TOKEN is still present in dashboard HTML\n' >&2
+    exit 1
+  fi
+  printf 'PASS ops-cookie-migration: query token redirects to cookie-backed dashboard\n'
 }
 
 check_admin() {
@@ -227,3 +260,4 @@ check_ops "ops-health" "/_ops/health"
 check_ops "ops-system" "/_ops/system"
 check_ops "ops-metrics" "/_ops/metrics"
 check_ops "ops-errors" "/_ops/errors"
+check_ops_cookie_migration

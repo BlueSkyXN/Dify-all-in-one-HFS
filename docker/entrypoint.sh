@@ -316,14 +316,32 @@ stop_temp_redis() {
   redis-cli "${args[@]}" shutdown nosave >/data/logs/redis-init-stop.log 2>&1 || true
 }
 
+sandbox_python_lib_path_default() {
+  local arch
+  local triplet
+  arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
+  case "$arch" in
+    amd64|x86_64) triplet="x86_64-linux-gnu" ;;
+    arm64|aarch64) triplet="aarch64-linux-gnu" ;;
+    *)
+      log "Unsupported architecture for SANDBOX_PYTHON_LIB_PATH auto detection: ${arch}"
+      return 1
+      ;;
+  esac
+  printf '/usr/local/lib/python3.12,/usr/lib/%s,/lib/%s,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone' "$triplet" "$triplet"
+}
+
 render_sandbox_config() {
   source_runtime_env
   local api_key=${SANDBOX_API_KEY:-${CODE_EXECUTION_API_KEY:-}}
   local enable_network=${SANDBOX_ENABLE_NETWORK:-false}
   local python_path=${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}
   local nodejs_path=${SANDBOX_NODEJS_PATH:-/usr/bin/node}
-  local python_lib_paths=${SANDBOX_PYTHON_LIB_PATH:-/usr/local/lib/python3.12,/usr/lib/x86_64-linux-gnu,/lib/x86_64-linux-gnu,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone}
+  local python_lib_paths=${SANDBOX_PYTHON_LIB_PATH:-}
   local debug=false
+  if [ -z "$python_lib_paths" ]; then
+    python_lib_paths=$(sandbox_python_lib_path_default)
+  fi
   if [ "${SANDBOX_GIN_MODE:-release}" != "release" ]; then
     debug=true
   fi
@@ -541,6 +559,17 @@ restore_postgres_backup_if_needed() {
   fi
   if psql -h /data/run/postgresql -p "$DB_PORT" -U user -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_DATABASE}'" | grep -q 1; then
     return
+  fi
+
+  if ! gzip -t "$backup" >/dev/null 2>&1; then
+    log "PostgreSQL dump ${backup} failed gzip validation."
+    exit 1
+  fi
+  local backup_bytes
+  backup_bytes=$(gzip -dc "$backup" | wc -c | tr -d ' ')
+  if [ "${backup_bytes:-0}" -le 0 ]; then
+    log "PostgreSQL dump ${backup} is empty after decompression."
+    exit 1
   fi
 
   log "Restoring PostgreSQL dump from ${backup} before creating demo databases."

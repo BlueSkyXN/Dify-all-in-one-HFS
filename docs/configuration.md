@@ -132,6 +132,7 @@ CODE_EXECUTION_API_KEY=<fixed-demo-or-random-secret>
 | `POSTGRES_BACKUP_DIR` | `${PERSIST_ROOT}/postgres-backups` | `latest.sql.gz` 和时间戳写入目录 |
 | `POSTGRES_BACKUP_INTERVAL_SECONDS` | `3600` | 周期备份间隔，最小有效值 60 秒 |
 | `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` | `60` | supervisor 启动后首次备份延迟；只影响第一次 `pg_dumpall` 前等待多久，后续周期由 `POSTGRES_BACKUP_INTERVAL_SECONDS` 控制 |
+| `POSTGRES_BACKUP_RETAIN_COUNT` | `5` | 保留最近多少份 timestamped dump，范围 `1..50` |
 | `HF_HOME` | `${RUNTIME_ROOT}/hf-cache` | Hugging Face cache 根目录，默认不进 bucket |
 | `HF_HUB_CACHE` | `${HF_HOME}/hub` | Hugging Face Hub cache |
 
@@ -151,7 +152,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/latest.sql.gz` 是普通文件备份，用于降低 bucket mount 文件系统语义风险。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在有 dump 时先恢复 dump。
+`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/` 会保留 timestamped `YYYYmmddTHHMMSSZ.sql.gz` dump，并更新普通文件 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在有可通过 gzip 校验且非空的 dump 时先恢复 dump。
 
 如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
@@ -310,6 +311,11 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `OPS_HOST` | `127.0.0.1` | ops-service bind host |
 | `OPS_PORT` | `8081` | ops-service port |
 | `OPS_TOKEN` | `dify_ops_demo_token` | `/_ops` 认证 token |
+| `ALLOW_DEMO_OPS_TOKEN` | `false` | 显式允许默认 demo token；仅本地 demo 应设置为 `true` |
+| `OPS_CACHE_TTL_SECONDS` | `5` | `health` / `status` / `metrics` 共享缓存 TTL；`0` 禁用 |
+| `OPS_SESSION_TTL_SECONDS` | `3600` | `/_ops/` dashboard signed HttpOnly cookie 有效期 |
+| `OPS_COOKIE_SECURE` | `auto` | `auto` 时 `X-Forwarded-Proto=https` 自动加 `Secure` |
+| `OPS_HTTP_TIMEOUT_SECONDS` | `30` | ops-service 单连接 socket timeout |
 | `OPS_DEFAULT_CHECKS_ENABLED` | `true` | 是否启用内置 Dify 健康探针 |
 | `OPS_EXTRA_HTTP_CHECKS_JSON` | empty | 额外 HTTP 探针 JSON list |
 | `OPS_EXTRA_TCP_CHECKS_JSON` | empty | 额外 TCP 探针 JSON list |
@@ -326,7 +332,7 @@ Authorization: Bearer <token>
 ?token=<token>
 ```
 
-CLI 和自动化优先使用 header，不建议长期使用 query token。
+CLI 和自动化优先使用 header，不建议长期使用 query token。`/_ops/?token=<token>` 仅保留为临时浏览器入口：成功后会设置 signed HttpOnly cookie 并跳转到无 query 的 `/_ops/`。如果 `OPS_TOKEN` 为空，或仍为默认 `dify_ops_demo_token` 且没有设置 `ALLOW_DEMO_OPS_TOKEN=true`，ops-service 会进入 locked mode，`/healthz` 和 `/_ops/*` 返回 503。
 
 `/_ops/` dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。该偏好属于浏览器本地状态，不是容器配置项。
 
@@ -355,6 +361,12 @@ OPS_EXTRA_COMMAND_CHECKS_JSON=[{"name":"worker","args":["/usr/local/bin/workerct
 | `ADMIN_PORT` | `8082` | admin-service port |
 | `ADMIN_TOKEN` | empty | 独立 admin token；开启 admin 时必须设置 |
 | `ADMIN_SESSION_TTL_SECONDS` | `3600` | Browser session cookie 有效期 |
+| `ADMIN_COOKIE_SECURE` | `auto` | `auto` 时 `X-Forwarded-Proto=https` 自动加 `Secure`；本地 HTTP demo 不加 |
+| `ADMIN_HTTP_TIMEOUT_SECONDS` | `30` | admin-service 单连接 socket timeout |
+| `ADMIN_LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `300` | 登录失败统计窗口 |
+| `ADMIN_LOGIN_RATE_LIMIT_BLOCK_SECONDS` | `300` | 命中登录限速后的阻断时间 |
+| `ADMIN_LOGIN_RATE_LIMIT_MAX_PER_IP` | `5` | 单 IP 窗口内允许的登录失败次数 |
+| `ADMIN_LOGIN_RATE_LIMIT_MAX_GLOBAL` | `30` | 全局窗口内允许的登录失败次数 |
 | `ADMIN_AUDIT_LOG` | `/data/logs/admin-audit.jsonl` | admin action 和文件写操作审计日志 |
 
 认证方式：
@@ -365,7 +377,7 @@ Authorization: Bearer <token>
 Browser login -> signed HttpOnly cookie
 ```
 
-写操作必须使用 `POST` / `PUT` / `PATCH` / `DELETE`，并携带 CSRF header。浏览器登录后由页面使用 session 对应的 CSRF token；CLI 使用 header token 时也需要显式传入 `X-Admin-CSRF`。
+写操作必须使用 `POST` / `PUT` / `PATCH` / `DELETE`。浏览器 cookie session 必须携带 session 对应的 CSRF token；CLI 使用 `X-Admin-Token` 或 `Authorization: Bearer` 时不会被浏览器自动携带，因此显式跳过 CSRF，但仍需要 action 白名单和 `confirm=true`。
 
 `/_admin/` 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。语言选择不改变鉴权、CSRF、action 白名单或 file manager 权限。
 
@@ -389,7 +401,8 @@ POST /_admin/api/actions/run-health-checks
 | --- | --- | --- |
 | `ADMIN_FILES_ENABLED` | `false` | 是否开启 `/_admin/api/files/*` |
 | `ADMIN_FILES_ROOT` | `/data` | 文件管理根目录 |
-| `ADMIN_FILES_WRITE_ENABLED` | `false` | 是否允许 mkdir、写文本、上传、重命名、删除 |
+| `ADMIN_FILES_WRITE_ENABLED` | `false` | 是否允许 mkdir、写文本、上传 |
+| `ADMIN_FILES_DESTRUCTIVE_ENABLED` | `false` | 是否允许 rename/delete API；后续若接入 UI 也必须受同一开关控制，且仍要求 write enabled |
 | `ADMIN_FILES_MAX_UPLOAD_BYTES` | `10485760` | 上传和文本写入最大字节数 |
 
 路径会被当作相对 `ADMIN_FILES_ROOT` 的路径处理，`/foo` 表示 `${ADMIN_FILES_ROOT}/foo`，不会读取宿主意义上的绝对 `/foo`。解析后的路径必须仍在 `ADMIN_FILES_ROOT` 内；symlink 跳出 root 会被标记为 protected。
