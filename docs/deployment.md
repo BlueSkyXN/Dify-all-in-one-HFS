@@ -96,7 +96,6 @@ space-frame-headers
 nginx-health
 ops-healthz
 admin-disabled
-webssh-disabled
 setup-api
 init-api
 ops-health
@@ -105,7 +104,7 @@ ops-metrics
 ops-errors
 ```
 
-如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status`、`/_admin/api/actions` 与 `/_admin/api/audit`。如果也开启 Web terminal，再加 `SMOKE_WEBSSH_ENABLED=true` 检查 `/_admin/terminal/`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`。
+如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status`、`/_admin/api/actions` 与 `/_admin/api/audit`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`。Web terminal / WebSSH 已移除，不再属于 smoke 范围。
 
 默认重试：
 

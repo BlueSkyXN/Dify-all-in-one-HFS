@@ -1,6 +1,6 @@
 # Project Overview
 
-`dify-all-in-one` 是一个面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把官方 Dify 多容器部署中的 Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service`、默认关闭的 `admin-service` 和默认关闭的 Web terminal 收敛到一个 Docker 容器中，目标是课程演示、企业内训、PoC 和快速功能验证。
+`dify-all-in-one` 是一个面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把官方 Dify 多容器部署中的 Web、API、Worker、Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service`和默认关闭的 `admin-service` 收敛到一个 Docker 容器中，目标是课程演示、企业内训、PoC 和快速功能验证。
 
 ## 项目目标
 
@@ -51,7 +51,6 @@
 |   |-- ops_service.py         # 只读运维诊断 HTTP 服务
 |   |-- admin_service.py       # 默认关闭的受控管理 HTTP 服务
 |   |-- postgres-backup-loop   # bucket-lite PostgreSQL dump 备份循环
-|   |-- webssh_entrypoint.sh   # Web terminal disabled/ttyd wrapper
 |   |-- with-dify-env          # Dify API/Web/Worker 环境包装器
 |   |-- with-plugin-env        # Plugin Daemon 环境包装器
 |   |-- with-sandbox-env       # Sandbox 环境包装器

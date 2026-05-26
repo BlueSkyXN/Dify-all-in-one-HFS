@@ -97,7 +97,6 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/actions/restart-service
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
-/_admin/api/auth/terminal
 /_admin/api/files/list
 /_admin/api/files/text
 /_admin/api/files/download
@@ -107,7 +106,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/files/delete
 ```
 
-登录和登出是浏览器 dashboard 使用的 session 接口，`/_admin/api/audit` 只读返回最近的 admin 审计事件；日志不存在时返回 200、`exists=false` 和空 `events`，但它不是完整合规审计系统。`/_admin/api/auth/terminal` 只给 Nginx `auth_request` 和 Web terminal smoke 使用。`files/text` 同时支持读取和写入，写入需要 `ADMIN_FILES_WRITE_ENABLED=true`。
+登录和登出是浏览器 dashboard 使用的 session 接口，`/_admin/api/audit` 只读返回最近的 admin 审计事件；日志不存在时返回 200、`exists=false` 和空 `events`，但它不是完整合规审计系统。`files/text` 同时支持读取和写入，写入需要 `ADMIN_FILES_WRITE_ENABLED=true`。
 
 CLI 示例：
 
@@ -146,7 +145,6 @@ OPS_COOKIE_SECURE=auto
 OPS_DEFAULT_CHECKS_ENABLED=true
 OPS_EXTRA_HTTP_CHECKS_JSON=
 OPS_EXTRA_TCP_CHECKS_JSON=
-OPS_EXTRA_COMMAND_CHECKS_JSON=
 OPS_LOG_DIR=/data/logs
 OPS_LOG_SERVICES_JSON=
 OPS_LOG_LINES_MAX=1000
@@ -175,25 +173,9 @@ ADMIN_FILES_ROOT=/data
 ADMIN_FILES_WRITE_ENABLED=false
 ADMIN_FILES_DESTRUCTIVE_ENABLED=false
 ADMIN_FILES_MAX_UPLOAD_BYTES=10485760
-WEBSSH_ENABLED=false
-WEBSSH_HOST=127.0.0.1
-WEBSSH_PORT=7681
-WEBSSH_BASE_PATH=/_admin/terminal
-WEBSSH_SHELL=/bin/bash
-WEBSSH_MAX_CLIENTS=1
 ```
 
-公开 Space 不建议开启 admin。确需开启时，至少使用 Private/Protected Space、强随机 `ADMIN_TOKEN`，并保持 file writes 关闭，除非正在做受控排障。
-`/_admin/terminal/` 默认返回 404。确需启用 terminal 时，设置 `WEBSSH_ENABLED=true` 并通过 `ADMIN_TOKEN` 鉴权访问；当前镜像内置 `ttyd`，Nginx 只把鉴权通过的请求代理到 `127.0.0.1:7681`。运行中变更 `WEBSSH_ENABLED` 后执行 `supervisorctl -c /etc/supervisor/conf.d/supervisord.conf restart web-terminal` 或重启容器。
-
-Web terminal smoke：
-
-```bash
-ADMIN_EXPECTED_ENABLED=true \
-WEBSSH_EXPECTED_ENABLED=true \
-ADMIN_TOKEN=<admin-token> \
-scripts/webssh-smoke.sh https://your-space.hf.space
-```
+公开 Space 不建议开启 admin。确需开启时，至少使用 Private/Protected Space、强随机 `ADMIN_TOKEN`，并保持 file writes 关闭，除非正在做受控排障。Web terminal / WebSSH 已从 runtime 中移除，不再提供 `/_admin/terminal/`、`WEBSSH_*` 或 `ttyd`。
 
 ## 版本和构建元数据
 
@@ -212,7 +194,6 @@ version.build.dify_web_image
 version.build.plugin_daemon_image
 version.build.sandbox_image
 version.build.uv_version
-version.build.ttyd_version
 version.sandbox.python_path
 version.sandbox.requirements.sha256
 version.sandbox.requirements.package_count
@@ -242,7 +223,7 @@ dify-init           HTTP 127.0.0.1:5001/console/api/init
 - Dify / Space 版本摘要
 - 每个探针的耗时、HTTP 状态和短样本
 
-迁移到其他程序时，可以设置 `OPS_DEFAULT_CHECKS_ENABLED=false`，再用 `OPS_EXTRA_HTTP_CHECKS_JSON`、`OPS_EXTRA_TCP_CHECKS_JSON` 和 `OPS_EXTRA_COMMAND_CHECKS_JSON` 添加目标程序自己的只读探针。自定义探针最多执行 32 个；HTTP 探针可以用 `expected_status` 明确要求返回码。
+迁移到其他程序时，可以设置 `OPS_DEFAULT_CHECKS_ENABLED=false`，再用 `OPS_EXTRA_HTTP_CHECKS_JSON` 和 `OPS_EXTRA_TCP_CHECKS_JSON` 添加目标程序自己的只读探针。自定义 HTTP/TCP 探针最多执行 32 个；HTTP 探针可以用 `expected_status` 明确要求返回码。`/_ops` 不支持自定义 command 探针；需要执行命令的受控操作必须放入 `/_admin` 白名单 action。
 
 刚发布后，Dify Web 和 API 可能需要几十秒到数分钟 warmup。`scripts/hf-space-smoke.sh` 默认会重试，避免把短暂 502 或 timeout 当作最终失败。
 
@@ -299,7 +280,7 @@ dify-beat.err
 nginx
 ```
 
-`sandbox`、`dify-web`、`ops-service`、`admin-service` 和 `web-terminal` 当前由 supervisor 直接写到容器 stdout/stderr，主要通过 Hugging Face App logs 查看；`/_ops/logs` 暂不暴露它们的专用文件。这样 `ops-service` 本体不需要写 `/data`，只通过 `OPS_LOG_DIR` 只读读取其他服务日志。
+`sandbox`、`dify-web`、`ops-service` 和 `admin-service` 当前由 supervisor 直接写到容器 stdout/stderr，主要通过 Hugging Face App logs 查看；`/_ops/logs` 暂不暴露它们的专用文件。这样 `ops-service` 本体不需要写 `/data`，只通过 `OPS_LOG_DIR` 只读读取其他服务日志。
 
 迁移到其他程序时，可以保留默认白名单，也可以用 `OPS_LOG_SERVICES_JSON` 增加服务到相对日志文件名的映射：
 
@@ -508,12 +489,10 @@ space-frame-headers
 nginx-health
 ops-healthz
 admin-disabled
-webssh-disabled
 admin-status        # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-actions       # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-audit         # 仅 SMOKE_ADMIN_ENABLED=true 时
 admin-run-health-checks # 仅 SMOKE_ADMIN_ENABLED=true 且 SMOKE_ADMIN_ACTIONS=true 时
-webssh-terminal     # 仅 SMOKE_ADMIN_ENABLED=true 且 SMOKE_WEBSSH_ENABLED=true 时
 setup-api
 init-api
 ops-health
@@ -533,4 +512,4 @@ ops-errors
 - 增加只读数据库 schema 检查，例如 plugin-daemon 必需表是否存在。
 - 增加显式 warmup 状态，区分启动中和真正失败。
 
-涉及执行迁移、清理缓存、SQL、配置修改等新写操作时，仍应放在 `/_admin/*`，并继续使用独立 `ADMIN_TOKEN`、白名单 action、`confirm=true`、cookie session CSRF、审计日志和 action id / result。不要把任意 shell command 放进请求参数。WebSSH 或 interactive shell 只能作为最后阶段能力，默认关闭并与 OPS 权限隔离。
+涉及执行迁移、清理缓存、SQL、配置修改等新写操作时，仍应放在 `/_admin/*`，并继续使用独立 `ADMIN_TOKEN`、白名单 action、`confirm=true`、cookie session CSRF、审计日志和 action id / result。不要把任意 shell command 放进请求参数；`/_ops` 不再提供 command 探针。WebSSH 或 interactive shell 已从 runtime 中移除，不应恢复为默认能力。

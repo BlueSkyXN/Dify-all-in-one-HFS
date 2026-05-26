@@ -115,12 +115,6 @@ SAFE_CONFIG_KEYS = [
     "ADMIN_FILES_WRITE_ENABLED",
     "ADMIN_FILES_DESTRUCTIVE_ENABLED",
     "ADMIN_FILES_MAX_UPLOAD_BYTES",
-    "WEBSSH_ENABLED",
-    "WEBSSH_HOST",
-    "WEBSSH_PORT",
-    "WEBSSH_BASE_PATH",
-    "WEBSSH_SHELL",
-    "WEBSSH_MAX_CLIENTS",
 ]
 
 SANDBOX_REQUIREMENTS_PATH = Path("/dependencies/python-requirements.txt")
@@ -430,16 +424,6 @@ def http_check(name: str, url: str, timeout: float = 2.0, expected_status: int |
         }
 
 
-def command_check(name: str, args: list[str], expect: str = "", timeout: float = 2.0) -> dict[str, Any]:
-    result = run_cmd(args, timeout=timeout)
-    output = f"{result['stdout']}\n{result['stderr']}"
-    result["name"] = name
-    result["ok"] = result["ok"] and (not expect or expect in output)
-    if expect:
-        result["expect"] = expect
-    return result
-
-
 def tcp_check(name: str, host: str, port: int, timeout: float = 1.0) -> dict[str, Any]:
     started = time.time()
     try:
@@ -485,26 +469,6 @@ def extra_tcp_checks() -> list[Any]:
             continue
         timeout = parse_float(item.get("timeout", 1.0), 1.0, minimum=0.1, maximum=30.0)
         checks.append(partial(tcp_check, name, host, port, timeout))
-    return checks
-
-
-def extra_command_checks() -> list[Any]:
-    checks = []
-    for item in load_json_list("OPS_EXTRA_COMMAND_CHECKS_JSON"):
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name")
-        args = item.get("args")
-        if not isinstance(name, str) or not name or not isinstance(args, list):
-            continue
-        safe_args = [arg for arg in args if isinstance(arg, str) and arg]
-        if not safe_args or len(safe_args) != len(args):
-            continue
-        expect = item.get("expect", "")
-        if not isinstance(expect, str):
-            expect = ""
-        timeout = parse_float(item.get("timeout", 2.0), 2.0, minimum=0.1, maximum=30.0)
-        checks.append(partial(command_check, name, safe_args, expect, timeout))
     return checks
 
 
@@ -643,7 +607,6 @@ def _health_checks_payload() -> dict[str, Any]:
         )
     checks_to_run.extend(extra_http_checks())
     checks_to_run.extend(extra_tcp_checks())
-    checks_to_run.extend(extra_command_checks())
     checks = collect_checks(checks_to_run)
 
     payload: dict[str, Any] = {
@@ -676,7 +639,6 @@ def version_payload() -> dict[str, Any]:
         "build": {
             "dify_version": env("DIFY_AIO_BUILD_DIFY_VERSION"),
             "uv_version": env("DIFY_AIO_BUILD_UV_VERSION"),
-            "ttyd_version": env("DIFY_AIO_BUILD_TTYD_VERSION"),
             "dify_api_image": env("DIFY_AIO_BUILD_DIFY_API_IMAGE"),
             "dify_web_image": env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE"),
             "plugin_daemon_image": env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE"),
@@ -702,9 +664,6 @@ def config_payload() -> dict[str, Any]:
         "extra_checks": {
             "http": [check.get("name") for check in load_json_list("OPS_EXTRA_HTTP_CHECKS_JSON") if isinstance(check, dict)],
             "tcp": [check.get("name") for check in load_json_list("OPS_EXTRA_TCP_CHECKS_JSON") if isinstance(check, dict)],
-            "command": [
-                check.get("name") for check in load_json_list("OPS_EXTRA_COMMAND_CHECKS_JSON") if isinstance(check, dict)
-            ],
         },
     }
 

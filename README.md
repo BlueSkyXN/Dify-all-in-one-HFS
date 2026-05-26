@@ -44,7 +44,6 @@ nginx:7860
   ├─ Sandbox:8194
   ├─ ops-service:8081
   ├─ admin-service:8082
-  ├─ web-terminal:7681 (default disabled; ttyd when enabled)
   ├─ PostgreSQL 15 + pgvector
   └─ Redis
 ```

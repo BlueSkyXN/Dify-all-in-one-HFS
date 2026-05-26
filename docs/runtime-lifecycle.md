@@ -219,7 +219,6 @@ requirepass <REDIS_PASSWORD>
 70 dify-web
 75 ops-service
 76 admin-service
-77 web-terminal
 80 nginx
 ```
 

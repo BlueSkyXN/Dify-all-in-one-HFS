@@ -2,7 +2,7 @@
 
 ## 项目目的
 
-`dify-all-in-one` 是面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把 Dify Web/API/Worker/Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service`、默认关闭的 `/_admin` 管理面和 Web terminal 收敛到一个容器中，用于企业内训、课程演示、PoC 和快速功能验证。
+`dify-all-in-one` 是面向 Hugging Face Docker Space 的 Dify 单容器 Demo 工程。它把 Dify Web/API/Worker/Beat、Plugin Daemon、Sandbox、PostgreSQL、Redis、Nginx、只读 `ops-service` 和默认关闭的 `/_admin` 管理面收敛到一个容器中，用于企业内训、课程演示、PoC 和快速功能验证。
 
 本仓库不是生产部署方案。生产环境应回到官方 Docker Compose、Kubernetes 或企业内网拆分式部署，并单独设计高可用、备份、鉴权、审计和正式监控。
 
@@ -27,7 +27,7 @@
 | `.gitattributes` | Git/LFS 文件处理规则 | No | 修改大文件、二进制文件或 LFS 跟踪规则时 |
 | `.gitignore` | 本地 generated/cache 忽略规则 | No | 新增 `.DS_Store`、浏览器 profile、Python cache 等本地 artifact 时 |
 | `.github/workflows/` | GitHub Actions 轻量静态检查 | No | 修改 PR/main gate、权限、触发条件或 `scripts/static-check.sh` 调用方式时 |
-| `docker/` | runtime 合同：entrypoint、env、Supervisor、Nginx、ops/admin、web terminal、PostgreSQL backup、healthcheck | Yes | 修改 `docker/` 下任何文件前 |
+| `docker/` | runtime 合同：entrypoint、env、Supervisor、Nginx、ops/admin、PostgreSQL backup、healthcheck | Yes | 修改 `docker/` 下任何文件前 |
 | `scripts/` | 本地 build/run wrapper 和 HF/local smoke 脚本 | No | 修改命令包装、smoke 预期、重试策略、默认 image tag 或默认 Space URL 时 |
 | `docs/` | 工程文档、部署指南、运维 runbook、配置和安全说明 | No | 修改用户/运维文档时；先用真实 runtime 文件核对事实 |
 | `local/` | 受版本控制的研究、计划和能力地图材料；不进 Docker build context | No | 除非用户明确要求，否则不要编辑、清理或当作 generated cache |
@@ -50,7 +50,7 @@ cat docker/AGENTS.md
 | Command | Purpose | Scope | Sandbox notes |
 | --- | --- | --- | --- |
 | `scripts/static-check.sh` | 聚合轻量静态检查：shell 语法、Python 语法和 diff whitespace | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
-| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop docker/webssh_entrypoint.sh scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/webssh-smoke.sh scripts/hf-space-smoke.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
+| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/hf-space-smoke.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
 | `python3 -m py_compile docker/ops_service.py docker/admin_service.py` | 检查 ops/admin Python 服务语法 | `docker/ops_service.py`, `docker/admin_service.py` | 需要 Python 3 |
 | `git diff --check` | 检查 diff whitespace 问题 | repo | 只读；如果有无关 dirty diff，使用 path-limited 形式 |
 | `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:1.14.1` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
@@ -60,8 +60,6 @@ cat docker/AGENTS.md
 | `OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh https://your-space.hf.space` | smoke 线上 HF Space | live Space | 需要网络和 Space 当前有效 `OPS_TOKEN`；默认 demo token 可能已被覆盖 |
 | `SMOKE_ADMIN_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh <base-url>` | smoke 已开启的 `/_admin` | local/live Space | 仅在 `ADMIN_ENABLED=true` 时使用；写 action 需 `SMOKE_ADMIN_ACTIONS=true` |
 | `ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/admin-smoke.sh <base-url>` | smoke admin 鉴权、CSRF、confirm 和 file manager 边界 | local/live Space | 文件管理加 `ADMIN_FILES_EXPECTED_ENABLED=true`；写 action 加 `ADMIN_SMOKE_ACTIONS=true` |
-| `ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/webssh-smoke.sh <base-url>` | smoke `/_admin/terminal/` 鉴权和 `ttyd` | local/live Space | 需要 admin、web terminal 和有效 `ADMIN_TOKEN` |
-| `SMOKE_ADMIN_ENABLED=true SMOKE_WEBSSH_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh <base-url>` | 综合 smoke 覆盖 terminal | local/live Space | 需要 admin 和 web terminal 都开启；默认不触发写 action |
 | `hf spaces info <space-id>` | 查看 Space runtime metadata | deployment | 需要 HF CLI、网络和必要登录态 |
 | `hf spaces logs <space-id> -n 220` | 查看 app logs | deployment | 需要 HF CLI 和网络 |
 | `hf spaces logs <space-id> --build -n 220` | 查看 build logs | deployment | 需要 HF CLI 和网络 |
@@ -83,7 +81,7 @@ cat docker/AGENTS.md
 - `dify_demo_password`、`dify_redis_password`、`dify_ops_demo_token` 这类值只能作为 demo 默认值描述，不要写成生产安全建议。
 - `HF_HOME` / `HF_HUB_CACHE` 默认落在 `${RUNTIME_ROOT}/hf-cache` 和 `${HF_HOME}/hub`，属于 runtime cache，不是 bucket-lite 核心持久状态。
 - env 加载顺序是：Docker/HF 已注入 env 优先，`docker/dify.env.runtime` 用默认值补齐，`/data/config/generated.env` 补齐自动生成 secrets。不要破坏显式外部 env 覆盖。
-- 新增或重命名 env var 时，同步检查 `docker/dify.env.runtime`、`docker/dify.env.demo`、相关 `docker/with-*` wrapper、`docker/entrypoint.sh`、`docker/supervisord.conf`、`docker/ops_service.py`、`docker/admin_service.py`、`docker/webssh_entrypoint.sh` 和 `docs/configuration.md`。
+- 新增或重命名 env var 时，同步检查 `docker/dify.env.runtime`、`docker/dify.env.demo`、相关 `docker/with-*` wrapper、`docker/entrypoint.sh`、`docker/supervisord.conf`、`docker/ops_service.py`、`docker/admin_service.py`和 `docs/configuration.md`。
 - `DB_USERNAME`、`DB_DATABASE`、`DB_PLUGIN_DATABASE` 在 `entrypoint.sh` 中必须保留 PostgreSQL identifier 校验。
 - Plugin Daemon 必须在启动 server 前执行 migration：`/opt/dify/plugin-daemon/commandline migrate && exec /opt/dify/plugin-daemon/main`。
 - Sandbox 默认 `SANDBOX_ENABLE_NETWORK=false`。如果开启网络，必须说明安全影响并同步 `docs/security.md`。
@@ -98,9 +96,8 @@ cat docker/AGENTS.md
 - admin file manager 的 rename/delete 受 `ADMIN_FILES_DESTRUCTIVE_ENABLED` 单独 gate，默认关闭。
 - `/_ops/logs` 必须保持 service 白名单，不要从请求参数读取任意文件路径。
 - CLI 和自动化示例优先使用 `X-Ops-Token` 或 `Authorization: Bearer`；`?token=` 只适合临时浏览器调试。
-- Nginx 路由修改必须保护 `/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/_admin/terminal/`、`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/socket.io/`、`/e/`、`/explore` 和 `/`，除非用户明确要求重做路由。
+- Nginx 路由修改必须保护 `/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/socket.io/`、`/e/`、`/explore` 和 `/`，除非用户明确要求重做路由。
 - `/socket.io/` 必须保留 WebSocket `Upgrade` / `Connection` header。
-- `/_admin/terminal/` 必须保留 `auth_request /_admin_auth_terminal` 和 WebSocket headers；默认 disabled，开启后代理到镜像内置 `ttyd`。
 - `/e/` 必须保留 `Dify-Hook-Url`，用于 Plugin Daemon endpoint hook。
 - `NGINX_PORT` 和 `NGINX_CLIENT_MAX_BODY_SIZE` 是 env defaults；除非实现模板渲染，不要声称它们会动态改变静态 `nginx.conf`。
 - Shell 脚本保持 Bash 和 `set -euo pipefail` 风格，修改后跑 `bash -n`。
@@ -118,7 +115,7 @@ cat docker/AGENTS.md
 - 不要执行 `git reset`、`git checkout`、`git clean`、`git stash` 等破坏性 Git 操作，除非用户明确要求。
 - 不要把 `.DS_Store`、local cache、runtime data 或 generated files 当作正常代码改动处理。
 - 不要新增 Compose/Kubernetes 生产部署并把它写成本 demo 的默认目标，除非用户明确要求生产化路线。
-- 不要把 PostgreSQL、Redis、Sandbox、Plugin Daemon、ops/admin 或 web-terminal 内部端口直接暴露到 Space 公网入口。
+- 不要把 PostgreSQL、Redis、Sandbox、Plugin Daemon、ops/admin 内部端口直接暴露到 Space 公网入口。
 - 不要在 `/_ops` 下新增写操作；admin surface 必须有独立鉴权、审计、白名单 action 和显式确认。
 - 不要通过 `/_ops/config`、logs、docs 或示例暴露 secret 原文；secret presence boolean 可以保留。
 - 不要静默升级 `DIFY_VERSION`、Plugin Daemon、Sandbox、Node.js、PostgreSQL major 或 uv 版本。版本升级必须配套 build 和 smoke。
@@ -155,11 +152,9 @@ bash -n \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
-  docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
-  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 python3 -m py_compile docker/ops_service.py

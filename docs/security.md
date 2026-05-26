@@ -115,7 +115,7 @@ ADMIN_FILES_WRITE_ENABLED=false
 
 `/_admin/` 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。管理 action、confirm 提示、file manager 状态和错误信息必须同步两种语言，避免管理员在不同语言界面下误判操作影响。
 
-WebSSH 或 interactive shell 风险明显高于受控 action catalog。当前镜像内置 `ttyd`，但 `WEBSSH_ENABLED=false` 是默认值，`/_admin/terminal/` 默认返回 404。确需启用时必须同时开启 `ADMIN_ENABLED=true`、设置独立强 `ADMIN_TOKEN`，并通过 Nginx `auth_request` 鉴权后才代理到 `ttyd`。运行中变更 `WEBSSH_ENABLED` 后需要重启 `web-terminal` supervisor program 或容器。只建议在 Private/Protected 环境做受控排障，并保留 session timeout、审计日志和清晰的命令风险说明。
+WebSSH、Web terminal、SSH daemon 和其他 interactive shell server 风险明显高于受控 action catalog，且容易触发 Hugging Face 平台风控。本仓库已从 HF Space runtime 中移除该能力：镜像不再安装 `ttyd`，Nginx 不再暴露 `/_admin/terminal/`，`WEBSSH_*` 不再是受支持配置。需要排障时使用 Hugging Face logs、`/_ops` 只读诊断和 `/_admin` 白名单 action。
 
 ## Hugging Face iframe 嵌入
 

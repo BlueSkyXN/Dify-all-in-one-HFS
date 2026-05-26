@@ -338,7 +338,6 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `OPS_DEFAULT_CHECKS_ENABLED` | `true` | 是否启用内置 Dify 健康探针 |
 | `OPS_EXTRA_HTTP_CHECKS_JSON` | empty | 额外 HTTP 探针 JSON list |
 | `OPS_EXTRA_TCP_CHECKS_JSON` | empty | 额外 TCP 探针 JSON list |
-| `OPS_EXTRA_COMMAND_CHECKS_JSON` | empty | 额外只读 command 探针 JSON list |
 | `OPS_LOG_DIR` | `/data/logs` | `/_ops/logs` 只读日志目录 |
 | `OPS_LOG_SERVICES_JSON` | empty | 额外日志白名单 JSON map，例如 `{"my-api":"my-api.log"}` |
 | `OPS_LOG_LINES_MAX` | `1000` | 单次日志 tail 最大行数 |
@@ -361,13 +360,11 @@ CLI 和自动化优先使用 header，不建议长期使用 query token。`/_ops
 OPS_DEFAULT_CHECKS_ENABLED=false
 OPS_EXTRA_HTTP_CHECKS_JSON=[{"name":"api","url":"http://127.0.0.1:8000/health","expected_status":200,"timeout":2}]
 OPS_EXTRA_TCP_CHECKS_JSON=[{"name":"queue","host":"127.0.0.1","port":5672,"timeout":1}]
-OPS_EXTRA_COMMAND_CHECKS_JSON=[{"name":"worker","args":["/usr/local/bin/workerctl","status"],"expect":"running","timeout":2}]
 ```
 
-`OPS_EXTRA_COMMAND_CHECKS_JSON` 只应配置只读命令。它不会从请求参数接收命令，但会在每次健康检查时执行部署时配置的 `args`。
-自定义探针最多执行 32 个；HTTP 探针未设置 `expected_status` 时沿用内置语义，即 HTTP `<500` 代表 upstream 可达。
+自定义 HTTP/TCP 探针最多执行 32 个；HTTP 探针未设置 `expected_status` 时沿用内置语义，即 HTTP `<500` 代表 upstream 可达。
 如果关闭内置探针又没有配置任何额外探针，`/healthz` 会返回不健康，避免空检查被误判为正常。
-`/_ops/config` 不返回这些 JSON 的原文，只返回解析出的检查名称，避免误把 URL 或 command args 中的敏感片段暴露成配置摘要。
+`/_ops/config` 不返回这些 JSON 的原文，只返回解析出的检查名称，避免误把 URL 中的敏感片段暴露成配置摘要。`/_ops` 不再支持自定义 command 探针；需要执行命令的受控操作必须放入 `/_admin` 白名单 action。
 
 ## Admin Service
 
@@ -439,24 +436,6 @@ generated.env
 
 上传和重命名不会覆盖已有目标；删除只支持文件或空目录，不做递归删除。
 
-## WebSSH / Web Terminal
+## Removed WebSSH / Web Terminal
 
-以下变量控制 break-glass Web terminal。当前镜像内置 `ttyd`，但默认 `WEBSSH_ENABLED=false`，`/_admin/terminal/` 返回 404。只有同时设置 `ADMIN_ENABLED=true`、`ADMIN_TOKEN=<strong-token>` 和 `WEBSSH_ENABLED=true` 时，Nginx 才会通过 `/_admin_auth_terminal` 鉴权后代理到 `ttyd`。
-
-| 变量 | 默认值 | 当前状态 |
-| --- | --- | --- |
-| `WEBSSH_ENABLED` | `false` | 默认 disabled placeholder；开启后启动 `ttyd` |
-| `WEBSSH_HOST` | `127.0.0.1` | terminal/placeholder bind host |
-| `WEBSSH_PORT` | `7681` | terminal/placeholder port |
-| `WEBSSH_BASE_PATH` | `/_admin/terminal` | `ttyd --base-path`，必须与 Nginx route 匹配 |
-| `WEBSSH_SHELL` | `/bin/bash` | terminal shell |
-| `WEBSSH_MAX_CLIENTS` | `1` | terminal 最大连接数 |
-
-本地或线上启用后，建议单独跑：
-
-```bash
-ADMIN_EXPECTED_ENABLED=true \
-WEBSSH_EXPECTED_ENABLED=true \
-ADMIN_TOKEN=<admin-token> \
-scripts/webssh-smoke.sh <base-url>
-```
+Web terminal / WebSSH 已从 Hugging Face Space runtime 中移除。镜像不再安装 `ttyd`，Nginx 不再暴露 `/_admin/terminal/`，`WEBSSH_*` 变量不再是受支持配置。需要排障时使用 Hugging Face logs、`/_ops` 只读诊断、`/_admin` 白名单 action 和 smoke 脚本。
