@@ -27,24 +27,43 @@ docker/dify.env.demo
 - 其次复用已有 `/data/config/generated.env`。
 - 最后才随机生成。
 
-## 本地 env 维护约定
+## 本地 env 账本约定
 
-本仓库只维护一个本地环境配置事实源：
+本仓库只维护一个本地私有环境配置账本：
 
 ```text
 .env.local
 ```
 
-`.env.local` 已被 `.gitignore` 忽略，适合保存 demo/test 阶段的本地固定值和 Hugging Face 上传清单。不要再维护 `.env.hf.local`、`local/hf-space.env` 或其他并行 env 快照；多份 env 很容易让 HF Settings、文档和本地判断互相漂移。
+`.env.local` 已被 `.gitignore` 忽略，适合保存 demo/test 阶段的本地固定值、Hugging Face Settings 回读状态和人工判断。它不是直接上传给 Hugging Face 或 GitHub 的 env-file，而是一个本地笔记本：记录每个变量应该放在哪个平台、属于 Secret 还是 Variable、是否建议配置、默认值、建议值、已知值和备注。
 
-`.env.local` 按上传策略分区：
+`.env.local` 也可以保存本地运维便捷信息，例如 Space ID、Space URL、当前诊断入口使用方式、最近一次远程回读时间和故障回退备注。这类信息必须明确标注为 `Local Only` 或 `本地运维`，默认不参与 HF/GH 同步；如果包含 token、账号、私有 URL 或其他敏感上下文，只能保存在本地账本里，不能进入公开文档。
 
-- `[HF Secrets]`：上传到 Space Settings -> Secrets。
-- `[HF Variables]`：只放与 `docker/dify.env.runtime` 默认值不同、且确实要覆盖 runtime 行为的变量。
-- `[Default only]`：与镜像默认值一致，只作对照，不上传。
-- `[Derived defaults]`：由 HF 注入的 `SPACE_HOST` 或 runtime 默认逻辑推导，不上传。
-- `[Derived secrets]`：由已上传 secret 派生，不重复上传。
-- `[Do not upload separately]`：派生 key 或兼容变量，单独配置反而容易漂移。
+不要再维护 `.env.hf.local`、`local/hf-space.env` 或其他并行 env 快照；多份 env 很容易让 HF Settings、文档和本地判断互相漂移。
+
+`.env.local` 的每个变量使用固定卡片字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| 平台 | 变量应配置在哪个平台。当前运行时配置主要是 Hugging Face Space Settings；GitHub Actions 当前只跑 static check，不需要运行时 env。 |
+| 类型 | `Secret` 表示应放入 Secrets；`Variable` 表示可放入 Variables；`Variable（若值含凭据则改放 Secret）` 表示取决于实际值是否包含账号、密码、token、私有地址或其他敏感片段。 |
+| 级别 | `推荐配置`、`按需配置` 或 `派生值，通常不单独上传`。 |
+| 默认值 | 来自 `docker/dify.env.runtime` 或 runtime 派生逻辑。 |
+| 建议值 | 当前 all-in-one HF Space demo 的建议填写方式。 |
+| 已知值 | 本地账本或 Hugging Face Settings 能确认的状态。HF Secrets 是 write-only，只能确认 key 是否存在，不能回读明文。 |
+| 备注 | 变量用途、风险和什么时候需要填写。 |
+
+`.env.local` 当前按五层组织：
+
+1. `HF Space / Secrets / 推荐配置`
+2. `HF Space / Secrets / 按需配置`
+3. `HF Space / Variables / 推荐配置`
+4. `HF Space / Variables / 按需配置`
+5. `GitHub Actions / 当前无需配置`
+
+上传到 Hugging Face 时，只复制本轮真正要生效的非空值。不要把完整 `.env.local` 批量导入，也不要把未知 secret 写成占位字符串上传。
+
+文档和 PR 文案只能写规则、默认值、建议值和占位符，不能写 `.env.local` 里的真实 token、账号、密码、私有 API 地址、内部 URL 或其他已知秘密信息。公开示例统一使用 `<...>` 占位。
 
 初始化前推荐先在 `.env.local` 里明确选择这些值，再同步到 HF：
 
@@ -58,7 +77,7 @@ docker/dify.env.demo
 | Secret | `PLUGIN_DIFY_INNER_API_KEY` | Plugin Daemon 访问 Dify inner API 的 key；`INNER_API_KEY_FOR_PLUGIN` 会由它派生 |
 | Secret | `CODE_EXECUTION_API_KEY` | Dify 调 Sandbox 的 key；`SANDBOX_API_KEY` 默认继承它 |
 | Variable | `PERSIST_MODE=bucket` | 初始化前建议使用，比默认 `auto` 更严格；`/persist` 缺失时直接失败 |
-| Variable | `POSTGRES_BUCKET_FAILURE_MODE=exit` | 初始化前建议使用，比默认 `fallback-to-runtime` 更严格；避免 PostgreSQL 静默退到 `/tmp` |
+| Variable | `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` | 当前 HF bucket 推荐值；bucket live PGDATA 启动超时时回退到 runtime PGDATA 并从 dump 恢复 |
 
 不要上传以下派生值，除非你明确要覆盖默认推导：
 
@@ -95,14 +114,14 @@ Hugging Face 会根据 `app_port` 把外部流量转发到容器端口 `7860`。
 
 ```env
 PERSIST_MODE=bucket
-POSTGRES_BUCKET_FAILURE_MODE=exit
+POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime
 ```
 
 说明：
 
-- 这些值只是当前 demo 初始化阶段的强校验覆盖建议；完整来源应以本地 `.env.local` 为准。
+- 这些值只是当前 HF Space demo 的推荐覆盖值；完整来源应以本地 `.env.local` 为准。
 - 与 `docker/dify.env.runtime` 默认值一致的变量不要上传到 HF Variables。
-- 初始化完成且确认 `/persist/postgres` 稳定后，可按运维偏好把 `POSTGRES_BUCKET_FAILURE_MODE` 改回默认 `fallback-to-runtime`。
+- `POSTGRES_BUCKET_FAILURE_MODE=exit` 适合故障演练或强制暴露 bucket live PGDATA 问题；当前 HF bucket 上 PostgreSQL 启动可能超过 `pg_ctl` 等待窗口，线上服务默认保留 `fallback-to-runtime`。
 
 ## 推荐 Space Secrets
 
