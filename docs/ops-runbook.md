@@ -97,6 +97,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/actions/restart-service
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
+/_admin/api/actions/repair-local-plugin-runtime
 /_admin/api/files/list
 /_admin/api/files/text
 /_admin/api/files/download
@@ -122,6 +123,12 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"service":"dify-api","confirm":true}' \
   https://your-space.hf.space/_admin/api/actions/restart-service
+
+curl -X POST \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"plugin_unique_identifier":"langgenius/openai_api_compatible:0.0.49@a9ba7656484e461b1f08a6fc76c9ed9db656ebf90e8b3651f488fd411a82152d","confirm":true}' \
+  https://your-space.hf.space/_admin/api/actions/repair-local-plugin-runtime
 
 ADMIN_EXPECTED_ENABLED=true \
 ADMIN_TOKEN=$ADMIN_TOKEN \

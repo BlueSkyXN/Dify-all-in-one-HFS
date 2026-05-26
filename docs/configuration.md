@@ -403,9 +403,10 @@ Browser login -> signed HttpOnly cookie
 POST /_admin/api/actions/restart-service
 POST /_admin/api/actions/reload-nginx
 POST /_admin/api/actions/run-health-checks
+POST /_admin/api/actions/repair-local-plugin-runtime
 ```
 
-`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`。
+`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`。`repair-local-plugin-runtime` 只用于 local plugin runtime 修复：它把指定 `plugin_unique_identifier` 的 package bucket 文件复制到 installed bucket，并默认重启 `plugin-daemon`，不接受任意 shell command、SQL 或文件路径。
 
 `GET /_admin/api/audit?limit=50` 返回最近的 `ADMIN_AUDIT_LOG` 事件，用于追踪 login/logout、白名单 action 和 file manager 写操作。`limit` 会限制在 `1..500`，缺失或非法时使用默认值 `100`。日志不存在时仍返回 200、`exists=false`、`returned=0` 和空 `events`。事件字段固定为 `time`、`action`、`ok`、`actor`、`target`、`details`；返回内容会对 `token`、`apiKey`、`authorization`、`cookie` 等敏感 detail key 做递归兜底脱敏。该接口仍需要 `ADMIN_TOKEN` 或已登录 session，但不增加新的写能力。
 
