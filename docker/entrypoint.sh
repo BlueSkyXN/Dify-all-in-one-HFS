@@ -177,12 +177,12 @@ configure_bucket_layout() {
     "$persist_root/dify/storage" \
     "$persist_root/plugin_daemon/plugin" \
     "$persist_root/plugin_daemon/assets" \
+    "$persist_root/plugin_daemon/plugin_packages" \
     "$persist_root/postgres-backups" \
     "$runtime_root/logs" \
     "$runtime_root/run" \
     "$runtime_root/redis" \
     "$runtime_root/hf-cache" \
-    "$runtime_root/plugin_packages" \
     "$runtime_root/plugin_cwd"
 
   mkdir -p /data /data/dify /data/plugin_daemon
@@ -191,7 +191,7 @@ configure_bucket_layout() {
   link_dir /data/dify/storage "$persist_root/dify/storage"
   link_dir /data/plugin_daemon/plugin "$persist_root/plugin_daemon/plugin"
   link_dir /data/plugin_daemon/assets "$persist_root/plugin_daemon/assets"
-  link_dir /data/plugin_daemon/plugin_packages "$runtime_root/plugin_packages"
+  link_dir /data/plugin_daemon/plugin_packages "$persist_root/plugin_daemon/plugin_packages"
   if is_true "${PLUGIN_CWD_PERSISTENCE:-false}"; then
     link_dir /data/plugin_daemon/cwd "$persist_root/plugin_daemon/cwd"
   else

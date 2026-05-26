@@ -181,11 +181,11 @@ Plugin Daemon 迁移在其 supervisor program 启动时执行：
 | `/data/config/generated.env` | `/persist/config/generated.env` | 自动生成或持久化的 runtime secrets |
 | `/data/plugin_daemon/plugin` | `/persist/plugin_daemon/plugin` | 已安装插件 |
 | `/data/plugin_daemon/assets` | `/persist/plugin_daemon/assets` | 插件资源 |
+| `/data/plugin_daemon/plugin_packages` | `/persist/plugin_daemon/plugin_packages` | 插件包；Plugin Daemon 重启后用于重新构建 local runtime |
 | `/data/plugin_daemon/cwd` | `/tmp/dify-aio/plugin_cwd`，或 `PLUGIN_CWD_PERSISTENCE=true` 时 `/persist/plugin_daemon/cwd` | 插件工作目录 |
 | `/data/logs` | `/tmp/dify-aio/logs` | supervisor 和服务日志；`ops-service` 通过 `OPS_LOG_DIR` 只读读取 |
 | `/data/run` | `/tmp/dify-aio/run` | pid、socket、临时配置 |
 | `/data/redis` | `/tmp/dify-aio/redis` | Redis 数据，默认不持久化 |
-| `/data/plugin_daemon/plugin_packages` | `/tmp/dify-aio/plugin_packages` | 插件包缓存 |
 | `HF_HOME` / `HF_HUB_CACHE` | `/tmp/dify-aio/hf-cache` / `/tmp/dify-aio/hf-cache/hub` | Hugging Face cache，默认不持久化 |
 | `/persist/postgres-backups/latest.sql.gz` | `/persist/postgres-backups/latest.sql.gz` | PostgreSQL 普通文件兜底备份；同目录保留 timestamped dump 和 `latest.sha256` |
 | `/conf/config.yaml` | image filesystem | Sandbox runtime config |

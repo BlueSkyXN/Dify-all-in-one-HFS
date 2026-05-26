@@ -27,7 +27,7 @@
 | 外部入口 | Nginx `7860` | 对外单端口，内部按路径转发 |
 | 向量库 | PostgreSQL + pgvector | 减少 Weaviate 等额外服务 |
 | 文件存储 | `/data/dify/storage`，bucket-lite 下指向 `/persist/dify/storage` | 适配 Space Bucket 持久化 |
-| Plugin 存储 | `/data/plugin_daemon`，核心插件文件指向 `/persist`，工作目录和包缓存默认在 `/tmp/dify-aio` | 插件保留，scratch/cache 不占 bucket |
+| Plugin 存储 | `/data/plugin_daemon`，插件包、已安装插件和 assets 指向 `/persist`，工作目录默认在 `/tmp/dify-aio` | 插件和 runtime relaunch 所需包保留，scratch/cache 不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认开启 | 便于 demo/plugin 验证；公开或稳定演示环境可按需关闭以减少外部依赖 |
 | 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
