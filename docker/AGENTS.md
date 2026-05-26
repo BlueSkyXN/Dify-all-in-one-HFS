@@ -1,6 +1,6 @@
 # docker/ navigation card
 
-本目录是容器 runtime 合同：entrypoint、env、Supervisor、Nginx、ops/admin 服务、默认关闭的 web terminal、PostgreSQL backup loop 和 healthcheck。改任何 `docker/` 文件前读本卡；重点看 `entrypoint.sh`、`dify.env.*`、`supervisord.conf`、`nginx.conf`、`ops_service.py`、`admin_service.py`、`webssh_entrypoint.sh`、`postgres-backup-loop`、`with-*`。
+本目录是容器 runtime 合同：entrypoint、env、Supervisor、Nginx、ops/admin 服务、PostgreSQL backup loop 和 healthcheck。改任何 `docker/` 文件前读本卡；重点看 `entrypoint.sh`、`dify.env.*`、`supervisord.conf`、`nginx.conf`、`ops_service.py`、`admin_service.py`、`postgres-backup-loop`、`with-*`。
 
 ## 高风险
 
@@ -13,7 +13,7 @@
 - 读目标文件和 `docs/development.md` 对应段落。
 - Env 变更追踪 runtime/demo env、wrappers、entrypoint、Supervisor、ops/admin、`docs/configuration.md`。
 - Route 变更保护 upstream、headers、smoke、WebSocket、`Dify-Hook-Url`。
-- Admin/terminal 变更保护 `ADMIN_TOKEN`、CSRF/confirm、审计日志、file root 限制和 `/_admin_auth_terminal`。
+- Admin 变更保护 `ADMIN_TOKEN`、CSRF/confirm、审计日志和 file root 限制。
 - Ops/admin dashboard 文案或 UI 结构变更必须同步 English / 中文文案，并保留浏览器语言检测与 `localStorage` 选择逻辑。
 - Persistence/PostgreSQL 变更覆盖 `/data`、generated env、`/data/run/postgresql`、pgvector、backup/fallback。
 
@@ -30,21 +30,19 @@
 - `/_admin` 默认 disabled；写 action 只能留在 admin 白名单，不能进入 `/_ops`。
 - admin header token auth 跳过 CSRF；browser cookie session 写操作必须校验 CSRF。登录失败应写 audit 并受内存级限速保护。
 - admin file manager rename/delete 必须继续受 `ADMIN_FILES_DESTRUCTIVE_ENABLED` 单独 gate。
-- Web terminal 默认关闭；只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时才能通过 `/_admin/terminal/` 进入。
-- `WEBSSH_ENABLED` 运行中变化后需要重启 `web-terminal` supervisor program 或容器。
-- Nginx 保留 `listen 7860`、`/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/_admin/terminal/`、`/socket.io/`、`/e/`。
+- Nginx 保留 `listen 7860`、`/nginx-health`、`/healthz`、`/_ops/`、`/_admin/`、`/socket.io/`、`/e/`。
 - `/_ops/logs` 只读 service 白名单；`ops-service` 保持只读。
 
 ## 不要做
 
 - 不要在 `/_ops` 暴露 raw secrets、任意文件、shell command、SQL、restart 或 config write。
-- 不要把 PostgreSQL、Redis、Sandbox、Plugin Daemon、ops-service、admin-service 或 web-terminal 绑到公网。
+- 不要把 PostgreSQL、Redis、Sandbox、Plugin Daemon、ops-service、admin-service 绑到公网。
 - 不要移除 pgvector 初始化或 Plugin Daemon migration，除非同步替换设计和文档。
 
 ## 验证
 
 ```bash
-bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop docker/webssh_entrypoint.sh
+bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop
 python3 -m py_compile docker/ops_service.py docker/admin_service.py
 git diff --check -- docker
 ```

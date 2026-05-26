@@ -47,11 +47,9 @@ bash -n \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
-  docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
-  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 

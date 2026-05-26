@@ -38,7 +38,6 @@
 ```text
 DIFY_VERSION=1.14.1
 UV_VERSION=0.8.9
-TTYD_VERSION=1.7.7
 DIFY_API_IMAGE=langgenius/dify-api
 DIFY_WEB_IMAGE=langgenius/dify-web
 PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
@@ -219,7 +218,6 @@ requirepass <REDIS_PASSWORD>
 70 dify-web
 75 ops-service
 76 admin-service
-77 web-terminal
 80 nginx
 ```
 

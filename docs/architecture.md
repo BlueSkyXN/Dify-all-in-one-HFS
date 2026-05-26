@@ -9,8 +9,8 @@
 | 类别 | 引入方式 | 组件 |
 | --- | --- | --- |
 | Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 4 个 build stage，由 `DIFY_VERSION` / `PLUGIN_DAEMON_IMAGE` / `SANDBOX_IMAGE` 锁版本 | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon:0.6.0-local` 的 `/app`；`langgenius/dify-sandbox:0.2.15` 的 `main` + `conf` + `dependencies` |
-| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv`、`ttyd` |
-| 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`webssh_entrypoint.sh`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
+| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv` |
+| 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
 
 ## 总体拓扑
 
@@ -22,7 +22,6 @@ flowchart TD
     nginx --> plugin["Plugin Daemon :5002"]
     nginx --> ops["ops-service :8081"]
     nginx --> admin["admin-service :8082"]
-    nginx --> terminal["web terminal :7681"]
     api --> postgres["PostgreSQL 15 + pgvector :5432"]
     api --> redis["Redis :6379"]
     api --> sandbox["Sandbox :8194"]
@@ -90,7 +89,6 @@ flowchart TD
 | `dify-web` | `0.0.0.0:3000` | Next.js Web UI | stdout/stderr |
 | `ops-service` | `127.0.0.1:8081` | 只读诊断服务 | stdout/stderr |
 | `admin-service` | `127.0.0.1:8082` | 默认关闭的受控管理面 | stdout/stderr |
-| `web-terminal` | `127.0.0.1:7681` | 默认关闭的 Web terminal；启用后运行 `ttyd` | stdout/stderr |
 | `nginx` | `0.0.0.0:7860` | 外部单入口反向代理 | `/data/logs/nginx.log`, stderr |
 
 ## Nginx 路由
@@ -105,8 +103,6 @@ flowchart TD
 | `/_ops/` | `127.0.0.1:8081` | 只读运维诊断入口 |
 | `/_admin` | redirect `/_admin/` | 保留 query string |
 | `/_admin/` | `127.0.0.1:8082` | Admin 管理面；默认由 admin-service 返回 404 |
-| `/_admin_auth_terminal` | `127.0.0.1:8082` `/api/auth/terminal`（`internal`，外部不可访问） | `/_admin/terminal/` 的 `auth_request` 子请求；只传 cookie / `Authorization` / `X-Admin-Token`，不带 body |
-| `/_admin/terminal/` | `127.0.0.1:7681` | Web terminal route；默认 404，启用后先由 `/_admin_auth_terminal` 校验再代理到 ttyd |
 | `/console/api` | `127.0.0.1:5001` | Dify console API |
 | `/api` | `127.0.0.1:5001` | Dify API |
 | `/v1` | `127.0.0.1:5001` | OpenAPI style endpoint |
@@ -143,7 +139,6 @@ flowchart TD
     supervisor --> nginx["nginx"]
     supervisor --> ops["ops-service"]
     supervisor --> admin["admin-service"]
-    supervisor --> terminal["web-terminal"]
 ```
 
 长期运行阶段的依赖由 `docker/wait-for-core` 控制，每个 program 在 `command=` 里把自己依赖的探针名传给它，未达成时按 1s 间隔轮询，达成后 `exec` 真正的服务进程：
@@ -216,7 +211,7 @@ Hugging Face Space 如果没有挂载 `/persist`，`auto` 会回退旧 `/data` �
 
 - 外部入口只需要一个反向代理路径，例如 `/_ops/`。
 - 运行时只需要 Python 标准库、少量系统探针命令和被诊断服务的本地端口。
-- Dify 默认探针可以通过 `OPS_DEFAULT_CHECKS_ENABLED=false` 关闭，再用 `OPS_EXTRA_HTTP_CHECKS_JSON`、`OPS_EXTRA_TCP_CHECKS_JSON`、`OPS_EXTRA_COMMAND_CHECKS_JSON` 接入其他程序。
+- Dify 默认探针可以通过 `OPS_DEFAULT_CHECKS_ENABLED=false` 关闭，再用 `OPS_EXTRA_HTTP_CHECKS_JSON` 和 `OPS_EXTRA_TCP_CHECKS_JSON` 接入其他程序；`/_ops` 不支持自定义 command 探针。
 - 诊断日志目录通过 `OPS_LOG_DIR` 配置，默认 `/data/logs`。
 - 日志服务白名单可以通过 `OPS_LOG_SERVICES_JSON` 扩展，文件名仍限制在 `OPS_LOG_DIR` 下。
 - OPS 服务本体不要求可写数据目录；自己的日志走 stdout/stderr。
@@ -263,4 +258,4 @@ File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false
 
 Admin 登录页和管理 dashboard 支持 English / 中文切换。改 UI 文案时必须同时维护两种语言，避免管理操作含义在不同语言下不一致。
 
-WebSSH 或 interactive shell 是独立的高风险模块，并且默认关闭。当前镜像内置 `ttyd`，但只有 `WEBSSH_ENABLED=true`、`ADMIN_ENABLED=true` 且 `ADMIN_TOKEN` 有效时，`/_admin/terminal/` 才会通过 Nginx `auth_request` 代理到 terminal；默认 `WEBSSH_ENABLED=false` 时只返回 404。`web-terminal` 启动时在 placeholder 与 `ttyd` 之间二选一，运行中变更 env 需要重启该 supervisor program 或容器。
+Web terminal、WebSSH、SSH daemon 和其他 interactive shell server 已从 HF Space runtime 中移除。`/_admin` 只保留白名单管理 action 和可选 file manager，不提供浏览器 shell。

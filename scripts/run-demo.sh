@@ -25,13 +25,7 @@ for name in \
   ADMIN_FILES_ENABLED \
   ADMIN_FILES_ROOT \
   ADMIN_FILES_WRITE_ENABLED \
-  ADMIN_FILES_DESTRUCTIVE_ENABLED \
-  WEBSSH_ENABLED \
-  WEBSSH_HOST \
-  WEBSSH_PORT \
-  WEBSSH_BASE_PATH \
-  WEBSSH_SHELL \
-  WEBSSH_MAX_CLIENTS
+  ADMIN_FILES_DESTRUCTIVE_ENABLED
 do
   if [ "${!name+x}" = "x" ]; then
     env_passthrough+=(-e "$name=${!name}")

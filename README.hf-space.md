@@ -21,7 +21,7 @@ Visibility: Private 或 Protected
 
 ```env
 PERSIST_MODE=bucket
-POSTGRES_BUCKET_FAILURE_MODE=exit
+POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime
 ```
 
 建议 Secrets：
@@ -88,6 +88,6 @@ OPS_TOKEN=<fixed-random-token> \
 
 `/_ops/` 和 `/_admin/` dashboard 均支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 
-`/_admin/` 是独立管理入口，默认 `ADMIN_ENABLED=false` 并返回 404。只有在 Private/Protected Space 或受控演示场景中才建议设置 `ADMIN_ENABLED=true` 和强随机 `ADMIN_TOKEN`；开启后可查看最近 admin 审计事件，文件管理由 `ADMIN_FILES_*` 独立控制，rename/delete 还要 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。`/_admin/terminal/` 默认关闭并返回 404；确需 break-glass terminal 时，设置 `WEBSSH_ENABLED=true` 后由 admin 鉴权代理到镜像内置的 `ttyd`，运行中变更需要重启 `web-terminal` 或容器。
+`/_admin/` 是独立管理入口，默认 `ADMIN_ENABLED=false` 并返回 404。只有在 Private/Protected Space 或受控演示场景中才建议设置 `ADMIN_ENABLED=true` 和强随机 `ADMIN_TOKEN`；开启后可查看最近 admin 审计事件，文件管理由 `ADMIN_FILES_*` 独立控制，rename/delete 还要 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。Web terminal / WebSSH 已从 HF Space runtime 中移除，不再支持通过 `/_admin/terminal/` 访问容器 shell。
 
 完整工程文档见 [docs/README.md](./docs/README.md)。其中 [Deployment Guide](./docs/deployment.md) 覆盖部署流程，[Operations Runbook](./docs/ops-runbook.md) 覆盖运维、502 排障、日志入口和发布后验收。

@@ -47,11 +47,9 @@ bash -n \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
-  docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
-  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 ```
@@ -199,7 +197,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" "<base>/_ops/logs?service=dify-api&lines=80"
 - 不返回 secret 原文。
 - 日志 service 必须白名单。
 - `OPS_LOG_SERVICES_JSON` 只接受相对日志文件名，不允许绝对路径或 `..`。
-- `OPS_EXTRA_COMMAND_CHECKS_JSON` 只配置只读命令；不要把写操作、迁移、清理数据放进健康检查。
+- `/_ops` 只保留 HTTP/TCP/日志/状态诊断；需要执行命令的受控操作必须放入 `/_admin` 白名单 action。
 - 只读接口不要执行破坏性命令。
 - `ops-service` 本体不要依赖可写 `/data`；自身日志走 stdout/stderr，`/_ops/logs` 只读读取 `OPS_LOG_DIR`。
 - query token 不应进入 ops-service 自身日志。
@@ -260,11 +258,9 @@ bash -n \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
-  docker/webssh_entrypoint.sh \
   scripts/build.sh \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
-  scripts/webssh-smoke.sh \
   scripts/hf-space-smoke.sh \
   scripts/static-check.sh
 python3 -m py_compile docker/ops_service.py
@@ -278,9 +274,6 @@ git diff --check
 scripts/build.sh
 scripts/run-demo.sh
 OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080
-ADMIN_ENABLED=true WEBSSH_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/run-demo.sh
-ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> \
-  scripts/webssh-smoke.sh http://localhost:8080
 ```
 
 如果部署到 Hugging Face：
@@ -294,5 +287,5 @@ OPS_TOKEN=your-configured-ops-token \
 
 - 本仓库没有单元测试框架，主要依赖 shell/Python 静态检查和 Docker/HF smoke。
 - 本地没有 Docker daemon 时，无法完整验证镜像构建，只能依赖 HF build。
-- `sandbox`、`dify-web`、`ops-service`、`admin-service` 和 `web-terminal` 直接输出到容器 stdout/stderr，`/_ops/logs` 不暴露它们的专用文件。
+- `sandbox`、`dify-web`、`ops-service` 和 `admin-service` 直接输出到容器 stdout/stderr，`/_ops/logs` 不暴露它们的专用文件。
 - Nginx port/body size 变量目前不是动态模板。

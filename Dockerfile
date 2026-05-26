@@ -16,7 +16,6 @@
 
 ARG DIFY_VERSION=1.14.1
 ARG UV_VERSION=0.8.9
-ARG TTYD_VERSION=1.7.7
 ARG DIFY_API_IMAGE=langgenius/dify-api
 ARG DIFY_WEB_IMAGE=langgenius/dify-web
 ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
@@ -58,7 +57,6 @@ COPY --from=api-image /tmp/api-builder.done /tmp/api-builder.done
 
 ARG DIFY_VERSION
 ARG UV_VERSION
-ARG TTYD_VERSION
 ARG TARGETARCH
 ARG DIFY_API_IMAGE
 ARG DIFY_WEB_IMAGE
@@ -68,7 +66,6 @@ ARG SANDBOX_IMAGE
 ENV DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_UV_VERSION=${UV_VERSION}
-ENV DIFY_AIO_BUILD_TTYD_VERSION=${TTYD_VERSION}
 ENV DIFY_AIO_BUILD_DIFY_API_IMAGE=${DIFY_API_IMAGE}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE=${DIFY_WEB_IMAGE}
 ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE=${PLUGIN_DAEMON_IMAGE}
@@ -121,23 +118,6 @@ RUN apt-get update \
        "httpx[socks]==0.27.2" requests==2.32.3 jinja2==3.1.6 PySocks \
     && rm -rf /var/lib/apt/lists/*
 
-RUN set -eux; \
-    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
-    case "$target_arch" in \
-      amd64) ttyd_asset="ttyd.x86_64" ;; \
-      arm64) ttyd_asset="ttyd.aarch64" ;; \
-      arm) ttyd_asset="ttyd.arm" ;; \
-      *) echo "unsupported TARGETARCH for ttyd: ${target_arch}" >&2; exit 1 ;; \
-    esac; \
-    release_url="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}"; \
-    curl -fsSL "${release_url}/${ttyd_asset}" -o /usr/local/bin/ttyd; \
-    curl -fsSL "${release_url}/SHA256SUMS" -o /tmp/ttyd.SHA256SUMS; \
-    awk -v asset="${ttyd_asset}" '$2 == asset { print $1 "  /usr/local/bin/ttyd" }' /tmp/ttyd.SHA256SUMS \
-      | sha256sum -c -; \
-    chmod 0755 /usr/local/bin/ttyd; \
-    ttyd --version; \
-    rm -f /tmp/ttyd.SHA256SUMS
-
 # Dedicated non-root runtime user. Hugging Face Docker Spaces run containers as UID 1000.
 RUN groupadd --gid 1000 user \
     && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash user \
@@ -183,7 +163,6 @@ COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service
 COPY docker/admin_service.py /usr/local/bin/dify-admin-service
-COPY docker/webssh_entrypoint.sh /usr/local/bin/dify-web-terminal
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/healthcheck.sh /usr/local/bin/dify-demo-healthcheck
@@ -197,7 +176,6 @@ RUN chmod +x \
       /usr/local/bin/postgres-backup-loop \
       /usr/local/bin/dify-ops-service \
       /usr/local/bin/dify-admin-service \
-      /usr/local/bin/dify-web-terminal \
       /usr/local/bin/dify-demo-healthcheck \
       /usr/local/bin/wait-for-core \
       /app/api/docker/entrypoint.sh \

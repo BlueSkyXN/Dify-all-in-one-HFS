@@ -44,7 +44,6 @@ nginx:7860
   ├─ Sandbox:8194
   ├─ ops-service:8081
   ├─ admin-service:8082
-  ├─ web-terminal:7681 (default disabled; ttyd when enabled)
   ├─ PostgreSQL 15 + pgvector
   └─ Redis
 ```
@@ -93,7 +92,7 @@ Visibility: Private 或 Protected
 
 ```env
 PERSIST_MODE=bucket
-POSTGRES_BUCKET_FAILURE_MODE=exit
+POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime
 ```
 
 推荐 Secrets：

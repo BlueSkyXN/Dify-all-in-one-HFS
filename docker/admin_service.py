@@ -129,10 +129,6 @@ def admin_files_destructive_enabled() -> bool:
     return parse_bool(env("ADMIN_FILES_DESTRUCTIVE_ENABLED", "false"), default=False)
 
 
-def webssh_enabled() -> bool:
-    return parse_bool(env("WEBSSH_ENABLED", "false"), default=False)
-
-
 def session_ttl_seconds() -> int:
     return parse_int(env("ADMIN_SESSION_TTL_SECONDS"), 3600, minimum=60, maximum=86400)
 
@@ -316,14 +312,6 @@ def status_payload(auth: AuthContext) -> dict[str, Any]:
             "root": str(admin_files_root()),
             "max_upload_bytes": upload_limit_bytes(),
             "max_text_read_bytes": MAX_TEXT_READ_BYTES,
-        },
-        "webssh": {
-            "enabled": webssh_enabled(),
-            "host": env("WEBSSH_HOST", "127.0.0.1"),
-            "port": parse_int(env("WEBSSH_PORT"), 7681, minimum=1, maximum=65535),
-            "base_path": env("WEBSSH_BASE_PATH", "/_admin/terminal"),
-            "shell": env("WEBSSH_SHELL", "/bin/bash"),
-            "max_clients": parse_int(env("WEBSSH_MAX_CLIENTS"), 1, minimum=1, maximum=16),
         },
         "supervisor": supervisor_status(),
     }
@@ -880,7 +868,6 @@ def html_index(authenticated: bool) -> str:
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
-          <button id="terminalButton" type="button" class="hidden" data-i18n="terminal">Terminal</button>
           <button id="refreshButton" type="button" data-i18n="refresh">Refresh</button>
           <button id="logoutButton" type="button" data-i18n="logout">Logout</button>
         </div>
@@ -936,7 +923,6 @@ def html_index(authenticated: bool) -> str:
       en: {
         signInHint: "Sign in with ADMIN_TOKEN.",
         signIn: "Sign in",
-        terminal: "Terminal",
         refresh: "Refresh",
         logout: "Logout",
         actions: "Actions",
@@ -964,7 +950,6 @@ def html_index(authenticated: bool) -> str:
         disabled: "disabled",
         admin: "admin",
         fileManager: "files",
-        terminalState: "terminal",
         fileManagerDisabled: "File manager is disabled.",
         program: "Program",
         state: "State",
@@ -996,7 +981,6 @@ def html_index(authenticated: bool) -> str:
       zh: {
         signInHint: "使用 ADMIN_TOKEN 登录。",
         signIn: "登录",
-        terminal: "终端",
         refresh: "刷新",
         logout: "退出登录",
         actions: "操作",
@@ -1024,7 +1008,6 @@ def html_index(authenticated: bool) -> str:
         disabled: "已关闭",
         admin: "管理面",
         fileManager: "文件",
-        terminalState: "终端",
         fileManagerDisabled: "文件管理器已关闭。",
         program: "程序",
         state: "状态",
@@ -1159,16 +1142,7 @@ def html_index(authenticated: bool) -> str:
       updateWriteControls();
       byId("overall").textContent = t("ready");
       byId("overall").className = "pill ok";
-      byId("runtimeLine").textContent = `${payload.dify_version || t("unknown")} · ${t("admin")} ${payload.admin.enabled ? t("enabled") : t("disabled")} · ${t("fileManager")} ${payload.files.enabled ? t("enabled") : t("disabled")} · ${t("terminalState")} ${payload.webssh.enabled ? t("enabled") : t("disabled")}`;
-      const terminalButton = byId("terminalButton");
-      if (payload.webssh.enabled) {
-        const terminalPath = payload.webssh.base_path || "/_admin/terminal";
-        terminalButton.classList.remove("hidden");
-        terminalButton.onclick = () => window.open(terminalPath.endsWith("/") ? terminalPath : `${terminalPath}/`, "_blank", "noreferrer");
-      } else {
-        terminalButton.classList.add("hidden");
-        terminalButton.onclick = null;
-      }
+      byId("runtimeLine").textContent = `${payload.dify_version || t("unknown")} · ${t("admin")} ${payload.admin.enabled ? t("enabled") : t("disabled")} · ${t("fileManager")} ${payload.files.enabled ? t("enabled") : t("disabled")}`;
       renderServices(payload.supervisor.programs || []);
       const actions = await api("api/actions");
       renderActions(actions.actions || []);
@@ -1491,14 +1465,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path, query = self.parsed()
-        internal_terminal_auth = self.headers.get("X-Admin-Internal", "") == "terminal-auth"
-        if path == "/api/auth/terminal" and internal_terminal_auth and not webssh_enabled():
-            self.send_response(204)
-            self.end_headers()
-            return
-        if path == "/api/auth/terminal" and internal_terminal_auth and (not admin_enabled() or not admin_token()):
-            self.send_json({"ok": False, "error": "admin auth is required for web terminal"}, status=403)
-            return
         if not self.ensure_available():
             return
         try:
@@ -1514,12 +1480,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(actions_payload())
             elif path == "/api/audit":
                 self.send_json(audit_payload(query))
-            elif path == "/api/auth/terminal":
-                if webssh_enabled():
-                    self.send_response(204)
-                    self.end_headers()
-                else:
-                    self.send_json({"ok": False, "error": "web terminal is disabled"}, status=403)
             elif path == "/api/files/list":
                 self.send_json(files_list_payload(query))
             elif path == "/api/files/text":
