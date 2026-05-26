@@ -152,7 +152,7 @@ Hugging Face 的 [Content Policy](https://huggingface.co/content-policy) 将 Pla
 | Capability | Risk | Repository stance |
 | --- | --- | --- |
 | `ttyd --writable /bin/bash` | Web 页面可写 shell，容易被识别为远程交互式 shell | 不应在 HF runtime 启动 |
-| `WEBSSH_ENABLED=true` | 会启动 Web terminal 路径 | HF Space 上不要开启 |
+| 历史 `WEBSSH_ENABLED=true` 配置 | 旧版本会尝试启动 Web terminal；当前版本已不支持 | 不要恢复到 HF runtime |
 | SSH daemon / remote desktop | 远程控制面 | 不要加入 demo image |
 | Arbitrary command endpoint | 任意命令执行 | 不要放进 `/_ops` 或 `/_admin` |
 | Arbitrary file browser with destructive writes | 数据泄露和破坏风险 | 必须有独立 gate，HF 上默认关闭 |

@@ -21,7 +21,7 @@ Visibility: Private 或 Protected
 
 ```env
 PERSIST_MODE=bucket
-POSTGRES_BUCKET_FAILURE_MODE=exit
+POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime
 ```
 
 建议 Secrets：
