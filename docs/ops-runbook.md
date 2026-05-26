@@ -345,7 +345,7 @@ Nginx 配置把 access log 写到 stdout，当前 `supervisord` 会把 Nginx std
 1. 确认 Space runtime。
 
 ```bash
-hf spaces info BlueSkyXN/dify-all-in-one
+hf spaces info <space-id>
 ```
 
 重点看：
@@ -359,14 +359,14 @@ runtime.raw.sha = <expected commit sha>
 
 ```bash
 OPS_TOKEN=your-configured-ops-token \
-  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+  scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 3. 查看错误摘要。
 
 ```bash
 curl -sS -H "X-Ops-Token: $OPS_TOKEN" \
-  https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
+  https://your-space.hf.space/_ops/errors
 ```
 
 期望：
@@ -378,7 +378,7 @@ curl -sS -H "X-Ops-Token: $OPS_TOKEN" \
 4. 用真实浏览器打开 Space。
 
 ```text
-https://blueskyxn-dify-all-in-one.hf.space/
+https://your-space.hf.space/
 ```
 
 新实例未初始化时，页面会跳转到 `/install` 并显示管理员账户设置页。
@@ -431,9 +431,9 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 5. 对照 Hugging Face runtime 状态。
 
 ```bash
-hf spaces info BlueSkyXN/dify-all-in-one
-hf spaces logs BlueSkyXN/dify-all-in-one -n 220
-hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220
+hf spaces info <space-id>
+hf spaces logs <space-id> -n 220
+hf spaces logs <space-id> --build -n 220
 ```
 
 刚推送后，`sha` 可能先更新，但 `runtime.raw.sha` 仍是旧值；只有 `runtime.stage=RUNNING` 且 `runtime.raw.sha` 切到目标提交，才代表新镜像已接管流量。
@@ -482,7 +482,7 @@ SMOKE_DELAY=5
 OPS_TOKEN=your-configured-ops-token \
 SMOKE_RETRIES=60 \
 SMOKE_DELAY=5 \
-scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 如果目标实例已经开启 `/_admin`，使用：
@@ -491,7 +491,7 @@ scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 SMOKE_ADMIN_ENABLED=true \
 ADMIN_TOKEN=<admin-token> \
 OPS_TOKEN=your-configured-ops-token \
-scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 默认不会触发 admin action。需要额外验证 `run-health-checks` action 时再加：

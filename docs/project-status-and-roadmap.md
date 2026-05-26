@@ -53,7 +53,7 @@ HF runtime.raw.sha: d398057683de11335fdfe666678ededc36298828
 | Priority | Item | Current state | Next evidence needed |
 | --- | --- | --- | --- |
 | P0 | 本地 build/run/smoke 证据 | 静态检查可跑；完整 Docker build/run 未在本次文档审计阶段作为默认动作执行 | `scripts/build.sh`、`scripts/run-demo.sh`、`OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080` |
-| P0 | Hugging Face runtime 回读 | 每个新发布都必须按目标 commit 单独验证；不要用历史 SHA 证明当前 head | `hf spaces info BlueSkyXN/dify-all-in-one` 中 `runtime.stage=RUNNING` 且 `runtime.raw.sha=<expected sha>` |
+| P0 | Hugging Face runtime 回读 | 每个新发布都必须按目标 commit 单独验证；不要用历史 SHA 证明当前 head | `hf spaces info <space-id>` 中 `runtime.stage=RUNNING` 且 `runtime.raw.sha=<expected sha>` |
 | P1 | Admin/File Manager 场景验证 | 默认关闭状态已在线上 smoke 覆盖；代码和 docs 已实现 token、CSRF、白名单 action、audit 只读查看、file root 限制 | admin enabled smoke、audit endpoint、file manager read/write/protected path smoke |
 | P1 | bucket-lite 持久化演练 | 已有演练模板；代码支持 `/persist`、PostgreSQL fallback 和 dump restore；仍需要场景实测 | 独立 volume 或 live Space 上的 PGDATA、fallback、dump restore 记录 |
 | P1 | 发布证据留存 | 已有最小 CI 和 release checklist；仍需要每次发布按模板记录结果 | 记录 static check、build/smoke、runtime SHA 和 skipped checks |

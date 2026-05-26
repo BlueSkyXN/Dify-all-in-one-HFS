@@ -23,13 +23,13 @@
 
 ```bash
 OPS_TOKEN=your-configured-ops-token \
-  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+  scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 线上只读诊断入口：
 
 ```text
-https://blueskyxn-dify-all-in-one.hf.space/_ops/
+https://your-space.hf.space/_ops/
 ```
 
 本地构建：

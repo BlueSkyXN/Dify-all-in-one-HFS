@@ -57,17 +57,17 @@ cat docker/AGENTS.md
 | `scripts/build.sh [tag]` | 构建默认/自定义 tag 镜像 | repo | 需要 Docker daemon 和构建网络 |
 | `scripts/run-demo.sh` | 本地启动 demo，默认 `http://localhost:8080` | repo | 需要 Docker daemon 和已构建镜像；会删除同名 `dify-aio-hf-demo` 容器 |
 | `OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080` | smoke 本地运行容器 | repo | 需要本地容器正在运行；默认 demo token 必须显式允许 |
-| `OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space` | smoke 线上 HF Space | live Space | 需要网络和 Space 当前有效 `OPS_TOKEN`；默认 demo token 可能已被覆盖 |
+| `OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh https://your-space.hf.space` | smoke 线上 HF Space | live Space | 需要网络和 Space 当前有效 `OPS_TOKEN`；默认 demo token 可能已被覆盖 |
 | `SMOKE_ADMIN_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh <base-url>` | smoke 已开启的 `/_admin` | local/live Space | 仅在 `ADMIN_ENABLED=true` 时使用；写 action 需 `SMOKE_ADMIN_ACTIONS=true` |
 | `ADMIN_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/admin-smoke.sh <base-url>` | smoke admin 鉴权、CSRF、confirm 和 file manager 边界 | local/live Space | 文件管理加 `ADMIN_FILES_EXPECTED_ENABLED=true`；写 action 加 `ADMIN_SMOKE_ACTIONS=true` |
 | `ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-token> scripts/webssh-smoke.sh <base-url>` | smoke `/_admin/terminal/` 鉴权和 `ttyd` | local/live Space | 需要 admin、web terminal 和有效 `ADMIN_TOKEN` |
 | `SMOKE_ADMIN_ENABLED=true SMOKE_WEBSSH_ENABLED=true ADMIN_TOKEN=<admin-token> OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh <base-url>` | 综合 smoke 覆盖 terminal | local/live Space | 需要 admin 和 web terminal 都开启；默认不触发写 action |
-| `hf spaces info BlueSkyXN/dify-all-in-one` | 查看 Space runtime metadata | deployment | 需要 HF CLI、网络和必要登录态 |
-| `hf spaces logs BlueSkyXN/dify-all-in-one -n 220` | 查看 app logs | deployment | 需要 HF CLI 和网络 |
-| `hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220` | 查看 build logs | deployment | 需要 HF CLI 和网络 |
-| `curl https://blueskyxn-dify-all-in-one.hf.space/nginx-health` | 检查 Nginx public liveness | live Space | 需要网络 |
-| `curl https://blueskyxn-dify-all-in-one.hf.space/healthz` | 检查综合健康探针 | live Space | 需要网络；warmup 时可能 503 |
-| `curl -H "X-Ops-Token: $OPS_TOKEN" https://blueskyxn-dify-all-in-one.hf.space/_ops/health` | 查看只读 ops health | live Space | 需要网络和 Space 当前有效 `OPS_TOKEN` |
+| `hf spaces info <space-id>` | 查看 Space runtime metadata | deployment | 需要 HF CLI、网络和必要登录态 |
+| `hf spaces logs <space-id> -n 220` | 查看 app logs | deployment | 需要 HF CLI 和网络 |
+| `hf spaces logs <space-id> --build -n 220` | 查看 build logs | deployment | 需要 HF CLI 和网络 |
+| `curl https://your-space.hf.space/nginx-health` | 检查 Nginx public liveness | live Space | 需要网络 |
+| `curl https://your-space.hf.space/healthz` | 检查综合健康探针 | live Space | 需要网络；warmup 时可能 503 |
+| `curl -H "X-Ops-Token: $OPS_TOKEN" https://your-space.hf.space/_ops/health` | 查看只读 ops health | live Space | 需要网络和 Space 当前有效 `OPS_TOKEN` |
 
 按修改范围选择最小验证集合。不要在不需要 runtime 验证时运行 Docker、Hugging Face 或 live curl 命令。
 
@@ -178,13 +178,13 @@ OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.s
 如果修改已部署到 Hugging Face，先确认 runtime metadata：
 
 ```bash
-hf spaces info BlueSkyXN/dify-all-in-one
+hf spaces info <space-id>
 ```
 
 再跑线上 smoke；使用 Space 当前配置的 `OPS_TOKEN`，不要假设 live Space 仍使用 demo 默认值：
 
 ```bash
-OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+OPS_TOKEN=your-configured-ops-token scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 无法运行的外部验证必须在最终回复里说明：缺 Docker、缺 HF CLI、缺网络、缺凭据、live Space 未就绪，或本次改动不涉及 runtime。

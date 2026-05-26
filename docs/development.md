@@ -119,12 +119,12 @@ git remote -v
 git push hf main
 ```
 
-不要假设 `origin` 一定是 Hugging Face Space。当前本机 checkout 常见为 `hf` 指向 Hugging Face Space、`origin` 指向 GitHub remote；如果你的 remote 名称不同，使用实际指向 `https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one` 的 remote。
+不要假设 `origin` 一定是 Hugging Face Space。当前本机 checkout 常见为 `hf` 指向 Hugging Face Space、`origin` 指向 GitHub remote；如果你的 remote 名称不同，使用实际指向 `https://huggingface.co/spaces/<space-id>` 的 remote。
 
 轮询：
 
 ```bash
-hf spaces info BlueSkyXN/dify-all-in-one
+hf spaces info <space-id>
 ```
 
 确认：
@@ -138,14 +138,14 @@ runtime.raw.sha = <expected commit sha>
 
 ```bash
 OPS_TOKEN=your-configured-ops-token \
-  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+  scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 错误摘要：
 
 ```bash
 curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
+  https://your-space.hf.space/_ops/errors
 ```
 
 ## 修改 Plugin Daemon 相关逻辑
@@ -287,7 +287,7 @@ ADMIN_EXPECTED_ENABLED=true WEBSSH_EXPECTED_ENABLED=true ADMIN_TOKEN=<admin-toke
 
 ```bash
 OPS_TOKEN=your-configured-ops-token \
-  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+  scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 ## 当前已知限制

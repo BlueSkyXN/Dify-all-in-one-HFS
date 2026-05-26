@@ -35,11 +35,11 @@ git remote -v
 当前本机 checkout 的常见布局是：
 
 ```text
-hf      https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one
+hf      https://huggingface.co/spaces/<space-id>
 origin  https://github.com/BlueSkyXN/Dify-all-in-one-HFS.git
 ```
 
-只有推送到指向 `https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one` 的 remote 才会触发 Space Docker build。以上布局中应使用：
+只有推送到指向 `https://huggingface.co/spaces/<space-id>` 的 remote 才会触发 Space Docker build。以上布局中应使用：
 
 ```bash
 git push hf main
@@ -52,7 +52,7 @@ git push hf main
 查看 Space 状态：
 
 ```bash
-hf spaces info BlueSkyXN/dify-all-in-one
+hf spaces info <space-id>
 ```
 
 关键字段：
@@ -68,13 +68,13 @@ runtime.raw.domains[].stage
 查看 build logs：
 
 ```bash
-hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220
+hf spaces logs <space-id> --build -n 220
 ```
 
 查看 app logs：
 
 ```bash
-hf spaces logs BlueSkyXN/dify-all-in-one -n 220
+hf spaces logs <space-id> -n 220
 ```
 
 注意：刚推送后，顶层 `sha` 可能已经是新提交，但 `runtime.raw.sha` 仍是旧提交。只有 `runtime.stage=RUNNING` 且 `runtime.raw.sha` 等于目标提交，才代表新镜像已接管流量。
@@ -83,7 +83,7 @@ hf spaces logs BlueSkyXN/dify-all-in-one -n 220
 
 ```bash
 OPS_TOKEN=your-configured-ops-token \
-  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+  scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 `dify_ops_demo_token` 只是本地 demo 默认值。未显式设置 `ALLOW_DEMO_OPS_TOKEN=true` 时，默认 token 会让 ops-service 进入 locked mode，`/healthz` 与 `/_ops/*` 返回 503。线上 Space 必须在 Secrets 中覆盖强随机 `OPS_TOKEN`；发布验收必须使用 Space 当前配置的 token，否则 `/_ops/*` 会返回 401。
@@ -120,7 +120,7 @@ SMOKE_DELAY=5
 OPS_TOKEN=your-configured-ops-token \
 SMOKE_RETRIES=60 \
 SMOKE_DELAY=5 \
-scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 ## 手工验证
@@ -128,9 +128,9 @@ scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
 基础健康：
 
 ```bash
-curl https://blueskyxn-dify-all-in-one.hf.space/nginx-health
-curl https://blueskyxn-dify-all-in-one.hf.space/healthz
-curl -I https://blueskyxn-dify-all-in-one.hf.space/apps
+curl https://your-space.hf.space/nginx-health
+curl https://your-space.hf.space/healthz
+curl -I https://your-space.hf.space/apps
 ```
 
 `/apps` 响应不应带 `X-Frame-Options`，并应带允许 `https://huggingface.co` 的 `Content-Security-Policy: frame-ancestors ...`，否则 Hugging Face Space 页面 iframe 可能无法嵌入。
@@ -139,16 +139,16 @@ curl -I https://blueskyxn-dify-all-in-one.hf.space/apps
 
 ```bash
 curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://blueskyxn-dify-all-in-one.hf.space/_ops/health
+  https://your-space.hf.space/_ops/health
 
 curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
+  https://your-space.hf.space/_ops/errors
 ```
 
 浏览器：
 
 ```text
-https://blueskyxn-dify-all-in-one.hf.space/
+https://your-space.hf.space/
 ```
 
 未初始化实例会跳转到 `/install` 并显示管理员账户设置页。
@@ -227,10 +227,10 @@ docker volume rm dify-hf-demo-persist
 先看：
 
 ```bash
-curl https://blueskyxn-dify-all-in-one.hf.space/nginx-health
-curl https://blueskyxn-dify-all-in-one.hf.space/healthz
+curl https://your-space.hf.space/nginx-health
+curl https://your-space.hf.space/healthz
 curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://blueskyxn-dify-all-in-one.hf.space/_ops/health
+  https://your-space.hf.space/_ops/health
 ```
 
 完整流程见 [Operations Runbook](./ops-runbook.md)。
@@ -244,13 +244,13 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 先确认 stage：
 
 ```bash
-hf spaces info BlueSkyXN/dify-all-in-one
+hf spaces info <space-id>
 ```
 
 如果仍在 build，查看 build logs：
 
 ```bash
-hf spaces logs BlueSkyXN/dify-all-in-one --build -n 220
+hf spaces logs <space-id> --build -n 220
 ```
 
 ### 初始化后账号丢失

@@ -14,7 +14,7 @@ feature branch -> GitHub PR -> origin/main -> optional hf/main -> HF runtime -> 
 
 ```text
 origin  GitHub remote: https://github.com/BlueSkyXN/Dify-all-in-one-HFS.git
-hf      Hugging Face Space: https://huggingface.co/spaces/BlueSkyXN/dify-all-in-one
+hf      Hugging Face Space: https://huggingface.co/spaces/<space-id>
 ```
 
 推送 `origin/main` 不会触发 Hugging Face Space rebuild。只有推送到实际指向 Space 的 remote，通常是 `hf main`，才会触发 Docker build。
@@ -119,7 +119,7 @@ App log checked:
 回读 Space runtime：
 
 ```bash
-hf spaces info BlueSkyXN/dify-all-in-one
+hf spaces info <space-id>
 ```
 
 必须确认：
@@ -137,7 +137,7 @@ runtime.raw.sha = <expected main sha>
 
 ```bash
 OPS_TOKEN=your-configured-ops-token \
-  scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+  scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 必要时增加重试：
@@ -146,7 +146,7 @@ OPS_TOKEN=your-configured-ops-token \
 OPS_TOKEN=your-configured-ops-token \
 SMOKE_RETRIES=60 \
 SMOKE_DELAY=5 \
-scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one.hf.space
+scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 记录：
@@ -163,10 +163,10 @@ Known skipped checks:
 
 ```bash
 curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://blueskyxn-dify-all-in-one.hf.space/_ops/health
+  https://your-space.hf.space/_ops/health
 
 curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://blueskyxn-dify-all-in-one.hf.space/_ops/errors
+  https://your-space.hf.space/_ops/errors
 ```
 
 ## 发布记录模板
