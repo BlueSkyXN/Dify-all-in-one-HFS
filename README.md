@@ -173,11 +173,11 @@ docker exec -it dify-aio-hf supervisorctl status
 /data/config                   -> /persist/config
 /data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
 /data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/plugin_daemon/plugin_packages -> /persist/plugin_daemon/plugin_packages
 /data/plugin_daemon/cwd        -> /tmp/dify-aio/plugin_cwd
 /data/logs                     -> /tmp/dify-aio/logs
 /data/run                      -> /tmp/dify-aio/run
 /data/redis                    -> /tmp/dify-aio/redis
-/data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
@@ -237,7 +237,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_ops/metrics          Prometheus-style text metrics
 ```
 
-`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 只包括 restart service、reload nginx、run health checks；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
+`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 只包括 restart service、reload nginx 和 run health checks；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
 
 Nginx access log 使用 JSON 格式写到 Nginx stdout；当前 `supervisord` 会把 Nginx stdout 收进 `/data/logs/nginx.log`，可通过 `/_ops/logs?service=nginx` 查看。字段包含 `time`、`request_id`、`remote_addr`、`method`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status`、`upstream_response_time` 和 `host`，便于区分 Web/API/Plugin/Ops 的上游问题。
 

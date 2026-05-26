@@ -64,7 +64,6 @@ SENSITIVE_DETAIL_KEYS = (
     "password",
 )
 
-
 @dataclass
 class AuthContext:
     kind: str

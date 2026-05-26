@@ -163,11 +163,11 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 /data/config                   -> /persist/config
 /data/plugin_daemon/plugin     -> /persist/plugin_daemon/plugin
 /data/plugin_daemon/assets     -> /persist/plugin_daemon/assets
+/data/plugin_daemon/plugin_packages -> /persist/plugin_daemon/plugin_packages
 /data/plugin_daemon/cwd        -> /tmp/dify-aio/plugin_cwd
 /data/logs                     -> /tmp/dify-aio/logs
 /data/run                      -> /tmp/dify-aio/run
 /data/redis                    -> /tmp/dify-aio/redis
-/data/plugin_daemon/plugin_packages -> /tmp/dify-aio/plugin_packages
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
@@ -302,7 +302,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `PLUGIN_STORAGE_LOCAL_ROOT` | `/data/plugin_daemon` | Plugin storage 根目录 |
 | `PLUGIN_WORKING_PATH` | `/data/plugin_daemon/cwd` | Plugin working directory |
 | `PLUGIN_INSTALLED_PATH` | `plugin` | 已安装插件目录 |
-| `PLUGIN_PACKAGE_CACHE_PATH` | `plugin_packages` | 插件包缓存目录 |
+| `PLUGIN_PACKAGE_CACHE_PATH` | `plugin_packages` | 插件包目录；bucket-lite 下由 `/persist/plugin_daemon/plugin_packages` 持久化 |
 | `PLUGIN_MEDIA_CACHE_PATH` | `assets` | 插件媒体缓存目录 |
 | `PLUGIN_DEBUGGING_HOST` | `0.0.0.0` | remote installing/debug host |
 | `PLUGIN_DEBUGGING_PORT` | `5003` | remote installing/debug port |
@@ -405,7 +405,7 @@ POST /_admin/api/actions/reload-nginx
 POST /_admin/api/actions/run-health-checks
 ```
 
-`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`。
+`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`。Admin action 不接受任意 shell command、SQL 或文件路径。
 
 `GET /_admin/api/audit?limit=50` 返回最近的 `ADMIN_AUDIT_LOG` 事件，用于追踪 login/logout、白名单 action 和 file manager 写操作。`limit` 会限制在 `1..500`，缺失或非法时使用默认值 `100`。日志不存在时仍返回 200、`exists=false`、`returned=0` 和空 `events`。事件字段固定为 `time`、`action`、`ok`、`actor`、`target`、`details`；返回内容会对 `token`、`apiKey`、`authorization`、`cookie` 等敏感 detail key 做递归兜底脱敏。该接口仍需要 `ADMIN_TOKEN` 或已登录 session，但不增加新的写能力。
 

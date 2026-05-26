@@ -448,6 +448,41 @@ database migration completed successfully
 
 且 `/_ops/errors` 不再出现 `install_tasks` 缺表错误。
 
+## Plugin Runtime Not Found
+
+如果保存模型 provider、获取 parameter rules 或校验 credential 时出现下面日志：
+
+```text
+no plugin available nodes found plugin=<author/name:version@hash>
+no available node, plugin runtime not found
+no plugin states found in redis hashed_plugin_id=<hash>
+```
+
+在本 all-in-one 单容器里，`node` 优先理解为 Plugin Daemon 管理的插件 runtime 实例，而不是另一台 Plugin Daemon 服务器。这个错误表示 Dify API 能请求到 Plugin Daemon，但目标插件的 local runtime 没有注册为可调度实例。
+
+排障时按三层状态分开看：
+
+| 层 | 典型位置 | 含义 |
+| --- | --- | --- |
+| Dify 主库 | `provider_models`、`provider_model_credentials`、`provider_model_settings` | 模型配置和 credential；页面能读到已有模型通常说明这层仍在 |
+| Plugin 安装元数据 | `dify_plugin` 数据库中的 plugin、installation、model installation 记录 | 决定插件是否被认为已安装 |
+| Plugin local runtime | `/data/plugin_daemon/plugin`、`/data/plugin_daemon/plugin_packages`、`/data/plugin_daemon/cwd`、Redis runtime state | 决定插件进程是否已展开、启动并注册 |
+
+本工程的 bucket-lite 布局会持久化 `/data/plugin_daemon/plugin_packages` 到 `/persist/plugin_daemon/plugin_packages`。这层不能只当临时缓存：local package upload 会先写 package bucket，后续安装流程再把包复制到 installed bucket、写安装元数据并启动 runtime。仅重新上传同一个 `.difypkg` 不一定修复已损坏的安装状态，因为数据库可能仍认为插件已安装，从而跳过完整 runtime install / launch 流程。
+
+推荐恢复路径：
+
+1. 确认使用同一个插件包，例如 `langgenius/openai_api_compatible:0.0.49@...` 对应的 `.difypkg`。
+2. 在 Dify 插件页面卸载损坏的插件。
+3. 重新从本地 `.difypkg` 安装插件。
+4. 等待安装任务完成，并让 Plugin Daemon 重新拉起 runtime。
+5. 回到模型 provider 页面保存 credential 或模型参数。
+6. 再看 `/_ops/errors` 和 `plugin-daemon` 日志确认没有新的 runtime 初始化错误。
+
+如果卸载再安装后模型配置和 key 仍可见，这是正常现象：OpenAI API compatible 这类自定义模型的模型配置可能保留在 Dify 主库中，插件卸载主要修复的是插件安装元数据、local package、installed bucket 和 runtime 注册状态。不要优先手动修改模型表。
+
+不要通过后台简单复制 package bucket 到 installed bucket 来修复。那会绕开 Plugin Daemon 的安装任务、数据库状态更新、依赖初始化和 `LaunchLocalPlugin` 等流程，只能制造“文件看起来在，但 runtime 仍没注册”的假恢复。
+
 ## Smoke 脚本参数
 
 默认：
