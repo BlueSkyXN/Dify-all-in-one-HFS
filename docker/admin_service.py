@@ -10,7 +10,6 @@ import html
 import json
 import mimetypes
 import os
-import re
 import secrets
 import shutil
 import subprocess
@@ -64,11 +63,6 @@ SENSITIVE_DETAIL_KEYS = (
     "token",
     "password",
 )
-
-PLUGIN_UNIQUE_IDENTIFIER_PATTERN = re.compile(
-    r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+@[A-Fa-f0-9]{64}$"
-)
-
 
 @dataclass
 class AuthContext:
@@ -345,12 +339,6 @@ def actions_payload() -> dict[str, Any]:
                 "path": "/_admin/api/actions/run-health-checks",
                 "requires_confirm": True,
             },
-            {
-                "id": "repair-local-plugin-runtime",
-                "method": "POST",
-                "path": "/_admin/api/actions/repair-local-plugin-runtime",
-                "requires_confirm": True,
-            },
         ],
     }
 
@@ -526,113 +514,6 @@ def run_health_checks(payload: dict[str, Any], auth: AuthContext) -> dict[str, A
     result = run_cmd(["/usr/local/bin/dify-demo-healthcheck"], timeout=45.0)
     response = {"ok": result["ok"], "action_id": action_id, "action": "run-health-checks", "result": result}
     audit_event("run-health-checks", result["ok"], auth.kind, "healthcheck", {"action_id": action_id})
-    return response
-
-
-def plugin_storage_root() -> Path:
-    return Path(env("PLUGIN_STORAGE_LOCAL_ROOT", "/data/plugin_daemon"))
-
-
-def plugin_bucket_base(root: Path, bucket_path: str) -> Path:
-    bucket = Path(bucket_path)
-    return bucket if bucket.is_absolute() else root / bucket
-
-
-def plugin_bucket_file(base: Path, plugin_unique_identifier: str) -> Path:
-    target = (base / Path(*plugin_unique_identifier.split("/"))).resolve(strict=False)
-    resolved_base = base.resolve(strict=False)
-    ensure_inside_root(target, resolved_base)
-    return target
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def repair_local_plugin_runtime(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]:
-    if not confirmed(payload):
-        raise AdminError(400, "confirm=true is required")
-
-    plugin_unique_identifier = str(payload.get("plugin_unique_identifier", "")).strip()
-    if not PLUGIN_UNIQUE_IDENTIFIER_PATTERN.fullmatch(plugin_unique_identifier):
-        raise AdminError(
-            400,
-            "plugin_unique_identifier must look like author/name:version@64hex",
-        )
-
-    action_id = new_action_id("repair-local-plugin-runtime")
-    root = plugin_storage_root()
-    package_base = plugin_bucket_base(root, env("PLUGIN_PACKAGE_CACHE_PATH", "plugin_packages"))
-    installed_base = plugin_bucket_base(root, env("PLUGIN_INSTALLED_PATH", "plugin"))
-    package_file = plugin_bucket_file(package_base, plugin_unique_identifier)
-    installed_file = plugin_bucket_file(installed_base, plugin_unique_identifier)
-
-    if not package_file.is_file():
-        audit_event(
-            "repair-local-plugin-runtime",
-            False,
-            auth.kind,
-            plugin_unique_identifier,
-            {"action_id": action_id, "error": "package file not found"},
-        )
-        raise AdminError(
-            404,
-            "plugin package file not found; upload the same .difypkg first",
-            package_path=str(package_file),
-        )
-
-    try:
-        installed_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(package_file, installed_file)
-        installed_file.chmod(0o644)
-        package_size = package_file.stat().st_size
-        installed_size = installed_file.stat().st_size
-        package_sha256 = file_sha256(package_file)
-        installed_sha256 = file_sha256(installed_file)
-    except OSError as exc:
-        audit_event(
-            "repair-local-plugin-runtime",
-            False,
-            auth.kind,
-            plugin_unique_identifier,
-            {"action_id": action_id, "error": str(exc)},
-        )
-        raise AdminError(500, f"unable to repair plugin runtime bucket: {exc}") from exc
-
-    restart = parse_bool(str(payload.get("restart", "true")), default=True)
-    restart_result = None
-    ok = package_size == installed_size and package_sha256 == installed_sha256
-    if restart:
-        restart_result = run_cmd(["supervisorctl", "-c", SUPERVISOR_CONFIG, "restart", "plugin-daemon"], timeout=30.0)
-        ok = ok and restart_result["ok"]
-
-    response = {
-        "ok": ok,
-        "action_id": action_id,
-        "action": "repair-local-plugin-runtime",
-        "plugin_unique_identifier": plugin_unique_identifier,
-        "package_path": str(package_file),
-        "installed_path": str(installed_file),
-        "bytes": installed_size,
-        "sha256": installed_sha256,
-        "restart": restart_result,
-    }
-    audit_event(
-        "repair-local-plugin-runtime",
-        ok,
-        auth.kind,
-        plugin_unique_identifier,
-        {
-            "action_id": action_id,
-            "bytes": installed_size,
-            "sha256": installed_sha256,
-            "restart_ok": None if restart_result is None else restart_result["ok"],
-        },
-    )
     return response
 
 
@@ -1681,8 +1562,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(reload_nginx(payload, auth))
             elif path == "/api/actions/run-health-checks":
                 self.send_json(run_health_checks(payload, auth))
-            elif path == "/api/actions/repair-local-plugin-runtime":
-                self.send_json(repair_local_plugin_runtime(payload, auth))
             elif path == "/api/files/mkdir":
                 self.send_json(mkdir_payload(payload, auth))
             else:

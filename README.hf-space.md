@@ -48,6 +48,7 @@ bucket-lite 模式下会持久化：
 /persist/dify/storage
 /persist/plugin_daemon/plugin
 /persist/plugin_daemon/assets
+/persist/plugin_daemon/plugin_packages
 /persist/postgres-backups/latest.sql.gz
 /persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz
 ```
@@ -63,7 +64,6 @@ bucket-lite 模式下会持久化：
 /tmp/dify-aio/run
 /tmp/dify-aio/redis
 /tmp/dify-aio/hf-cache
-/tmp/dify-aio/plugin_packages
 /tmp/dify-aio/plugin_cwd
 ```
 

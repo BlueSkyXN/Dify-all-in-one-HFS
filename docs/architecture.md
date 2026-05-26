@@ -250,10 +250,9 @@ ADMIN_TOKEN=<separate-token>
 restart-service
 reload-nginx
 run-health-checks
-repair-local-plugin-runtime
 ```
 
-Browser cookie session 的写 action 需要 CSRF header；CLI header token auth 显式跳过 CSRF，但仍需要白名单 action 和 `confirm=true`。登录失败、重启、reload 和 local plugin runtime repair 都写入 `ADMIN_AUDIT_LOG`。`repair-local-plugin-runtime` 只在 `PLUGIN_STORAGE_LOCAL_ROOT` 下按合法 `plugin_unique_identifier` 从 package bucket 复制到 installed bucket，并可重启 `plugin-daemon`；请求不能传任意 shell command。
+Browser cookie session 的写 action 需要 CSRF header；CLI header token auth 显式跳过 CSRF，但仍需要白名单 action 和 `confirm=true`。登录失败、重启、reload 和 health check action 都写入 `ADMIN_AUDIT_LOG`；请求不能传任意 shell command。
 
 File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`，rename/delete 还要 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
 

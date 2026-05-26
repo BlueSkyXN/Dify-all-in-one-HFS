@@ -188,7 +188,7 @@ RUN chmod +x \
       /data/postgres /data/redis /data/dify/storage /data/plugin_daemon /data/config /data/logs /data/run/postgresql \
       /data/run/nginx/client_body /data/run/nginx/proxy /data/run/nginx/fastcgi /data/run/nginx/uwsgi /data/run/nginx/scgi \
       /persist \
-      /tmp/dify-aio/logs /tmp/dify-aio/run /tmp/dify-aio/redis /tmp/dify-aio/hf-cache /tmp/dify-aio/plugin_packages /tmp/dify-aio/plugin_cwd \
+      /tmp/dify-aio/logs /tmp/dify-aio/run /tmp/dify-aio/redis /tmp/dify-aio/hf-cache /tmp/dify-aio/plugin_cwd \
       /var/sandbox/sandbox-python /var/sandbox/sandbox-nodejs \
     && chown -R user:user /data /persist /tmp/dify-aio /conf /dependencies /var/sandbox \
     && chown root:root /opt/dify/sandbox/main \
