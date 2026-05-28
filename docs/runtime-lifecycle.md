@@ -17,7 +17,7 @@
    - 最终复制 `/app/api` 到 runtime。
 
 3. `plugin-daemon-image`
-   - 来源：`langgenius/dify-plugin-daemon:latest`
+   - 来源：`langgenius/dify-plugin-daemon:main-local`
    - 最终复制 `/app` 到 `/opt/dify/plugin-daemon`。
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
@@ -40,9 +40,11 @@ DIFY_VERSION=latest
 UV_VERSION=latest
 DIFY_API_IMAGE=langgenius/dify-api
 DIFY_WEB_IMAGE=langgenius/dify-web
-PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:latest
+PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:main-local
 SANDBOX_IMAGE=langgenius/dify-sandbox:latest
 ```
+
+`langgenius/dify-plugin-daemon` 当前不发布 `latest` tag；默认使用可移动的 `main-local` 作为最新构建入口。需要固定发布版时，用 Docker build arg 覆盖，例如 `PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.1-local`。
 
 ## Container Entry Point
 

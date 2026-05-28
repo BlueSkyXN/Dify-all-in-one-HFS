@@ -18,7 +18,7 @@ ARG DIFY_VERSION=latest
 ARG UV_VERSION=latest
 ARG DIFY_API_IMAGE=langgenius/dify-api
 ARG DIFY_WEB_IMAGE=langgenius/dify-web
-ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:latest
+ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:main-local
 ARG SANDBOX_IMAGE=langgenius/dify-sandbox:latest
 
 # -----------------------------
