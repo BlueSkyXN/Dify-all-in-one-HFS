@@ -5,21 +5,21 @@
 # Runtime is intentionally rootless to match HF Spaces UID 1000 expectations.
 #
 # Build example:
-#   docker build -t dify-all-in-one-hf-space:1.14.1 .
+#   docker build -t dify-all-in-one-hf-space:latest .
 #
 # Run example:
 #   docker run --rm -it \
 #     -p 8080:7860 \
 #     -v dify-hf-demo-persist:/persist \
 #     --env-file docker/dify.env.demo \
-#     dify-all-in-one-hf-space:1.14.1
+#     dify-all-in-one-hf-space:latest
 
-ARG DIFY_VERSION=1.14.1
-ARG UV_VERSION=0.8.9
+ARG DIFY_VERSION=latest
+ARG UV_VERSION=latest
 ARG DIFY_API_IMAGE=langgenius/dify-api
 ARG DIFY_WEB_IMAGE=langgenius/dify-web
-ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
-ARG SANDBOX_IMAGE=langgenius/dify-sandbox:0.2.15
+ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:latest
+ARG SANDBOX_IMAGE=langgenius/dify-sandbox:latest
 
 # -----------------------------
 # Use official prebuilt Dify Web assets
@@ -113,7 +113,11 @@ RUN apt-get update \
        postgresql-15 postgresql-client-15 postgresql-15-pgvector \
     && npm install -g corepack@latest \
     && corepack enable \
-    && pip install --no-cache-dir uv==${UV_VERSION} \
+    && if [ "${UV_VERSION}" = "latest" ]; then \
+         pip install --no-cache-dir uv; \
+       else \
+         pip install --no-cache-dir uv==${UV_VERSION}; \
+       fi \
     && python3 -m pip install --no-cache-dir \
        "httpx[socks]==0.27.2" requests==2.32.3 jinja2==3.1.6 PySocks \
     && rm -rf /var/lib/apt/lists/*
@@ -194,7 +198,9 @@ RUN chmod +x \
     && chown root:root /opt/dify/sandbox/main \
     && chmod 4755 /opt/dify/sandbox/main \
     && chmod -R 755 /var/sandbox \
-    && chmod -R 777 /data \
+    && chmod 755 /data /data/dify /data/dify/storage /data/plugin_daemon /data/logs /data/run /data/run/postgresql \
+      /data/run/nginx/client_body /data/run/nginx/proxy /data/run/nginx/fastcgi /data/run/nginx/uwsgi /data/run/nginx/scgi \
+    && chmod 700 /data/postgres /data/redis /data/config \
     && rm -f /etc/nginx/sites-enabled/default
 
 USER user

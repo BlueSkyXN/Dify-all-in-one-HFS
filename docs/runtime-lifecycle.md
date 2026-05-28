@@ -17,12 +17,12 @@
    - 最终复制 `/app/api` 到 runtime。
 
 3. `plugin-daemon-image`
-   - 来源：`langgenius/dify-plugin-daemon:0.6.0-local`
+   - 来源：`langgenius/dify-plugin-daemon:latest`
    - 最终复制 `/app` 到 `/opt/dify/plugin-daemon`。
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
 4. `sandbox-image`
-   - 来源：`langgenius/dify-sandbox:0.2.15`
+   - 来源：`langgenius/dify-sandbox:latest`
    - 最终复制 `/main`、`/conf` 和 `/dependencies`。
    - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
@@ -36,12 +36,12 @@
 默认 build args：
 
 ```text
-DIFY_VERSION=1.14.1
-UV_VERSION=0.8.9
+DIFY_VERSION=latest
+UV_VERSION=latest
 DIFY_API_IMAGE=langgenius/dify-api
 DIFY_WEB_IMAGE=langgenius/dify-web
-PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.0-local
-SANDBOX_IMAGE=langgenius/dify-sandbox:0.2.15
+PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:latest
+SANDBOX_IMAGE=langgenius/dify-sandbox:latest
 ```
 
 ## Container Entry Point
