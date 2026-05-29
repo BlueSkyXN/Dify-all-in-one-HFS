@@ -40,6 +40,30 @@ scripts/static-check.sh
 git diff --check
 ```
 
+HFS 范式记录：
+
+```text
+Classification: Pattern A / HFS Port Repository
+Runtime mode: image-assembly
+Space root: repo root
+Manifest: hfs-dev.toml
+HFS contract check: scripts/validate-hfs-contract.sh
+```
+
+发布态 build inputs 记录：
+
+```text
+DIFY_VERSION:
+DIFY_API_IMAGE:
+DIFY_WEB_IMAGE:
+PLUGIN_DAEMON_IMAGE:
+SANDBOX_IMAGE:
+UV_VERSION:
+Base image:
+Pinned by tag or digest:
+Mutable defaults used? yes/no + reason:
+```
+
 如果改动涉及 `docker/` runtime lifecycle、Nginx、Supervisor、env、ops-service、admin-service 或 build 行为，额外记录是否运行：
 
 ```text

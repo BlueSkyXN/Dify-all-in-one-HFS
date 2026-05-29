@@ -1,0 +1,26 @@
+schema_version = 1
+standard = "hfs-dev"
+pattern = "A"
+runtime_mode = "image-assembly"
+space_root_mode = "repo-root"
+hfs_dir = "."
+public_port = 7860
+canonical_health_endpoint = "/healthz"
+release_pin_required = true
+release_pin_surfaces = [
+  "DIFY_VERSION=<pinned Dify image tag for development default compatibility>",
+  "DIFY_API_IMAGE=<Dify API image repository; digest pin requires Dockerfile ref-surface refactor>",
+  "DIFY_WEB_IMAGE=<Dify Web image repository; digest pin requires Dockerfile ref-surface refactor>",
+  "PLUGIN_DAEMON_IMAGE=<pinned tag or digest image reference>",
+  "SANDBOX_IMAGE=<pinned tag or digest image reference>",
+  "UV_VERSION=<pinned uv package version>",
+  "BASE_IMAGE=python:3.12-slim-bookworm@sha256:<digest>",
+]
+required_files = [
+  "README.md",
+  "Dockerfile",
+  "docker",
+  "scripts",
+  "docs",
+  "AGENTS.md",
+]

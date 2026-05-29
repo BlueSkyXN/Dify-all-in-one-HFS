@@ -51,7 +51,20 @@ bash -n \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
+  scripts/validate-hfs-contract.sh \
   scripts/static-check.sh
+```
+
+HFS contract：
+
+```bash
+scripts/validate-hfs-contract.sh
+```
+
+如果本机有 `hfs-dev` 标准 checker，也可以额外运行：
+
+```bash
+python3 path/to/hfs-dev/scripts/check_hfs_alignment.py .
 ```
 
 Python 语法：
@@ -262,7 +275,9 @@ bash -n \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
+  scripts/validate-hfs-contract.sh \
   scripts/static-check.sh
+scripts/validate-hfs-contract.sh
 python3 -m py_compile docker/ops_service.py
 python3 -m py_compile docker/admin_service.py
 git diff --check

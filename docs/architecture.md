@@ -2,6 +2,10 @@
 
 本文档描述当前单容器 Dify Demo 的组件拓扑、请求路由、启动依赖和数据流。
 
+## HFS 范式定位
+
+本仓库按 `hfs-dev` 范式归类为 Pattern A: HFS Port Repository，runtime 获取模式为 image-assembly。仓库根目录同时是 Hugging Face Space root 和 GitHub maintenance root；`docker/` 是多进程 runtime glue，不应迁入 `cloud/hfs/`。详细判断见 [HFS Paradigm Alignment](./hfs-alignment.md)。
+
 ## 组件来源
 
 镜像里的组件可以分成三类。本仓库只维护第三类；前两类锁定版本后整体引入。
