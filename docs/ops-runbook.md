@@ -148,6 +148,7 @@ OPS_EXTRA_TCP_CHECKS_JSON=
 OPS_LOG_DIR=/data/logs
 OPS_LOG_SERVICES_JSON=
 OPS_LOG_LINES_MAX=1000
+OPS_LOG_TAIL_MAX_BYTES=1048576
 ```
 
 公开 Space 建议在 Space Settings -> Secrets 中覆盖：
@@ -165,6 +166,7 @@ ADMIN_ENABLED=false
 ADMIN_HOST=127.0.0.1
 ADMIN_PORT=8082
 ADMIN_TOKEN=
+ADMIN_CSRF_KEY=
 ADMIN_SESSION_TTL_SECONDS=3600
 ADMIN_COOKIE_SECURE=auto
 ADMIN_AUDIT_LOG=/data/logs/admin-audit.jsonl
@@ -289,7 +291,7 @@ OPS_LOG_DIR=/var/log/my-app
 OPS_LOG_SERVICES_JSON={"api":"api.log","worker":"worker.log"}
 ```
 
-`OPS_LOG_SERVICES_JSON` 里的文件名必须是相对路径，不能使用绝对路径或 `..`，避免把日志查看能力扩展成任意文件读取。
+`OPS_LOG_SERVICES_JSON` 里的文件名必须是相对路径，不能使用绝对路径、`..`，也不能通过符号链接逃出 `OPS_LOG_DIR`，避免把日志查看能力扩展成任意文件读取。`OPS_LOG_TAIL_MAX_BYTES` 会限制单个日志读取量。
 `/_ops/config` 会展示日志 service 名和额外探针名称，但不会返回 `OPS_LOG_SERVICES_JSON` 或 `OPS_EXTRA_*_CHECKS_JSON` 的原始 JSON。
 
 `/_ops/errors` 会从白名单日志 tail 中匹配常见错误模式，同时过滤已知启动期 benign 日志，例如 PostgreSQL 刚启动时的 `FATAL: the database system is starting up`。返回内容会按 service 分组，包含匹配到的 pattern、pattern count、总匹配数和受限的最近行。可用 query 参数：

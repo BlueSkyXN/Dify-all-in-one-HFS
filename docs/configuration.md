@@ -171,7 +171,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/` 会保留 timestamped `YYYYmmddTHHMMSSZ.sql.gz` dump，并更新普通文件 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在有可通过 gzip 校验且非空的 dump 时先恢复 dump。
+`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/` 会保留 timestamped `YYYYmmddTHHMMSSZ.sql.gz` dump，并更新普通文件 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在 dump 通过 `latest.sha256`、gzip 和非空校验后先恢复 dump；旧实例没有 `latest.sha256` 时会打印 warning 并只走 gzip/非空校验。
 
 如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
@@ -341,6 +341,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `OPS_LOG_DIR` | `/data/logs` | `/_ops/logs` 只读日志目录 |
 | `OPS_LOG_SERVICES_JSON` | empty | 额外日志白名单 JSON map，例如 `{"my-api":"my-api.log"}` |
 | `OPS_LOG_LINES_MAX` | `1000` | 单次日志 tail 最大行数 |
+| `OPS_LOG_TAIL_MAX_BYTES` | `1048576` | 单个日志 tail 最多读取字节数，避免超长日志行占用过多内存 |
 
 `/_ops` 认证支持：
 
@@ -376,6 +377,7 @@ OPS_EXTRA_TCP_CHECKS_JSON=[{"name":"queue","host":"127.0.0.1","port":5672,"timeo
 | `ADMIN_HOST` | `127.0.0.1` | admin-service bind host |
 | `ADMIN_PORT` | `8082` | admin-service port |
 | `ADMIN_TOKEN` | empty | 独立 admin token；开启 admin 时必须设置 |
+| `ADMIN_CSRF_KEY` | empty | 可选 CSRF HMAC key；未设置时优先从 `SECRET_KEY` 派生，最后兼容回退到 `ADMIN_TOKEN` |
 | `ADMIN_SESSION_TTL_SECONDS` | `3600` | Browser session cookie 有效期 |
 | `ADMIN_COOKIE_SECURE` | `auto` | `auto` 时 `X-Forwarded-Proto=https` 自动加 `Secure`；本地 HTTP demo 不加 |
 | `ADMIN_HTTP_TIMEOUT_SECONDS` | `30` | admin-service 单连接 socket timeout |

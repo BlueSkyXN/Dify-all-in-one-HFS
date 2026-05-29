@@ -5,6 +5,10 @@ log() {
   printf '[dify-aio-hf] %s\n' "$*"
 }
 
+warn() {
+  printf '[dify-aio-hf] WARNING: %s\n' "$*" >&2
+}
+
 shell_quote() {
   local s=${1:-}
   s=${s//\'/\'\\\'\'}
@@ -34,7 +38,7 @@ source_runtime_env() {
 
 write_generated_env() {
   mkdir -p /data/config /data/secrets
-  chmod 700 /data/secrets || true
+  chmod 700 /data/config /data/secrets || true
 
   # Capture Space Settings / docker -e values first. If they are non-empty,
   # they override previously persisted generated values.
@@ -71,6 +75,16 @@ export CODE_EXECUTION_API_KEY=$(shell_quote "$code_execution_key")
 export SANDBOX_API_KEY=$(shell_quote "$sandbox_key")
 EOF_GENERATED
   chmod 600 /data/config/generated.env || true
+}
+
+warn_demo_defaults() {
+  source_runtime_env
+  if [ "${OPS_TOKEN:-}" = "dify_ops_demo_token" ]; then
+    warn "OPS_TOKEN uses the demo default. Set a strong OPS_TOKEN for any shared or public Space."
+  fi
+  if [ "${DB_PASSWORD:-}" = "dify_demo_password" ] || [ "${REDIS_PASSWORD:-}" = "dify_redis_password" ]; then
+    warn "Demo database or Redis passwords are active. Replace them outside local training demos."
+  fi
 }
 
 validate_ident() {
@@ -256,8 +270,25 @@ prepare_dirs() {
 
   mkdir -p "${HF_HOME:-${RUNTIME_ROOT:-/tmp/dify-aio}/hf-cache}" "${HF_HUB_CACHE:-${HF_HOME:-${RUNTIME_ROOT:-/tmp/dify-aio}/hf-cache}/hub}"
   touch /dependencies/python-requirements.txt /dependencies/nodejs-requirements.txt || true
-  chmod 700 /data/config || true
-  chmod 755 /data/logs /data/run /data/dify /data/plugin_daemon || true
+  chmod 700 /data/postgres /data/redis /data/config || true
+  chmod 755 \
+    /data \
+    /data/logs \
+    /data/run \
+    /data/run/postgresql \
+    /data/run/nginx \
+    /data/run/nginx/client_body \
+    /data/run/nginx/proxy \
+    /data/run/nginx/fastcgi \
+    /data/run/nginx/uwsgi \
+    /data/run/nginx/scgi \
+    /data/dify \
+    /data/dify/storage \
+    /data/plugin_daemon \
+    /data/plugin_daemon/cwd \
+    /data/plugin_daemon/plugin \
+    /data/plugin_daemon/plugin_packages \
+    /data/plugin_daemon/assets || true
 }
 
 render_redis_config() {
@@ -282,8 +313,13 @@ EOF_REDIS
 redis_cli_args() {
   source_runtime_env
   printf -- '-h\n127.0.0.1\n-p\n%s\n' "${REDIS_PORT}"
+}
+
+redis_cli() {
   if [ -n "${REDIS_PASSWORD:-}" ]; then
-    printf -- '--no-auth-warning\n-a\n%s\n' "${REDIS_PASSWORD}"
+    REDISCLI_AUTH="${REDIS_PASSWORD}" redis-cli "$@"
+  else
+    redis-cli "$@"
   fi
 }
 
@@ -298,7 +334,7 @@ start_temp_redis() {
   local -a args
   mapfile -t args < <(redis_cli_args)
   for _ in $(seq 1 30); do
-    if redis-cli "${args[@]}" ping 2>/dev/null | grep -q PONG; then
+    if redis_cli "${args[@]}" ping 2>/dev/null | grep -q PONG; then
       return
     fi
     sleep 1
@@ -313,7 +349,7 @@ stop_temp_redis() {
   log "Stopping temporary Redis..."
   local -a args
   mapfile -t args < <(redis_cli_args)
-  redis-cli "${args[@]}" shutdown nosave >/data/logs/redis-init-stop.log 2>&1 || true
+  redis_cli "${args[@]}" shutdown nosave >/data/logs/redis-init-stop.log 2>&1 || true
 }
 
 sandbox_python_lib_path_default() {
@@ -502,6 +538,16 @@ clear_stale_postgres_runtime_files() {
     "/data/run/postgresql/.s.PGSQL.${DB_PORT}.lock"
 }
 
+clear_uninitialized_postgres_runtime_files() {
+  source_runtime_env
+  [ ! -s /data/postgres/PG_VERSION ] || return
+  rm -f \
+    /data/postgres/postmaster.pid \
+    /data/postgres/postmaster.opts \
+    "/data/run/postgresql/.s.PGSQL.${DB_PORT}" \
+    "/data/run/postgresql/.s.PGSQL.${DB_PORT}.lock"
+}
+
 start_temp_postgres() {
   source_runtime_env
   log "Starting temporary PostgreSQL for initialization..."
@@ -551,6 +597,33 @@ switch_postgres_to_runtime_fallback() {
   ln -s "$runtime_pg" /data/postgres
 }
 
+find_timestamped_backup_for_sha() {
+  local expected_sha=$1
+  local sha_path sha dump_path found
+  local had_nullglob=0
+  if shopt -q nullglob; then
+    had_nullglob=1
+  fi
+  shopt -s nullglob
+  for sha_path in "${POSTGRES_BACKUP_DIR}"/[0-9]*T[0-9]*Z.sha256; do
+    [ -s "$sha_path" ] || continue
+    sha=$(awk '{print $1; exit}' "$sha_path")
+    dump_path="${sha_path%.sha256}.sql.gz"
+    if [ "$sha" = "$expected_sha" ] && [ -s "$dump_path" ]; then
+      found=$dump_path
+      break
+    fi
+  done
+  if [ "$had_nullglob" -eq 0 ]; then
+    shopt -u nullglob
+  fi
+  if [ -n "${found:-}" ]; then
+    printf '%s\n' "$found"
+    return 0
+  fi
+  return 1
+}
+
 restore_postgres_backup_if_needed() {
   source_runtime_env
   local backup="${POSTGRES_BACKUP_DIR}/latest.sql.gz"
@@ -559,6 +632,25 @@ restore_postgres_backup_if_needed() {
   fi
   if psql -h /data/run/postgresql -p "$DB_PORT" -U user -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_DATABASE}'" | grep -q 1; then
     return
+  fi
+
+  local sha_file="${POSTGRES_BACKUP_DIR}/latest.sha256"
+  if [ -s "$sha_file" ]; then
+    local expected_sha actual_sha
+    expected_sha=$(awk '{print $1; exit}' "$sha_file")
+    actual_sha=$(sha256sum "$backup" | awk '{print $1}')
+    if [ -z "$expected_sha" ] || [ "$actual_sha" != "$expected_sha" ]; then
+      local matching_timestamped_backup
+      matching_timestamped_backup=$(find_timestamped_backup_for_sha "$actual_sha" || true)
+      if [ -n "$matching_timestamped_backup" ]; then
+        warn "PostgreSQL latest.sha256 does not match ${backup}, but ${backup} matches timestamped backup ${matching_timestamped_backup}; continuing restore after crash-window recovery."
+      else
+        log "PostgreSQL dump ${backup} failed sha256 validation against ${sha_file}."
+        exit 1
+      fi
+    fi
+  else
+    warn "PostgreSQL dump ${backup} has no latest.sha256; treating it as a legacy backup and continuing with gzip validation."
   fi
 
   if ! gzip -t "$backup" >/dev/null 2>&1; then
@@ -624,6 +716,7 @@ init_postgres() {
   validate_ident DB_PLUGIN_DATABASE "$DB_PLUGIN_DATABASE"
 
   if [ ! -s /data/postgres/PG_VERSION ]; then
+    clear_uninitialized_postgres_runtime_files
     log "Initializing PostgreSQL data directory at /data/postgres"
     /usr/lib/postgresql/15/bin/initdb \
       -D /data/postgres \
@@ -641,6 +734,7 @@ init_postgres() {
       stop_temp_postgres
       switch_postgres_to_runtime_fallback
       if [ ! -s /data/postgres/PG_VERSION ]; then
+        clear_uninitialized_postgres_runtime_files
         log "Initializing fallback PostgreSQL data directory at /data/postgres"
         if ! /usr/lib/postgresql/15/bin/initdb \
           -D /data/postgres \
@@ -705,6 +799,7 @@ main() {
   write_generated_env
   source_runtime_env
   log "PUBLIC_URL=${PUBLIC_URL}"
+  warn_demo_defaults
   render_redis_config
   render_sandbox_config
   init_postgres

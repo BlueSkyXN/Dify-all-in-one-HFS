@@ -21,7 +21,7 @@ from functools import partial
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import Any
 import xmlrpc.client
 
@@ -34,7 +34,7 @@ MAX_CHECKS = 32
 DEMO_OPS_TOKEN = "dify_ops_demo_token"
 OPS_SESSION_COOKIE = "dify_ops_session"
 OPS_CACHE: dict[str, tuple[float, Any]] = {}
-OPS_CACHE_LOCK = Lock()
+OPS_CACHE_LOCK = RLock()
 
 DEFAULT_SERVICE_LOGS = {
     "supervisord": "supervisord.log",
@@ -99,6 +99,7 @@ SAFE_CONFIG_KEYS = [
     "ALLOW_DEMO_OPS_TOKEN",
     "OPS_DEFAULT_CHECKS_ENABLED",
     "OPS_LOG_DIR",
+    "OPS_LOG_TAIL_MAX_BYTES",
     "ADMIN_ENABLED",
     "ADMIN_HOST",
     "ADMIN_PORT",
@@ -128,6 +129,7 @@ SECRET_KEYS = [
     "SANDBOX_API_KEY",
     "OPS_TOKEN",
     "ADMIN_TOKEN",
+    "ADMIN_CSRF_KEY",
 ]
 
 ERROR_PATTERNS = [
@@ -156,7 +158,19 @@ def safe_log_filename(filename: Any) -> str | None:
     path = Path(filename)
     if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
         return None
+    if resolve_log_path(str(path)) is None:
+        return None
     return str(path)
+
+
+def resolve_log_path(filename: str) -> Path | None:
+    root = LOG_DIR.resolve(strict=False)
+    target = (root / filename).resolve(strict=False)
+    try:
+        target.relative_to(root)
+    except ValueError:
+        return None
+    return target
 
 
 def load_service_logs() -> dict[str, str]:
@@ -232,6 +246,10 @@ def ops_cache_ttl_seconds() -> float:
     return parse_float(env("OPS_CACHE_TTL_SECONDS", "5"), 5.0, minimum=0.0, maximum=300.0)
 
 
+def ops_log_tail_max_bytes() -> int:
+    return parse_int(env("OPS_LOG_TAIL_MAX_BYTES"), 1_048_576, minimum=1, maximum=100 * 1024 * 1024)
+
+
 def ops_lock_reason() -> str:
     token = env("OPS_TOKEN")
     if not token:
@@ -270,15 +288,14 @@ def cached_payload(key: str, builder: Any) -> Any:
     ttl = ops_cache_ttl_seconds()
     if ttl <= 0:
         return builder()
-    now = time.time()
     with OPS_CACHE_LOCK:
+        now = time.time()
         cached = OPS_CACHE.get(key)
         if cached and cached[0] > now:
             return cached[1]
-    payload = builder()
-    with OPS_CACHE_LOCK:
-        OPS_CACHE[key] = (now + ttl, payload)
-    return payload
+        payload = builder()
+        OPS_CACHE[key] = (time.time() + ttl, payload)
+        return payload
 
 
 def load_json_list(name: str) -> list[Any]:
@@ -344,15 +361,20 @@ def requirements_summary(path: Path) -> dict[str, Any]:
     return summary
 
 
-def run_cmd(args: list[str], timeout: float = 2.0) -> dict[str, Any]:
+def run_cmd(args: list[str], timeout: float = 2.0, extra_env: dict[str, str] | None = None) -> dict[str, Any]:
     started = time.time()
     try:
+        command_env = None
+        if extra_env:
+            command_env = os.environ.copy()
+            command_env.update(extra_env)
         completed = subprocess.run(
             args,
             check=False,
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=command_env,
         )
         return {
             "ok": completed.returncode == 0,
@@ -544,11 +566,12 @@ def supervisor_payload() -> dict[str, Any]:
 
 def redis_check() -> dict[str, Any]:
     args = ["redis-cli", "-h", env("REDIS_HOST", "127.0.0.1"), "-p", env("REDIS_PORT", "6379")]
+    extra_env = None
     password = env("REDIS_PASSWORD")
     if password:
-        args.extend(["--no-auth-warning", "-a", password])
+        extra_env = {"REDISCLI_AUTH": password}
     args.append("ping")
-    result = run_cmd(args, timeout=2.0)
+    result = run_cmd(args, timeout=2.0, extra_env=extra_env)
     return {"name": "redis", "ok": result["ok"] and "PONG" in result["stdout"], **result}
 
 
@@ -876,6 +899,7 @@ def tail_file(path: Path, lines: int) -> str:
     if not path.exists():
         return ""
     try:
+        max_bytes = ops_log_tail_max_bytes()
         with path.open("rb") as file:
             file.seek(0, os.SEEK_END)
             end = file.tell()
@@ -883,13 +907,15 @@ def tail_file(path: Path, lines: int) -> str:
             blocks = []
             newline_count = 0
             position = end
-            while position > 0 and newline_count <= lines:
-                read_size = min(block_size, position)
+            read_bytes = 0
+            while position > 0 and newline_count <= lines and read_bytes < max_bytes:
+                read_size = min(block_size, position, max_bytes - read_bytes)
                 position -= read_size
                 file.seek(position)
                 block = file.read(read_size)
                 blocks.append(block)
                 newline_count += block.count(b"\n")
+                read_bytes += read_size
         data = b"".join(reversed(blocks))
     except OSError as exc:
         return f"unable to read log: {exc}"
@@ -905,7 +931,9 @@ def logs_payload(query: dict[str, list[str]]) -> dict[str, Any]:
     filename = SERVICE_LOGS.get(service)
     if not filename:
         return {"ok": False, "error": "unknown service", "allowed_services": sorted(SERVICE_LOGS)}
-    path = LOG_DIR / filename
+    path = resolve_log_path(filename)
+    if path is None:
+        return {"ok": False, "error": "log path escapes OPS_LOG_DIR"}
     return {
         "ok": path.exists(),
         "service": service,
@@ -935,7 +963,9 @@ def errors_payload(query: dict[str, list[str]]) -> dict[str, Any]:
     total_matches = 0
 
     for service, filename in SERVICE_LOGS.items():
-        path = LOG_DIR / filename
+        path = resolve_log_path(filename)
+        if path is None:
+            continue
         if not path.exists():
             continue
         for line in tail_file(path, requested_lines).splitlines():
@@ -1546,12 +1576,16 @@ class Handler(BaseHTTPRequestHandler):
     def maybe_send_query_token_headers(self) -> None:
         if self.ops_auth_source == "query":
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Referrer-Policy", "no-referrer")
+
+    def send_security_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
 
     def send_query_redirect(self) -> None:
         self.send_response(303)
         self.send_header("Location", "/_ops/")
         self.maybe_send_session_cookie()
+        self.send_security_headers()
         self.maybe_send_query_token_headers()
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -1562,6 +1596,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.maybe_send_session_cookie()
+        self.send_security_headers()
         self.maybe_send_query_token_headers()
         self.end_headers()
         self.wfile.write(body)
@@ -1572,6 +1607,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.maybe_send_session_cookie()
+        self.send_security_headers()
         self.maybe_send_query_token_headers()
         self.end_headers()
         self.wfile.write(data)
