@@ -71,7 +71,7 @@ cloud/hfs/Dockerfile
 - Plugin Daemon 和 Sandbox 来自官方上游镜像。
 - 本仓库把这些资产复制进单个 runtime image，并补齐 PostgreSQL、Redis、Nginx、Supervisor、ops/admin 和 HFS 运行约束。
 
-发布态要求是：构建输入必须能 pin 到不可变或足够明确的标识。当前开发默认值仍允许 `latest` / `main-local`，方便 demo 跟随上游；正式发布记录必须写清实际使用的上游镜像 tag 或 digest。
+发布态要求是：构建输入必须能 pin 到不可变标识。当前开发默认值仍允许 `latest` / `main-local`，方便 demo 跟随上游；正式发布记录必须传入并记录实际使用的上游镜像 digest ref。
 
 ## Shared HFS Runtime Contract
 

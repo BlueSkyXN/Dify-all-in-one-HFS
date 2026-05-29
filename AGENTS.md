@@ -55,7 +55,7 @@ cat docker/AGENTS.md
 | `scripts/validate-hfs-contract.sh` | 检查 Pattern A / image-assembly HFS 结构契约：manifest、metadata、端口一致性、glue 位置、secret/build context、smoke 覆盖 | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
 | `python3 -m py_compile docker/ops_service.py docker/admin_service.py` | 检查 ops/admin Python 服务语法 | `docker/ops_service.py`, `docker/admin_service.py` | 需要 Python 3 |
 | `git diff --check` | 检查 diff whitespace 问题 | repo | 只读；如果有无关 dirty diff，使用 path-limited 形式 |
-| `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:1.14.1` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
+| `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:latest` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
 | `scripts/build.sh [tag]` | 构建默认/自定义 tag 镜像 | repo | 需要 Docker daemon 和构建网络 |
 | `scripts/run-demo.sh` | 本地启动 demo，默认 `http://localhost:8080` | repo | 需要 Docker daemon 和已构建镜像；会删除同名 `dify-aio-hf-demo` 容器 |
 | `OPS_TOKEN=dify_ops_demo_token ALLOW_DEMO_OPS_TOKEN=true scripts/hf-space-smoke.sh http://localhost:8080` | smoke 本地运行容器 | repo | 需要本地容器正在运行；默认 demo token 必须显式允许 |
@@ -120,7 +120,7 @@ cat docker/AGENTS.md
 - 不要把 PostgreSQL、Redis、Sandbox、Plugin Daemon、ops/admin 内部端口直接暴露到 Space 公网入口。
 - 不要在 `/_ops` 下新增写操作；admin surface 必须有独立鉴权、审计、白名单 action 和显式确认。
 - 不要通过 `/_ops/config`、logs、docs 或示例暴露 secret 原文；secret presence boolean 可以保留。
-- 不要静默升级 `DIFY_VERSION`、Plugin Daemon、Sandbox、Node.js、PostgreSQL major 或 uv 版本。版本升级必须配套 build 和 smoke。
+- 不要静默升级 `DIFY_VERSION` metadata、`*_IMAGE_REF`、Plugin Daemon、Sandbox、Node.js、PostgreSQL major 或 uv 版本。版本升级必须配套 build 和 smoke。
 - 不要移除 pgvector 初始化，除非同步替换 vector-store 设计和文档。
 - 不要把 syntax check 通过写成 Docker image 可运行的证据；它只是轻量 gate。
 - 不要在读取 `docker/AGENTS.md` 前修改 `docker/`。

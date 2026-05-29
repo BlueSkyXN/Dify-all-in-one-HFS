@@ -59,6 +59,11 @@ SAFE_CONFIG_KEYS = [
     "DIFY_VERSION",
     "DIFY_AIO_BUILD_DIFY_VERSION",
     "DIFY_AIO_BUILD_UV_VERSION",
+    "DIFY_AIO_BUILD_BASE_IMAGE_REF",
+    "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF",
+    "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF",
+    "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF",
+    "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF",
     "DIFY_AIO_BUILD_DIFY_API_IMAGE",
     "DIFY_AIO_BUILD_DIFY_WEB_IMAGE",
     "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE",
@@ -651,6 +656,11 @@ def _status_payload() -> dict[str, Any]:
 
 
 def version_payload() -> dict[str, Any]:
+    base_image_ref = env("DIFY_AIO_BUILD_BASE_IMAGE_REF")
+    dify_api_image_ref = env("DIFY_AIO_BUILD_DIFY_API_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_API_IMAGE")
+    dify_web_image_ref = env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE")
+    plugin_daemon_image_ref = env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF") or env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE")
+    sandbox_image_ref = env("DIFY_AIO_BUILD_SANDBOX_IMAGE_REF") or env("DIFY_AIO_BUILD_SANDBOX_IMAGE")
     return {
         "service": "dify-all-in-one-ops",
         "dify_version": env("DIFY_VERSION"),
@@ -662,10 +672,15 @@ def version_payload() -> dict[str, Any]:
         "build": {
             "dify_version": env("DIFY_AIO_BUILD_DIFY_VERSION"),
             "uv_version": env("DIFY_AIO_BUILD_UV_VERSION"),
-            "dify_api_image": env("DIFY_AIO_BUILD_DIFY_API_IMAGE"),
-            "dify_web_image": env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE"),
-            "plugin_daemon_image": env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE"),
-            "sandbox_image": env("DIFY_AIO_BUILD_SANDBOX_IMAGE"),
+            "base_image_ref": base_image_ref,
+            "dify_api_image_ref": dify_api_image_ref,
+            "dify_web_image_ref": dify_web_image_ref,
+            "plugin_daemon_image_ref": plugin_daemon_image_ref,
+            "sandbox_image_ref": sandbox_image_ref,
+            "dify_api_image": dify_api_image_ref,
+            "dify_web_image": dify_web_image_ref,
+            "plugin_daemon_image": plugin_daemon_image_ref,
+            "sandbox_image": sandbox_image_ref,
         },
         "sandbox": {
             "python_path": env("SANDBOX_PYTHON_PATH"),

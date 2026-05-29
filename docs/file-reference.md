@@ -348,6 +348,7 @@ UV_VERSION
 默认：
 
 ```text
+IMAGE_TAG=dify-all-in-one-hf-space:latest
 CONTAINER_NAME=dify-aio-hf-demo
 PUBLIC_URL=http://localhost:8080
 volume=dify-hf-demo-persist:/persist
@@ -418,6 +419,7 @@ HFS 范式结构契约检查脚本。
 - 运行 `scripts/validate-hfs-contract.sh`。
 - 对 `docker/ops_service.py` 和 `docker/admin_service.py` 运行 `python3 -m py_compile`。
 - 使用 Python stdlib `unittest` 运行 `docker/tests/` 纯函数回归。
+- 检查直接调用的 `scripts/*.sh` helper 保持 executable bit。
 - 运行 `git diff --check`。
 - 对 changed/untracked 文件额外检查 trailing whitespace，覆盖新文件未 staged 时 `git diff --check` 看不到的情况。
 

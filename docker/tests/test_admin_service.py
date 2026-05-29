@@ -117,6 +117,14 @@ class AdminServicePureFunctionTests(unittest.TestCase):
         self.assertFalse(admin_service.is_protected_path(Path("/data/dependencies/tokenization_report.txt")))
         self.assertFalse(admin_service.is_protected_path(Path("/data/uploads/plain.txt")))
 
+    def test_content_disposition_attachment_sanitizes_filename_header(self):
+        header = admin_service.content_disposition_attachment('bad"\r\nX-Test: yes-报告.txt')
+
+        self.assertNotIn("\r", header)
+        self.assertNotIn("\n", header)
+        self.assertIn('filename="bad___X-Test: yes-__.txt"', header)
+        self.assertIn("filename*=UTF-8''bad___X-Test%3A%20yes-%E6%8A%A5%E5%91%8A.txt", header)
+
     def test_login_retry_after_prunes_expired_ip_entries_without_creating_new_ones(self):
         now = time.time()
         os.environ["ADMIN_LOGIN_RATE_LIMIT_WINDOW_SECONDS"] = "10"

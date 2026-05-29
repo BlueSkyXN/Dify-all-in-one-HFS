@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-IMAGE_TAG=${1:-dify-all-in-one-hf-space:1.14.1}
+IMAGE_TAG=${1:-dify-all-in-one-hf-space:latest}
 CONTAINER_NAME=${CONTAINER_NAME:-dify-aio-hf-demo}
 PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
 PERSIST_VOLUME=${PERSIST_VOLUME:-dify-hf-demo-persist}

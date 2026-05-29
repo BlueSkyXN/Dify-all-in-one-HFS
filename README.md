@@ -143,7 +143,7 @@ PUBLIC_URL=https://your.custom.domain
 ## 本地构建和运行
 
 ```bash
-docker build -t dify-all-in-one-hf-space:1.14.1 .
+docker build -t dify-all-in-one-hf-space:latest .
 ```
 
 ```bash
@@ -152,7 +152,7 @@ docker run -d \
   -p 8080:7860 \
   -v dify-hf-demo-persist:/persist \
   --env-file docker/dify.env.demo \
-  dify-all-in-one-hf-space:1.14.1
+  dify-all-in-one-hf-space:latest
 ```
 
 打开：

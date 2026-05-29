@@ -692,9 +692,10 @@ stop_temp_postgres() {
     if printf '%s' "$cmdline" | grep -q 'postgres'; then
       log "Temporary PostgreSQL still running as PID ${pid}; sending TERM before continuing."
       kill "$pid" 2>/dev/null || true
-      local attempt
-      for attempt in $(seq 1 30); do
+      local waited=0
+      while [ "$waited" -lt 30 ]; do
         kill -0 "$pid" 2>/dev/null || break
+        waited=$((waited + 1))
         sleep 1
       done
       if kill -0 "$pid" 2>/dev/null; then
