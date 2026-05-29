@@ -1,4 +1,6 @@
 import importlib.util
+import hashlib
+import hmac
 import os
 import sys
 import tempfile
@@ -24,14 +26,16 @@ admin_service = load_module("admin_service_under_test", ROOT / "docker" / "admin
 
 class AdminServicePureFunctionTests(unittest.TestCase):
     def setUp(self):
-        self.original_admin_token = os.environ.get("ADMIN_TOKEN")
+        self.original_env = os.environ.copy()
+        admin_service.LOGIN_FAILURES_BY_IP.clear()
+        admin_service.LOGIN_FAILURES_GLOBAL.clear()
         os.environ["ADMIN_TOKEN"] = "test-admin-token"
 
     def tearDown(self):
-        if self.original_admin_token is None:
-            os.environ.pop("ADMIN_TOKEN", None)
-        else:
-            os.environ["ADMIN_TOKEN"] = self.original_admin_token
+        os.environ.clear()
+        os.environ.update(self.original_env)
+        admin_service.LOGIN_FAILURES_BY_IP.clear()
+        admin_service.LOGIN_FAILURES_GLOBAL.clear()
 
     def test_parse_session_accepts_signed_session_and_rejects_tampering(self):
         cookie_value, _csrf, expires_at = admin_service.make_session()
@@ -39,7 +43,44 @@ class AdminServicePureFunctionTests(unittest.TestCase):
         self.assertIsNotNone(parsed)
         self.assertEqual(parsed.kind, "cookie")
         self.assertEqual(parsed.expires_at, expires_at)
+        self.assertGreaterEqual(len(parsed.nonce), 43)
         self.assertIsNone(admin_service.parse_session(cookie_value + "tampered"))
+
+    def test_csrf_key_prefers_admin_csrf_key_then_secret_key(self):
+        os.environ["ADMIN_CSRF_KEY"] = "csrf-key"
+        cookie_value, csrf_token, _expires_at = admin_service.make_session()
+        expires_raw, nonce, _signature = cookie_value.split(".", 2)
+        expected = hmac.new(
+            b"csrf-key",
+            f"csrf|{expires_raw}|{nonce}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        self.assertEqual(csrf_token, expected)
+
+        os.environ.pop("ADMIN_CSRF_KEY")
+        os.environ["SECRET_KEY"] = "runtime-secret"
+        cookie_value, csrf_token, _expires_at = admin_service.make_session()
+        expires_raw, nonce, _signature = cookie_value.split(".", 2)
+        derived_key = hmac.new(b"runtime-secret", b"dify-aio-admin-csrf", hashlib.sha256).hexdigest()
+        expected = hmac.new(
+            derived_key.encode("utf-8"),
+            f"csrf|{expires_raw}|{nonce}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        self.assertEqual(csrf_token, expected)
+
+    def test_require_csrf_rejects_bad_cookie_session_token(self):
+        class FakeHandler:
+            headers = {"X-Admin-CSRF": "wrong"}
+            sent = None
+
+            def send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        fake = FakeHandler()
+        auth = admin_service.AuthContext(kind="cookie", csrf_token="expected")
+        self.assertFalse(admin_service.Handler.require_csrf(fake, auth))
+        self.assertEqual(fake.sent[1], 403)
 
     def test_parse_session_rejects_expired_session(self):
         nonce = "nonce"
@@ -64,8 +105,26 @@ class AdminServicePureFunctionTests(unittest.TestCase):
     def test_is_protected_path_matches_generated_env_and_sensitive_names(self):
         self.assertTrue(admin_service.is_protected_path(Path("/data/config/generated.env")))
         self.assertTrue(admin_service.is_protected_path(Path("/data/config/api-token.txt")))
+        self.assertTrue(admin_service.is_protected_path(Path("/data/config/access_token.json")))
+        self.assertTrue(admin_service.is_protected_path(Path("/data/config/github-token-backup.txt")))
+        self.assertTrue(admin_service.is_protected_path(Path("/data/config/access_token_backup.json")))
+        self.assertTrue(admin_service.is_protected_path(Path("/data/config/mytoken.txt")))
         self.assertTrue(admin_service.is_protected_path(Path("/data/config/private.pem")))
+        self.assertTrue(admin_service.is_protected_path(Path("/data/config/service-secret.txt")))
+        self.assertTrue(admin_service.is_protected_path(Path("/data/dependencies/tokenizer-token.txt")))
+        self.assertFalse(admin_service.is_protected_path(Path("/data/dependencies/tokenizer.json")))
+        self.assertFalse(admin_service.is_protected_path(Path("/data/dependencies/tokenizer_config.json")))
+        self.assertFalse(admin_service.is_protected_path(Path("/data/dependencies/tokenization_report.txt")))
         self.assertFalse(admin_service.is_protected_path(Path("/data/uploads/plain.txt")))
+
+    def test_login_retry_after_prunes_expired_ip_entries_without_creating_new_ones(self):
+        now = time.time()
+        os.environ["ADMIN_LOGIN_RATE_LIMIT_WINDOW_SECONDS"] = "10"
+        os.environ["ADMIN_LOGIN_RATE_LIMIT_BLOCK_SECONDS"] = "10"
+        admin_service.LOGIN_FAILURES_BY_IP["old"].append(now - 100)
+        self.assertEqual(admin_service.login_retry_after("new"), 0)
+        self.assertNotIn("old", admin_service.LOGIN_FAILURES_BY_IP)
+        self.assertNotIn("new", admin_service.LOGIN_FAILURES_BY_IP)
 
     def test_destructive_file_operations_default_off(self):
         original_enabled = os.environ.get("ADMIN_FILES_ENABLED")

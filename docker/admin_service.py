@@ -50,8 +50,12 @@ PROTECTED_NAME_PATTERNS = [
     "*.pem",
     "*.key",
     "*secret*",
-    "*token*",
 ]
+
+BENIGN_TOKEN_NAME_PREFIXES = (
+    "tokenizer",
+    "tokenization",
+)
 
 SENSITIVE_DETAIL_KEYS = (
     "authorization",
@@ -116,6 +120,16 @@ def admin_token() -> str:
     return env("ADMIN_TOKEN")
 
 
+def admin_csrf_key() -> str:
+    configured = env("ADMIN_CSRF_KEY")
+    if configured:
+        return configured
+    secret_key = env("SECRET_KEY")
+    if secret_key:
+        return hmac.new(secret_key.encode("utf-8"), b"dify-aio-admin-csrf", hashlib.sha256).hexdigest()
+    return admin_token()
+
+
 def admin_files_enabled() -> bool:
     return parse_bool(env("ADMIN_FILES_ENABLED", "false"), default=False)
 
@@ -172,7 +186,8 @@ def login_retry_after(remote_addr: str) -> int:
     window = login_rate_limit_window_seconds()
     block = login_rate_limit_block_seconds()
     with LOGIN_RATE_LOCK:
-        ip_failures = LOGIN_FAILURES_BY_IP[remote_addr]
+        prune_login_failure_entries(now, max(window, block))
+        ip_failures = LOGIN_FAILURES_BY_IP.get(remote_addr, deque())
         prune_failures(ip_failures, now, max(window, block))
         prune_failures(LOGIN_FAILURES_GLOBAL, now, max(window, block))
         if len(ip_failures) >= login_rate_limit_max_per_ip() and now - ip_failures[-1] < block:
@@ -186,6 +201,7 @@ def record_login_failure(remote_addr: str) -> None:
     now = time.time()
     window = login_rate_limit_window_seconds()
     with LOGIN_RATE_LOCK:
+        prune_login_failure_entries(now, max(window, login_rate_limit_block_seconds()))
         ip_failures = LOGIN_FAILURES_BY_IP[remote_addr]
         prune_failures(ip_failures, now, window)
         prune_failures(LOGIN_FAILURES_GLOBAL, now, window)
@@ -198,19 +214,32 @@ def clear_login_failures(remote_addr: str) -> None:
         LOGIN_FAILURES_BY_IP.pop(remote_addr, None)
 
 
+def prune_login_failure_entries(now: float, window: int) -> None:
+    for remote_addr in list(LOGIN_FAILURES_BY_IP):
+        failures = LOGIN_FAILURES_BY_IP[remote_addr]
+        prune_failures(failures, now, window)
+        if not failures:
+            LOGIN_FAILURES_BY_IP.pop(remote_addr, None)
+
+
 def sign_message(*parts: str) -> str:
     token = admin_token()
     payload = "|".join(parts).encode("utf-8")
     return hmac.new(token.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 
+def sign_csrf_message(*parts: str) -> str:
+    payload = "|".join(parts).encode("utf-8")
+    return hmac.new(admin_csrf_key().encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
 def csrf_for(expires_at: int, nonce: str) -> str:
-    return sign_message("csrf", str(expires_at), nonce)
+    return sign_csrf_message("csrf", str(expires_at), nonce)
 
 
 def make_session() -> tuple[str, str, int]:
     expires_at = int(time.time()) + session_ttl_seconds()
-    nonce = secrets.token_urlsafe(18)
+    nonce = secrets.token_urlsafe(32)
     signature = sign_message("session", str(expires_at), nonce)
     cookie_value = f"{expires_at}.{nonce}.{signature}"
     return cookie_value, csrf_for(expires_at, nonce), expires_at
@@ -562,6 +591,15 @@ def is_protected_path(target: Path) -> bool:
     for part in resolved.parts:
         lower = part.lower()
         if any(fnmatch.fnmatch(lower, pattern) for pattern in PROTECTED_NAME_PATTERNS):
+            return True
+        if "token" in lower and not is_benign_token_name(lower):
+            return True
+    return False
+
+
+def is_benign_token_name(lower: str) -> bool:
+    for prefix in BENIGN_TOKEN_NAME_PREFIXES:
+        if lower.startswith(prefix) and "token" not in lower[len(prefix) :]:
             return True
     return False
 
@@ -1318,7 +1356,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -1327,9 +1365,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_security_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    def send_security_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
 
     def send_file(self, path: Path, content_type: str) -> None:
         size = path.stat().st_size
@@ -1337,7 +1379,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(size))
         self.send_header("Content-Disposition", f"attachment; filename=\"{path.name}\"")
-        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_security_headers()
         self.end_headers()
         with path.open("rb") as file:
             shutil.copyfileobj(file, self.wfile)
@@ -1530,6 +1572,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
+                self.send_security_headers()
                 self.set_session_cookie(cookie_value, expires_at)
                 self.end_headers()
                 self.wfile.write(body)
@@ -1545,6 +1588,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.clear_session_cookie()
                 body = b'{"ok":true}\n'
                 self.send_header("Content-Length", str(len(body)))
+                self.send_security_headers()
                 self.end_headers()
                 self.wfile.write(body)
                 audit_event("logout", True, auth.kind)

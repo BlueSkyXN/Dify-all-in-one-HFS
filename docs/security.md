@@ -94,6 +94,7 @@ Authorization: Bearer
 ```env
 ADMIN_ENABLED=false
 ADMIN_TOKEN=
+ADMIN_CSRF_KEY=
 ADMIN_FILES_ENABLED=false
 ADMIN_FILES_WRITE_ENABLED=false
 ```
@@ -102,6 +103,7 @@ ADMIN_FILES_WRITE_ENABLED=false
 
 - `ADMIN_ENABLED=false` 作为默认值。
 - `ADMIN_TOKEN` 独立于 `OPS_TOKEN`。
+- `ADMIN_CSRF_KEY` 可以独立配置；未配置时 CSRF HMAC key 优先从 `SECRET_KEY` 派生，最后兼容回退到 `ADMIN_TOKEN`。
 - 只允许白名单 action，例如 restart service、reload nginx、run health checks。
 - 写 action 要求显式确认参数，例如 `confirm=true`。
 - Browser cookie session 写请求要求 CSRF header；CLI header token auth 显式跳过 CSRF，因为 header token 不会被浏览器自动携带。
@@ -111,7 +113,7 @@ ADMIN_FILES_WRITE_ENABLED=false
 
 当前没有提供 run migration、clear cache、SQL、任意 command 或配置修改。Dify migration 命令涉及上游 runtime 语义，不能在未确认真实命令前加入 action catalog。
 
-`/_admin/api/files/*` 是 admin file manager，不属于 ops-service。它默认以 `/data` 为 root，并把请求 path 当成相对 root 的路径处理；解析后的路径必须仍在 `ADMIN_FILES_ROOT` 内。默认拒绝读取或写入 `generated.env`、`*.pem`、`*.key`、`*secret*`、`*token*`。写入能力需要额外开启 `ADMIN_FILES_WRITE_ENABLED=true`；rename/delete 还要开启 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。
+`/_admin/api/files/*` 是 admin file manager，不属于 ops-service。它默认以 `/data` 为 root，并把请求 path 当成相对 root 的路径处理；解析后的路径必须仍在 `ADMIN_FILES_ROOT` 内。默认拒绝读取或写入 `generated.env`、`*.pem`、`*.key`、`*secret*` 以及 token 类敏感文件名，同时避免误伤 `tokenizer.json` 这类普通依赖文件。写入能力需要额外开启 `ADMIN_FILES_WRITE_ENABLED=true`；rename/delete 还要开启 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。
 
 `/_admin/` 登录页和管理 dashboard 支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。管理 action、confirm 提示、file manager 状态和错误信息必须同步两种语言，避免管理员在不同语言界面下误判操作影响。
 
@@ -154,6 +156,8 @@ SANDBOX_ENABLE_NETWORK=false
 - 是否允许访问 metadata endpoint。
 - 是否需要 HTTP/HTTPS proxy。
 - 是否要限制 package install。
+
+镜像中的 `/opt/dify/sandbox/main` 保留 setuid root 权限，这是上游 Dify Sandbox 用于创建隔离执行环境的 runtime 边界。这个 SUID binary 的安全性依赖上游 sandbox 的 syscall/隔离实现和本仓库默认关闭出网的配置；不要把 `SANDBOX_ENABLE_NETWORK=true` 当作普通功能开关在公开 Space 中长期启用。
 
 ## Plugin
 

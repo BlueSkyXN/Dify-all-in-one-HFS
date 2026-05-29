@@ -21,16 +21,21 @@ wait_postgres() {
 
 wait_redis() {
   local args=(-h "${REDIS_HOST:-127.0.0.1}" -p "${REDIS_PORT:-6379}")
-  if [ -n "${REDIS_PASSWORD:-}" ]; then
-    args+=(-a "${REDIS_PASSWORD}")
-  fi
-  until redis-cli "${args[@]}" ping 2>/dev/null | grep -q PONG; do
+  until redis_cli "${args[@]}" ping 2>/dev/null | grep -q PONG; do
     sleep 1
   done
 }
 
+redis_cli() {
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    REDISCLI_AUTH="${REDIS_PASSWORD}" redis-cli "$@"
+  else
+    redis-cli "$@"
+  fi
+}
+
 wait_api() {
-  until curl -fsS http://127.0.0.1:5001/health >/dev/null 2>&1; do
+  until curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:5001/health >/dev/null 2>&1; do
     sleep 1
   done
 }
