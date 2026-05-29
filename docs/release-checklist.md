@@ -53,16 +53,20 @@ HFS contract check: scripts/validate-hfs-contract.sh
 发布态 build inputs 记录：
 
 ```text
-DIFY_VERSION:
-DIFY_API_IMAGE:
-DIFY_WEB_IMAGE:
-PLUGIN_DAEMON_IMAGE:
-SANDBOX_IMAGE:
+BASE_IMAGE_REF:
+DIFY_API_IMAGE_REF:
+DIFY_WEB_IMAGE_REF:
+PLUGIN_DAEMON_IMAGE_REF:
+SANDBOX_IMAGE_REF:
 UV_VERSION:
-Base image:
-Pinned by tag or digest:
+DIFY_VERSION metadata:
+All image refs use digest? yes/no:
 Mutable defaults used? yes/no + reason:
 ```
+
+开发默认值可以使用 `latest` / `main-local`。发布或长期演示必须记录并传入 `image@sha256:...` digest ref；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据。
+
+`scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
 
 如果改动涉及 `docker/` runtime lifecycle、Nginx、Supervisor、env、ops-service、admin-service 或 build 行为，额外记录是否运行：
 

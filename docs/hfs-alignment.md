@@ -92,25 +92,44 @@ cloud/hfs/Dockerfile
 | Static gate | `.github/workflows/static-check.yml` 调用 `scripts/static-check.sh` |
 | Smoke | `scripts/hf-space-smoke.sh` 覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/*` 和 admin 默认关闭状态 |
 
-## 当前 Gap
+## Release Pin Contract
 
-主要 gap 是发布态 pin 还没有完全机器化。`hfs-dev.toml` 已把 release pin surface 作为显式字段，但当前 `Dockerfile` 仍保留历史兼容的 `DIFY_VERSION` + `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 拼接模式。
+`hfs-dev.toml` v2 使用结构化 `[[release_pins]]` 描述 release pin contract，并已对齐 `Dockerfile` 真实可消费的 build args。每个 pin 都声明 `name`、`type`、`source`、`required_for_release` 和 `dev_mutable_default_allowed`；image ref pin 还声明 `release_requires_digest=true`。
 
-当前 `Dockerfile` 允许通过 build args 覆盖 Dify、Plugin Daemon、Sandbox 和 uv 输入，但默认值仍偏开发便利：
+所有上游镜像选择都通过完整 image ref 输入完成：
 
 ```text
-DIFY_VERSION=latest
-UV_VERSION=latest
-PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE=langgenius/dify-sandbox:latest
+BASE_IMAGE_REF
+DIFY_WEB_IMAGE_REF
+DIFY_API_IMAGE_REF
+PLUGIN_DAEMON_IMAGE_REF
+SANDBOX_IMAGE_REF
 ```
 
-这不等于发布态不可复现。发布或长期演示前应记录并传入明确版本，优先使用镜像 digest；至少不能只把 `latest` / `main-local` 当作最终发布依据。
+开发默认值仍偏便利，允许可移动 tag：
 
-建议后续增强：
+```text
+BASE_IMAGE_REF=python:3.12-slim-bookworm
+DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
+DIFY_API_IMAGE_REF=langgenius/dify-api:latest
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
+UV_VERSION=latest
+DIFY_VERSION=latest
+```
 
-- 在 release checklist 里记录 Dify Web/API、Plugin Daemon、Sandbox、uv 和 base image 的实际 tag/digest。
-- 如果要强制 digest pin，再重构 `Dockerfile` 的 image ref build args，避免 `image:tag` 拼接阻碍 `image@sha256:...` 形式。
+这不等于发布态可复现。发布或长期演示前必须记录并传入 digest ref：
+
+```text
+BASE_IMAGE_REF=python:3.12-slim-bookworm@sha256:...
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:...
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:...
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:...
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:...
+UV_VERSION=<pinned-version>
+```
+
+`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源。
 
 ## 对其他 HFS 项目的迁移规则
 

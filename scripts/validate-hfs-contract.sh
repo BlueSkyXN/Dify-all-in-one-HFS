@@ -27,6 +27,15 @@ require_grep() {
   fi
 }
 
+require_absent() {
+  local pattern=$1
+  local path=$2
+  local message=$3
+  if grep -Eq "$pattern" "$path"; then
+    fail "$message"
+  fi
+}
+
 frontmatter_value() {
   local key=$1
   awk -v key="$key" '
@@ -65,7 +74,7 @@ root = Path(sys.argv[1])
 manifest = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
 
 expected = {
-    "schema_version": 1,
+    "schema_version": 2,
     "standard": "hfs-dev",
     "pattern": "A",
     "runtime_mode": "image-assembly",
@@ -80,9 +89,87 @@ for key, value in expected.items():
     if manifest.get(key) != value:
         failures.append(f"hfs-dev.toml {key} must be {value!r}, got {manifest.get(key)!r}")
 
-release_pin_surfaces = manifest.get("release_pin_surfaces")
-if not isinstance(release_pin_surfaces, list) or not release_pin_surfaces:
-    failures.append("hfs-dev.toml release_pin_surfaces must be a non-empty list")
+if "release_pin_surfaces" in manifest:
+    failures.append("hfs-dev.toml v2 must use structured [[release_pins]], not release_pin_surfaces")
+
+release_pins = manifest.get("release_pins")
+expected_pins = {
+    "BASE_IMAGE_REF": {
+        "type": "image_ref",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+        "release_requires_digest": True,
+    },
+    "DIFY_API_IMAGE_REF": {
+        "type": "image_ref",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+        "release_requires_digest": True,
+    },
+    "DIFY_WEB_IMAGE_REF": {
+        "type": "image_ref",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+        "release_requires_digest": True,
+    },
+    "PLUGIN_DAEMON_IMAGE_REF": {
+        "type": "image_ref",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+        "release_requires_digest": True,
+    },
+    "SANDBOX_IMAGE_REF": {
+        "type": "image_ref",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+        "release_requires_digest": True,
+    },
+    "UV_VERSION": {
+        "type": "package_version",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+    },
+    "DIFY_VERSION": {
+        "type": "metadata",
+        "required_for_release": False,
+        "dev_mutable_default_allowed": True,
+        "metadata_only": True,
+    },
+}
+if not isinstance(release_pins, list) or not release_pins:
+    failures.append("hfs-dev.toml release_pins must be a non-empty structured array")
+else:
+    pins_by_name: dict[str, dict[str, object]] = {}
+    for index, pin in enumerate(release_pins, start=1):
+        if not isinstance(pin, dict):
+            failures.append(f"hfs-dev.toml release_pins[{index}] must be a table")
+            continue
+        name = pin.get("name")
+        if not isinstance(name, str) or not name:
+            failures.append(f"hfs-dev.toml release_pins[{index}] must set name")
+            continue
+        if name in pins_by_name:
+            failures.append(f"hfs-dev.toml release_pins duplicate name: {name}")
+        pins_by_name[name] = pin
+
+    missing_pins = sorted(set(expected_pins) - set(pins_by_name))
+    if missing_pins:
+        failures.append("hfs-dev.toml release_pins missing: " + ", ".join(missing_pins))
+    unexpected_pins = sorted(set(pins_by_name) - set(expected_pins))
+    if unexpected_pins:
+        failures.append("hfs-dev.toml release_pins unexpected: " + ", ".join(unexpected_pins))
+
+    for name, expected_pin in expected_pins.items():
+        pin = pins_by_name.get(name)
+        if not pin:
+            continue
+        if not isinstance(pin.get("source"), str) or not pin.get("source"):
+            failures.append(f"hfs-dev.toml release_pins {name} must set source")
+        for key, value in expected_pin.items():
+            if pin.get(key) != value:
+                failures.append(
+                    f"hfs-dev.toml release_pins {name}.{key} must be {value!r}, got {pin.get(key)!r}"
+                )
 
 required_files = manifest.get("required_files")
 if not isinstance(required_files, list) or not required_files:
@@ -138,14 +225,40 @@ require_grep 'Space root: repo root' docs/hfs-alignment.md \
 
 require_grep '^ARG DIFY_VERSION=' Dockerfile \
   "Dockerfile must expose DIFY_VERSION build input"
-require_grep '^ARG DIFY_API_IMAGE=' Dockerfile \
-  "Dockerfile must expose DIFY_API_IMAGE build input"
-require_grep '^ARG DIFY_WEB_IMAGE=' Dockerfile \
-  "Dockerfile must expose DIFY_WEB_IMAGE build input"
-require_grep '^ARG PLUGIN_DAEMON_IMAGE=' Dockerfile \
-  "Dockerfile must expose PLUGIN_DAEMON_IMAGE build input"
-require_grep '^ARG SANDBOX_IMAGE=' Dockerfile \
-  "Dockerfile must expose SANDBOX_IMAGE build input"
+require_grep '^ARG UV_VERSION=' Dockerfile \
+  "Dockerfile must expose UV_VERSION build input"
+require_grep '^ARG BASE_IMAGE_REF=' Dockerfile \
+  "Dockerfile must expose BASE_IMAGE_REF build input"
+require_grep '^ARG DIFY_API_IMAGE_REF=' Dockerfile \
+  "Dockerfile must expose DIFY_API_IMAGE_REF build input"
+require_grep '^ARG DIFY_WEB_IMAGE_REF=' Dockerfile \
+  "Dockerfile must expose DIFY_WEB_IMAGE_REF build input"
+require_grep '^ARG PLUGIN_DAEMON_IMAGE_REF=' Dockerfile \
+  "Dockerfile must expose PLUGIN_DAEMON_IMAGE_REF build input"
+require_grep '^ARG SANDBOX_IMAGE_REF=' Dockerfile \
+  "Dockerfile must expose SANDBOX_IMAGE_REF build input"
+require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
+  "Dockerfile must select web image from DIFY_WEB_IMAGE_REF"
+require_grep '^FROM \${DIFY_API_IMAGE_REF} AS api-image$' Dockerfile \
+  "Dockerfile must select API image from DIFY_API_IMAGE_REF"
+require_grep '^FROM \${PLUGIN_DAEMON_IMAGE_REF} AS plugin-daemon-image$' Dockerfile \
+  "Dockerfile must select Plugin Daemon image from PLUGIN_DAEMON_IMAGE_REF"
+require_grep '^FROM \${SANDBOX_IMAGE_REF} AS sandbox-image$' Dockerfile \
+  "Dockerfile must select Sandbox image from SANDBOX_IMAGE_REF"
+require_grep '^FROM \${BASE_IMAGE_REF} AS runtime$' Dockerfile \
+  "Dockerfile must select base runtime image from BASE_IMAGE_REF"
+require_absent '^ARG DIFY_API_IMAGE=' Dockerfile \
+  "Dockerfile must not expose legacy DIFY_API_IMAGE selector"
+require_absent '^ARG DIFY_WEB_IMAGE=' Dockerfile \
+  "Dockerfile must not expose legacy DIFY_WEB_IMAGE selector"
+require_absent '^ARG PLUGIN_DAEMON_IMAGE=' Dockerfile \
+  "Dockerfile must not expose legacy PLUGIN_DAEMON_IMAGE selector"
+require_absent '^ARG SANDBOX_IMAGE=' Dockerfile \
+  "Dockerfile must not expose legacy SANDBOX_IMAGE selector"
+require_absent '^FROM \${DIFY_WEB_IMAGE}:\${DIFY_VERSION}' Dockerfile \
+  "Dockerfile must not build web image refs by image:version concatenation"
+require_absent '^FROM \${DIFY_API_IMAGE}:\${DIFY_VERSION}' Dockerfile \
+  "Dockerfile must not build API image refs by image:version concatenation"
 
 require_grep '^local/$|^\*\*/local/$' .dockerignore \
   ".dockerignore must exclude local/ from Docker build context"
