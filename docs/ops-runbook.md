@@ -13,8 +13,8 @@
 
 - Hugging Face Docker Space
 - 单容器多进程运行方式
-- Dify `1.14.1`
-- Plugin Daemon `0.6.0-local`
+- Dify Web/API 来源由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` 记录
+- Plugin Daemon 来源由 `PLUGIN_DAEMON_IMAGE_REF` 记录
 - 对外端口 `7860`
 
 ## 架构概览
@@ -191,10 +191,11 @@ curl -H "X-Ops-Token: $OPS_TOKEN" https://your-space.hf.space/_ops/version
 
 ```text
 version.dify_version
-version.build.dify_api_image
-version.build.dify_web_image
-version.build.plugin_daemon_image
-version.build.sandbox_image
+version.build.base_image_ref
+version.build.dify_api_image_ref
+version.build.dify_web_image_ref
+version.build.plugin_daemon_image_ref
+version.build.sandbox_image_ref
 version.build.uv_version
 version.sandbox.python_path
 version.sandbox.requirements.sha256
@@ -423,7 +424,7 @@ hf spaces logs <space-id> --build -n 220
 
 ## Plugin Daemon Migration
 
-Plugin Daemon `0.6.0-local` 需要在启动 server 前执行数据库迁移：
+Plugin Daemon 需要在启动 server 前执行数据库迁移：
 
 ```bash
 /opt/dify/plugin-daemon/commandline migrate

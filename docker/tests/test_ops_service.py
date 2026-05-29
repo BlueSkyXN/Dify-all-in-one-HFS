@@ -75,6 +75,26 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             content = ops_service.tail_file(path, 10)
             self.assertEqual(content, "a" * 32)
 
+    def test_version_payload_reports_digest_capable_image_refs(self):
+        os.environ.update(
+            {
+                "DIFY_AIO_BUILD_BASE_IMAGE_REF": "python:3.12-slim-bookworm@sha256:base",
+                "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF": "langgenius/dify-api@sha256:api",
+                "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF": "langgenius/dify-web@sha256:web",
+                "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF": "langgenius/dify-plugin-daemon@sha256:plugin",
+                "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF": "langgenius/dify-sandbox@sha256:sandbox",
+            }
+        )
+
+        build = ops_service.version_payload()["build"]
+
+        self.assertEqual(build["base_image_ref"], "python:3.12-slim-bookworm@sha256:base")
+        self.assertEqual(build["dify_api_image_ref"], "langgenius/dify-api@sha256:api")
+        self.assertEqual(build["dify_web_image_ref"], "langgenius/dify-web@sha256:web")
+        self.assertEqual(build["plugin_daemon_image_ref"], "langgenius/dify-plugin-daemon@sha256:plugin")
+        self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
+        self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
+
     def test_redis_check_uses_redicli_auth_env(self):
         captured = {}
         original_run_cmd = ops_service.run_cmd

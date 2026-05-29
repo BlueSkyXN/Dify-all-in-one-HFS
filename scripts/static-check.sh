@@ -39,6 +39,14 @@ check_changed_file_trailing_whitespace() {
   fi
 }
 
+require_executable() {
+  local path=$1
+  if [ ! -x "$path" ]; then
+    printf 'Expected executable script: %s\n' "$path" >&2
+    return 1
+  fi
+}
+
 bash -n \
   docker/entrypoint.sh \
   docker/with-dify-env \
@@ -53,6 +61,13 @@ bash -n \
   scripts/hf-space-smoke.sh \
   scripts/validate-hfs-contract.sh \
   scripts/static-check.sh
+
+require_executable scripts/admin-smoke.sh
+require_executable scripts/build.sh
+require_executable scripts/hf-space-smoke.sh
+require_executable scripts/run-demo.sh
+require_executable scripts/static-check.sh
+require_executable scripts/validate-hfs-contract.sh
 
 scripts/validate-hfs-contract.sh
 python3 -m py_compile docker/ops_service.py docker/admin_service.py

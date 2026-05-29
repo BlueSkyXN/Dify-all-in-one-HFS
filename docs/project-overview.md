@@ -64,21 +64,23 @@
 `-- docs/                      # 完整工程文档
 ```
 
-## 关键版本
+## 默认构建输入
 
-默认版本来自 `Dockerfile`：
+开发默认值来自 `Dockerfile`：
 
 ```text
-Dify API/Web: 1.14.1
-Plugin Daemon: 0.6.0-local
-Sandbox: 0.2.15
-Python runtime: 3.12 slim bookworm
+DIFY_API_IMAGE_REF=langgenius/dify-api:latest
+DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
+BASE_IMAGE_REF=python:3.12-slim-bookworm
+DIFY_VERSION=latest
+UV_VERSION=latest
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
-uv: 0.8.9
 ```
 
-这些版本可以通过 Docker build args 覆盖，但升级前必须重新验证 API/Web/Plugin/Sandbox 的兼容性和迁移行为。
+开发默认值允许使用可移动 tag。发布或长期演示应把 image ref 换成 `image@sha256:...` digest，并固定 `UV_VERSION`；`DIFY_VERSION` 只作为 metadata，不再决定 Web/API 镜像内容。
 
 ## 运行状态入口
 

@@ -626,6 +626,30 @@ def require_unprotected(target: Path) -> None:
         raise AdminError(403, "path is protected")
 
 
+def safe_download_filename(value: str) -> str:
+    cleaned = []
+    for char in value:
+        if char in {"/", "\\", '"', ";", "\r", "\n", "\x00"} or ord(char) < 32 or ord(char) == 127:
+            cleaned.append("_")
+        else:
+            cleaned.append(char)
+    name = "".join(cleaned).strip() or "download"
+    return name[:180]
+
+
+def content_disposition_attachment(filename: str) -> str:
+    safe_name = safe_download_filename(filename)
+    fallback = []
+    for char in safe_name:
+        if char in {'"', ";", "\\"} or ord(char) < 32 or ord(char) >= 127:
+            fallback.append("_")
+        else:
+            fallback.append(char)
+    fallback_name = "".join(fallback).strip(" .") or "download"
+    encoded_name = urllib.parse.quote(safe_name, safe="")
+    return f'attachment; filename="{fallback_name}"; filename*=UTF-8\'\'{encoded_name}'
+
+
 def path_display(root: Path, target: Path) -> str:
     try:
         rel = target.relative_to(root)
@@ -1378,7 +1402,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(size))
-        self.send_header("Content-Disposition", f"attachment; filename=\"{path.name}\"")
+        self.send_header("Content-Disposition", content_disposition_attachment(path.name))
         self.send_security_headers()
         self.end_headers()
         with path.open("rb") as file:

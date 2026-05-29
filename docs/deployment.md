@@ -163,7 +163,7 @@ scripts/build.sh
 等价于：
 
 ```bash
-docker build -t dify-all-in-one-hf-space:1.14.1 .
+docker build -t dify-all-in-one-hf-space:latest .
 ```
 
 自定义 tag：
