@@ -1,0 +1,72 @@
+schema_version = 2
+standard = "hfs-dev"
+pattern = "A"
+runtime_mode = "image-assembly"
+space_root_mode = "repo-root"
+hfs_dir = "."
+public_port = 7860
+canonical_health_endpoint = "/healthz"
+release_pin_required = true
+required_files = [
+  "README.md",
+  "Dockerfile",
+  "docker",
+  "scripts",
+  "docs",
+  "AGENTS.md",
+]
+
+[[release_pins]]
+name = "BASE_IMAGE_REF"
+type = "image_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+release_requires_digest = true
+
+[[release_pins]]
+name = "DIFY_API_IMAGE_REF"
+type = "image_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+release_requires_digest = true
+
+[[release_pins]]
+name = "DIFY_WEB_IMAGE_REF"
+type = "image_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+release_requires_digest = true
+
+[[release_pins]]
+name = "PLUGIN_DAEMON_IMAGE_REF"
+type = "image_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+release_requires_digest = true
+
+[[release_pins]]
+name = "SANDBOX_IMAGE_REF"
+type = "image_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+release_requires_digest = true
+
+[[release_pins]]
+name = "UV_VERSION"
+type = "package_version"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+
+[[release_pins]]
+name = "DIFY_VERSION"
+type = "metadata"
+source = "Dockerfile ARG"
+required_for_release = false
+dev_mutable_default_allowed = true
+metadata_only = true

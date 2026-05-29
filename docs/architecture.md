@@ -2,13 +2,17 @@
 
 本文档描述当前单容器 Dify Demo 的组件拓扑、请求路由、启动依赖和数据流。
 
+## HFS 范式定位
+
+本仓库按 `hfs-dev` 范式归类为 Pattern A: HFS Port Repository，runtime 获取模式为 image-assembly。仓库根目录同时是 Hugging Face Space root 和 GitHub maintenance root；`docker/` 是多进程 runtime glue，不应迁入 `cloud/hfs/`。详细判断见 [HFS Paradigm Alignment](./hfs-alignment.md)。
+
 ## 组件来源
 
 镜像里的组件可以分成三类。本仓库只维护第三类；前两类锁定版本后整体引入。
 
 | 类别 | 引入方式 | 组件 |
 | --- | --- | --- |
-| Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 4 个 build stage，由 `DIFY_VERSION` / `PLUGIN_DAEMON_IMAGE` / `SANDBOX_IMAGE` 锁版本 | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon:0.6.0-local` 的 `/app`；`langgenius/dify-sandbox:0.2.15` 的 `main` + `conf` + `dependencies` |
+| Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 4 个 build stage，由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` / `PLUGIN_DAEMON_IMAGE_REF` / `SANDBOX_IMAGE_REF` 选择镜像；发布态使用 digest ref | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon` 的 `/app`；`langgenius/dify-sandbox` 的 `main` + `conf` + `dependencies` |
 | Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv` |
 | 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
 

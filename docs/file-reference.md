@@ -55,17 +55,31 @@ Docker Space 构建入口。
 关键 build args：
 
 ```text
-DIFY_VERSION
+BASE_IMAGE_REF
+DIFY_API_IMAGE_REF
+DIFY_WEB_IMAGE_REF
+PLUGIN_DAEMON_IMAGE_REF
+SANDBOX_IMAGE_REF
 UV_VERSION
-DIFY_API_IMAGE
-DIFY_WEB_IMAGE
-PLUGIN_DAEMON_IMAGE
-SANDBOX_IMAGE
+DIFY_VERSION
 ```
+
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。开发默认值允许使用可移动 tag；发布构建应传入 `image@sha256:...` digest ref。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源。
 
 ### `.dockerignore`
 
 控制 Docker build context，避免把无关本地文件传入构建。
+
+### `hfs-dev.toml`
+
+HFS alignment manifest。
+
+职责：
+
+- 声明本仓库为 Pattern A / HFS Port Repository。
+- 声明 runtime 获取模式为 image-assembly。
+- 声明 repo root 是 Space root。
+- 通过结构化 `[[release_pins]]` 列出发布态 pin contract 和 HFS required files，供标准 checker 与 `scripts/validate-hfs-contract.sh` 检查。
 
 ### `.gitattributes`
 
@@ -312,7 +326,19 @@ http://127.0.0.1:7860/
 默认镜像 tag：
 
 ```text
-dify-all-in-one-hf-space:1.14.1
+dify-all-in-one-hf-space:latest
+```
+
+脚本会白名单透传当前 shell 中已设置的 build args：
+
+```text
+BASE_IMAGE_REF
+DIFY_API_IMAGE_REF
+DIFY_WEB_IMAGE_REF
+PLUGIN_DAEMON_IMAGE_REF
+SANDBOX_IMAGE_REF
+DIFY_VERSION
+UV_VERSION
 ```
 
 ### `scripts/run-demo.sh`
@@ -369,6 +395,19 @@ env-file=docker/dify.env.demo
 - `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、cookie session CSRF、action catalog、audit endpoint、`confirm=true` 和 file manager 边界。
 - 默认不执行真实 admin action；只有 `ADMIN_SMOKE_ACTIONS=true` 时才调用 `run-health-checks`。
 
+### `scripts/validate-hfs-contract.sh`
+
+HFS 范式结构契约检查脚本。
+
+职责：
+
+- 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
+- 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
+- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
+- 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
+- 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz` 和 `/_ops/health`。
+
 ### `scripts/static-check.sh`
 
 无额外依赖的本地静态检查入口。
@@ -376,6 +415,7 @@ env-file=docker/dify.env.demo
 职责：
 
 - 对 `docker/` 和 `scripts/` 下所有 shell helper 运行 `bash -n`。
+- 运行 `scripts/validate-hfs-contract.sh`。
 - 对 `docker/ops_service.py` 和 `docker/admin_service.py` 运行 `python3 -m py_compile`。
 - 使用 Python stdlib `unittest` 运行 `docker/tests/` 纯函数回归。
 - 运行 `git diff --check`。
@@ -400,6 +440,10 @@ env-file=docker/dify.env.demo
 ### `docs/architecture.md`
 
 组件拓扑、Nginx 路由、启动依赖、数据库布局和持久化目录。
+
+### `docs/hfs-alignment.md`
+
+记录本仓库对 `hfs-dev` 范式的分类、目录主权、runtime 获取模式、已满足 contract 和发布态 gap。
 
 ### `docs/runtime-lifecycle.md`
 

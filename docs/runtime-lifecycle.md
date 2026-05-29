@@ -7,27 +7,27 @@
 `Dockerfile` 使用多阶段构建，复用官方镜像资产：
 
 1. `web-builder`
-   - 来源：`langgenius/dify-web:${DIFY_VERSION}`
+   - 来源：`${DIFY_WEB_IMAGE_REF}`，开发默认 `langgenius/dify-web:latest`。
    - 验证 `/app/targets/next`、`/app/targets/vinext` 和 `/app/entrypoint.sh` 存在。
    - 最终复制 `/app/targets/` 和 `/app/entrypoint.sh` 到 runtime。
 
 2. `api-image`
-   - 来源：`langgenius/dify-api:${DIFY_VERSION}`
+   - 来源：`${DIFY_API_IMAGE_REF}`，开发默认 `langgenius/dify-api:latest`。
    - 验证 `/app/api/.venv/bin/flask` 和 `/app/api/docker/entrypoint.sh` 存在。
    - 最终复制 `/app/api` 到 runtime。
 
 3. `plugin-daemon-image`
-   - 来源：`langgenius/dify-plugin-daemon:main-local`
+   - 来源：`${PLUGIN_DAEMON_IMAGE_REF}`，开发默认 `langgenius/dify-plugin-daemon:main-local`。
    - 最终复制 `/app` 到 `/opt/dify/plugin-daemon`。
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
 4. `sandbox-image`
-   - 来源：`langgenius/dify-sandbox:latest`
+   - 来源：`${SANDBOX_IMAGE_REF}`，开发默认 `langgenius/dify-sandbox:latest`。
    - 最终复制 `/main`、`/conf` 和 `/dependencies`。
    - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
 5. `runtime`
-   - 来源：`python:3.12-slim-bookworm`
+   - 来源：`${BASE_IMAGE_REF}`，开发默认 `python:3.12-slim-bookworm`。
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv 等运行时依赖。
    - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
@@ -36,15 +36,18 @@
 默认 build args：
 
 ```text
+BASE_IMAGE_REF=python:3.12-slim-bookworm
+DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
+DIFY_API_IMAGE_REF=langgenius/dify-api:latest
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
 DIFY_VERSION=latest
 UV_VERSION=latest
-DIFY_API_IMAGE=langgenius/dify-api
-DIFY_WEB_IMAGE=langgenius/dify-web
-PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE=langgenius/dify-sandbox:latest
 ```
 
-`langgenius/dify-plugin-daemon` 当前不发布 `latest` tag；默认使用可移动的 `main-local` 作为最新构建入口。需要固定发布版时，用 Docker build arg 覆盖，例如 `PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:0.6.1-local`。
+开发默认值允许使用可移动 tag，方便 demo 跟随上游。发布或长期演示时，`BASE_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`DIFY_API_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF` 和 `SANDBOX_IMAGE_REF` 必须记录并传入 `image@sha256:...` digest ref；`UV_VERSION` 也必须传入固定版本。
+
+`DIFY_VERSION` 只作为 build/runtime metadata，不再参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`。`langgenius/dify-plugin-daemon` 当前不发布 `latest` tag；开发默认使用可移动的 `main-local` 作为最新构建入口。
 
 ## Container Entry Point
 

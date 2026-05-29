@@ -14,17 +14,18 @@
 #     --env-file docker/dify.env.demo \
 #     dify-all-in-one-hf-space:latest
 
+ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api:latest
+ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
+ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
 ARG DIFY_VERSION=latest
 ARG UV_VERSION=latest
-ARG DIFY_API_IMAGE=langgenius/dify-api
-ARG DIFY_WEB_IMAGE=langgenius/dify-web
-ARG PLUGIN_DAEMON_IMAGE=langgenius/dify-plugin-daemon:main-local
-ARG SANDBOX_IMAGE=langgenius/dify-sandbox:latest
 
 # -----------------------------
 # Use official prebuilt Dify Web assets
 # -----------------------------
-FROM ${DIFY_WEB_IMAGE}:${DIFY_VERSION} AS web-builder
+FROM ${DIFY_WEB_IMAGE_REF} AS web-builder
 RUN test -d /app/targets/next \
     && test -d /app/targets/vinext \
     && test -x /app/entrypoint.sh
@@ -34,7 +35,7 @@ RUN touch /tmp/web-builder.done
 # -----------------------------
 # Use official prebuilt Dify API source and virtualenv
 # -----------------------------
-FROM ${DIFY_API_IMAGE}:${DIFY_VERSION} AS api-image
+FROM ${DIFY_API_IMAGE_REF} AS api-image
 COPY --from=web-builder /tmp/web-builder.done /tmp/web-builder.done
 RUN test -d /app/api/.venv \
     && test -x /app/api/.venv/bin/flask \
@@ -45,31 +46,37 @@ RUN touch /tmp/api-builder.done
 # -----------------------------
 # External official runtime assets
 # -----------------------------
-FROM ${PLUGIN_DAEMON_IMAGE} AS plugin-daemon-image
-FROM ${SANDBOX_IMAGE} AS sandbox-image
+FROM ${PLUGIN_DAEMON_IMAGE_REF} AS plugin-daemon-image
+FROM ${SANDBOX_IMAGE_REF} AS sandbox-image
 
 
 # -----------------------------
 # Final runtime image
 # -----------------------------
-FROM python:3.12-slim-bookworm AS runtime
+FROM ${BASE_IMAGE_REF} AS runtime
 COPY --from=api-image /tmp/api-builder.done /tmp/api-builder.done
 
+ARG BASE_IMAGE_REF
+ARG DIFY_WEB_IMAGE_REF
+ARG DIFY_API_IMAGE_REF
+ARG PLUGIN_DAEMON_IMAGE_REF
+ARG SANDBOX_IMAGE_REF
 ARG DIFY_VERSION
 ARG UV_VERSION
 ARG TARGETARCH
-ARG DIFY_API_IMAGE
-ARG DIFY_WEB_IMAGE
-ARG PLUGIN_DAEMON_IMAGE
-ARG SANDBOX_IMAGE
 
 ENV DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_UV_VERSION=${UV_VERSION}
-ENV DIFY_AIO_BUILD_DIFY_API_IMAGE=${DIFY_API_IMAGE}
-ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE=${DIFY_WEB_IMAGE}
-ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE=${PLUGIN_DAEMON_IMAGE}
-ENV DIFY_AIO_BUILD_SANDBOX_IMAGE=${SANDBOX_IMAGE}
+ENV DIFY_AIO_BUILD_BASE_IMAGE_REF=${BASE_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_API_IMAGE_REF=${DIFY_API_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF=${DIFY_WEB_IMAGE_REF}
+ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF=${PLUGIN_DAEMON_IMAGE_REF}
+ENV DIFY_AIO_BUILD_SANDBOX_IMAGE_REF=${SANDBOX_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_API_IMAGE=${DIFY_API_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE=${DIFY_WEB_IMAGE_REF}
+ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE=${PLUGIN_DAEMON_IMAGE_REF}
+ENV DIFY_AIO_BUILD_SANDBOX_IMAGE=${SANDBOX_IMAGE_REF}
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 ENV DEBIAN_FRONTEND=noninteractive

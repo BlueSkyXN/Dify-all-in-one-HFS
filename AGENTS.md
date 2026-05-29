@@ -23,6 +23,7 @@
 | `README.md` | Hugging Face Space card、根项目介绍、Space metadata | No | 修改 Space metadata、项目说明、本地运行摘要或运维入口时 |
 | `README.hf-space.md` | Hugging Face Space 专用部署说明 | No | 修改 Space Settings、Variables、Secrets、诊断命令时 |
 | `Dockerfile` | Docker Space 构建入口和 runtime image 组装 | No | 修改版本、系统依赖、runtime user、`HEALTHCHECK`、`EXPOSE` 或复制资产时 |
+| `hfs-dev.toml` | HFS alignment manifest：Pattern A、image-assembly、repo-root、required files 和 release pin surface | No | 修改 HFS 范式分类、目录主权、runtime 获取模式或发布 pin surface 时 |
 | `.dockerignore` | Docker build context 过滤 | No | 修改哪些文件进入 Docker build context 时 |
 | `.gitattributes` | Git/LFS 文件处理规则 | No | 修改大文件、二进制文件或 LFS 跟踪规则时 |
 | `.gitignore` | 本地 generated/cache 忽略规则 | No | 新增 `.DS_Store`、浏览器 profile、Python cache 等本地 artifact 时 |
@@ -50,7 +51,8 @@ cat docker/AGENTS.md
 | Command | Purpose | Scope | Sandbox notes |
 | --- | --- | --- | --- |
 | `scripts/static-check.sh` | 聚合轻量静态检查：shell 语法、Python 语法和 diff whitespace | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
-| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/hf-space-smoke.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
+| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/hf-space-smoke.sh scripts/validate-hfs-contract.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
+| `scripts/validate-hfs-contract.sh` | 检查 Pattern A / image-assembly HFS 结构契约：manifest、metadata、端口一致性、glue 位置、secret/build context、smoke 覆盖 | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
 | `python3 -m py_compile docker/ops_service.py docker/admin_service.py` | 检查 ops/admin Python 服务语法 | `docker/ops_service.py`, `docker/admin_service.py` | 需要 Python 3 |
 | `git diff --check` | 检查 diff whitespace 问题 | repo | 只读；如果有无关 dirty diff，使用 path-limited 形式 |
 | `scripts/build.sh` | 构建默认镜像 `dify-all-in-one-hf-space:1.14.1` | repo | 需要 Docker daemon；构建阶段通常需要访问 Docker Hub、APT、PyPI/npm、PostgreSQL repo |
@@ -156,7 +158,9 @@ bash -n \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
+  scripts/validate-hfs-contract.sh \
   scripts/static-check.sh
+scripts/validate-hfs-contract.sh
 python3 -m py_compile docker/ops_service.py
 python3 -m py_compile docker/admin_service.py
 git diff --check

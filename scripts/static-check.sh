@@ -51,8 +51,10 @@ bash -n \
   scripts/run-demo.sh \
   scripts/admin-smoke.sh \
   scripts/hf-space-smoke.sh \
+  scripts/validate-hfs-contract.sh \
   scripts/static-check.sh
 
+scripts/validate-hfs-contract.sh
 python3 -m py_compile docker/ops_service.py docker/admin_service.py
 python3 -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check

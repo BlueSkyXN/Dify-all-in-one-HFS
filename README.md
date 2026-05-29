@@ -20,6 +20,7 @@ pinned: false
 - [完整工程文档](./docs/README.md)
 - [Hugging Face Space 部署说明](./README.hf-space.md)
 - [架构说明](./docs/architecture.md)
+- [HFS 范式对齐](./docs/hfs-alignment.md)
 - [项目状态与下一步计划](./docs/project-status-and-roadmap.md)
 - [配置参考](./docs/configuration.md)
 - [部署指南](./docs/deployment.md)
@@ -56,6 +57,10 @@ nginx:7860
 - 默认启用 Marketplace：`MARKETPLACE_ENABLED=true`，便于 demo/plugin 验证。
 - 默认关闭 Sandbox 出网：`SANDBOX_ENABLE_NETWORK=false`。
 - 运行时采用 UID `1000` 的非 root 用户，适配 Hugging Face Docker Space 权限模型。
+
+## HFS 范式定位
+
+本仓库按本机 HFS 开发范式归类为 **Pattern A: HFS Port Repository**，runtime 获取模式为 **image-assembly**。仓库根目录就是 Hugging Face Space root，也是 GitHub 维护 root；`hfs-dev.toml` 是 alignment manifest；`docker/` 是多进程 runtime glue，不应迁入 `cloud/hfs/`。详细对齐说明见 [HFS 范式对齐](./docs/hfs-alignment.md)。
 
 ## 直接部署到 Hugging Face Space
 
