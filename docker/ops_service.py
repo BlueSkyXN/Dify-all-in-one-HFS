@@ -823,6 +823,45 @@ def plugin_storage_paths() -> dict[str, Path]:
     }
 
 
+def plugin_storage_layout_issues(persist_active: str, paths: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    if persist_active.strip() != "bucket":
+        return []
+
+    issues = []
+    storage_root = paths.get("plugin_storage_root", {})
+    installed = paths.get("plugin_installed", {})
+    package_cache = paths.get("plugin_package_cache", {})
+    storage_path = storage_root.get("path", "")
+
+    if storage_path == "/data/plugin_daemon" or storage_path.startswith("/data/plugin_daemon/"):
+        issues.append(
+            {
+                "code": "plugin_storage_root_uses_data_symlink_view",
+                "path": storage_path,
+                "message": (
+                    "bucket-lite should expose PLUGIN_STORAGE_LOCAL_ROOT as the real /persist/plugin_daemon "
+                    "path so plugin-daemon can enumerate installed plugins after restart"
+                ),
+            }
+        )
+
+    for name, summary in [("plugin_installed", installed), ("plugin_package_cache", package_cache)]:
+        if summary.get("is_symlink"):
+            issues.append(
+                {
+                    "code": f"{name}_is_symlink_root",
+                    "path": summary.get("path", ""),
+                    "real_path": summary.get("real_path", ""),
+                    "message": (
+                        "bucket-lite plugin paths should be direct /persist directories in the plugin-daemon "
+                        "environment; a symlink root can hide installed plugins from Go filepath.WalkDir"
+                    ),
+                }
+            )
+
+    return issues
+
+
 def directory_inventory(
     path: Path,
     suffix: str | None = None,
@@ -1181,7 +1220,7 @@ def plugin_db_payload() -> dict[str, Any]:
 
 
 def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path, installed_dir: Path) -> list[dict[str, Any]]:
-    identifiers: dict[tuple[str, str], dict[str, Any]] = {}
+    identifiers: dict[str, dict[str, Any]] = {}
     sources = {
         "plugins": ("plugin_id",),
         "plugin_installations": ("tenant_id", "plugin_id"),
@@ -1192,24 +1231,41 @@ def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path, in
             identifier = row.get("plugin_unique_identifier") or ""
             if not identifier:
                 continue
-            key = (source, identifier)
             package_candidates = plugin_package_candidates(identifier)
             found_package = next((candidate for candidate in package_candidates if (package_dir / candidate).is_file()), "")
             found_installed = next((candidate for candidate in package_candidates if (installed_dir / candidate).is_file()), "")
-            entry = {
-                "source": source,
-                "plugin_unique_identifier": identifier,
-                "hashed_plugin_id": plugin_hashed_identity(identifier),
-                "package_candidates": package_candidates,
-                "found_package": found_package,
-                "package_exists": bool(found_package),
-                "found_installed": found_installed,
-                "installed_exists": bool(found_installed),
-            }
+            if identifier not in identifiers:
+                identifiers[identifier] = {
+                    "source": source,
+                    "sources": [],
+                    "plugin_unique_identifier": identifier,
+                    "hashed_plugin_id": plugin_hashed_identity(identifier),
+                    "package_candidates": package_candidates,
+                    "found_package": found_package,
+                    "package_exists": bool(found_package),
+                    "found_installed": found_installed,
+                    "installed_exists": bool(found_installed),
+                    "tenant_ids": [],
+                    "plugin_ids": [],
+                }
+            entry = identifiers[identifier]
+            if source not in entry["sources"]:
+                entry["sources"].append(source)
+            if found_package and not entry["found_package"]:
+                entry["found_package"] = found_package
+                entry["package_exists"] = True
+            if found_installed and not entry["found_installed"]:
+                entry["found_installed"] = found_installed
+                entry["installed_exists"] = True
+            if row.get("tenant_id") and row["tenant_id"] not in entry["tenant_ids"]:
+                entry["tenant_ids"].append(row["tenant_id"])
+                entry.setdefault("tenant_id", row["tenant_id"])
+            if row.get("plugin_id") and row["plugin_id"] not in entry["plugin_ids"]:
+                entry["plugin_ids"].append(row["plugin_id"])
+                entry.setdefault("plugin_id", row["plugin_id"])
             for extra_key in extra_keys:
-                if row.get(extra_key):
+                if row.get(extra_key) and extra_key not in ("tenant_id", "plugin_id"):
                     entry[extra_key] = row[extra_key]
-            identifiers[key] = entry
     return list(identifiers.values())
 
 
@@ -1246,6 +1302,7 @@ def persistence_payload() -> dict[str, Any]:
             or item.get("log", {}).get("error_count_after_last_ready", 0) > 0
         )
     ]
+    persist_active = read_small_text(Path(env("PERSIST_ACTIVE_FILE", "/tmp/dify-aio/persist-active")))
     core_paths = {
         "data": path_summary(Path("/data")),
         "persist_root": path_summary(Path(env("PERSIST_ROOT", "/persist"))),
@@ -1262,6 +1319,7 @@ def persistence_payload() -> dict[str, Any]:
         core_paths[name].get("exists")
         for name in ["data", "plugin_storage_root", "plugin_package_cache", "plugin_installed"]
     )
+    layout_issues = plugin_storage_layout_issues(persist_active, core_paths)
     return {
         "ok": bool(
             paths_ok
@@ -1269,12 +1327,14 @@ def persistence_payload() -> dict[str, Any]:
             and not missing_packages
             and not missing_installed
             and not missing_runtime_states
+            and not layout_issues
             and runtime_state.get("ok")
         ),
         "persist_mode": env("PERSIST_MODE", "auto"),
-        "persist_active": read_small_text(Path(env("PERSIST_ACTIVE_FILE", "/tmp/dify-aio/persist-active"))),
+        "persist_active": persist_active,
         "plugin_storage_type": env("PLUGIN_STORAGE_TYPE", "local"),
         "paths": core_paths,
+        "plugin_storage_layout_issues": layout_issues,
         "plugin_packages": packages,
         "plugin_installed": installed,
         "plugin_database": db_payload,
@@ -1300,6 +1360,7 @@ def persistence_payload() -> dict[str, Any]:
             "The local runtime watchdog launches plugins from PLUGIN_INSTALLED_PATH, while PLUGIN_PACKAGE_CACHE_PATH is the package cache used during install/reinstall.",
             "A missing package or installed file with an existing plugin DB/API reference means configuration can remain visible while local plugin runtime cannot be rebuilt.",
             "plugin_runtime_state summarizes Redis plugin_state plus plugin-daemon local-runtime log evidence; in single-container local mode the in-process runtime can be ready even when the Redis cluster hash is empty.",
+            "plugin_storage_layout_issues flags bucket-lite layouts where plugin-daemon would see installed/package directories through a symlink root instead of the real /persist storage root.",
         ],
     }
 
