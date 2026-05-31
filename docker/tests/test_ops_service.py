@@ -181,7 +181,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
         original_plugin_storage_paths = ops_service.plugin_storage_paths
         original_plugin_db_payload = ops_service.plugin_db_payload
-        original_redis_hash_scan_json = ops_service.redis_hash_scan_json
+        original_redis_hash_scan_candidates = ops_service.redis_hash_scan_candidates
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             package_dir = root / "plugin_packages"
@@ -220,9 +220,12 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             try:
                 ops_service.plugin_storage_paths = fake_plugin_storage_paths
                 ops_service.plugin_db_payload = fake_plugin_db_payload
-                ops_service.redis_hash_scan_json = lambda _hash_name: {
+                ops_service.redis_hash_scan_candidates = lambda _hash_name: {
                     "ok": True,
                     "key": "plugin_daemon:plugin_state",
+                    "db": 0,
+                    "prefix": "plugin_daemon",
+                    "checked": [],
                     "count": 0,
                     "fields": {},
                 }
@@ -230,12 +233,116 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             finally:
                 ops_service.plugin_storage_paths = original_plugin_storage_paths
                 ops_service.plugin_db_payload = original_plugin_db_payload
-                ops_service.redis_hash_scan_json = original_redis_hash_scan_json
+                ops_service.redis_hash_scan_candidates = original_redis_hash_scan_candidates
 
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["missing_package_files"], [])
         self.assertEqual(payload["missing_installed_files"], [])
         self.assertEqual(payload["missing_runtime_states"][0]["plugin_unique_identifier"], identifier)
+
+    def test_persistence_payload_accepts_local_runtime_log_evidence(self):
+        identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
+        original_plugin_storage_paths = ops_service.plugin_storage_paths
+        original_plugin_db_payload = ops_service.plugin_db_payload
+        original_redis_hash_scan_candidates = ops_service.redis_hash_scan_candidates
+        original_path_summary = ops_service.path_summary
+        original_log_dir = ops_service.LOG_DIR
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            package_dir = root / "plugin_packages"
+            installed_dir = root / "plugin"
+            log_dir = root / "logs"
+            package_dir.mkdir()
+            installed_dir.mkdir()
+            log_dir.mkdir()
+            (package_dir / "langgenius").mkdir()
+            (installed_dir / "langgenius").mkdir()
+            (package_dir / identifier).write_text("pkg", encoding="utf-8")
+            (installed_dir / identifier).write_text("pkg", encoding="utf-8")
+            (log_dir / "plugin-daemon.log").write_text(
+                f"INFO local runtime ready plugin={identifier}\n", encoding="utf-8"
+            )
+
+            def fake_plugin_storage_paths():
+                return {
+                    "storage_root": root,
+                    "installed": installed_dir,
+                    "package_cache": package_dir,
+                    "media_cache": root / "assets",
+                    "working": root / "cwd",
+                }
+
+            def fake_plugin_db_payload():
+                return {
+                    "plugins": {
+                        "ok": True,
+                        "rows": [
+                            {
+                                "plugin_id": "langgenius/openai_api_compatible",
+                                "plugin_unique_identifier": identifier,
+                            }
+                        ],
+                    },
+                    "plugin_installations": {"ok": True, "rows": []},
+                    "api_plugin_references": {"ok": True, "rows": []},
+                }
+
+            try:
+                ops_service.LOG_DIR = log_dir
+                ops_service.plugin_storage_paths = fake_plugin_storage_paths
+                ops_service.plugin_db_payload = fake_plugin_db_payload
+                ops_service.redis_hash_scan_candidates = lambda _hash_name: {
+                    "ok": True,
+                    "key": "plugin_daemon:plugin_state",
+                    "db": 0,
+                    "prefix": "plugin_daemon",
+                    "checked": [],
+                    "count": 0,
+                    "fields": {},
+                }
+                ops_service.path_summary = lambda path: {"path": str(path), "exists": True}
+                payload = ops_service.persistence_payload()
+            finally:
+                ops_service.LOG_DIR = original_log_dir
+                ops_service.plugin_storage_paths = original_plugin_storage_paths
+                ops_service.plugin_db_payload = original_plugin_db_payload
+                ops_service.redis_hash_scan_candidates = original_redis_hash_scan_candidates
+                ops_service.path_summary = original_path_summary
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["missing_runtime_states"], [])
+        self.assertTrue(payload["plugin_runtime_state"]["identifiers"][0]["log"]["ready"])
+
+    def test_redis_hash_scan_uses_db_and_prefix_candidates(self):
+        calls = []
+        original_run_cmd = ops_service.run_cmd
+
+        def fake_run_cmd(args, timeout=2.0, extra_env=None, output_limit=200_000):
+            calls.append(args)
+            key = args[args.index("HSCAN") + 1]
+            db = args[args.index("-n") + 1]
+            if db == "1" and key == "plugin_daemon:plugin_state":
+                return {
+                    "ok": True,
+                    "returncode": 0,
+                    "stdout": '0\nnode-a:plugin\n{"status":"active"}\n',
+                    "stderr": "",
+                    "duration_ms": 1,
+                }
+            return {"ok": True, "returncode": 0, "stdout": "0\n", "stderr": "", "duration_ms": 1}
+
+        try:
+            os.environ["REDIS_DB"] = "1"
+            os.environ["REDIS_KEY_PREFIX"] = ""
+            ops_service.run_cmd = fake_run_cmd
+            result = ops_service.redis_hash_scan_candidates("plugin_state")
+        finally:
+            ops_service.run_cmd = original_run_cmd
+
+        self.assertEqual(result["db"], 1)
+        self.assertEqual(result["key"], "plugin_daemon:plugin_state")
+        self.assertEqual(result["count"], 1)
+        self.assertIn("-n", calls[0])
 
     def test_redis_check_uses_redicli_auth_env(self):
         captured = {}

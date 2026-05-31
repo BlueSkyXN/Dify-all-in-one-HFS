@@ -244,14 +244,14 @@ ops-service uptime
 process count
 ```
 
-`/_ops/persistence` 返回只读持久化、插件包缓存、installed bucket 和 Redis runtime state 摘要：
+`/_ops/persistence` 返回只读持久化、插件包缓存、installed bucket、Redis cluster state 和 Plugin Daemon local runtime 日志证据摘要：
 
 ```bash
 curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://your-space.hf.space/_ops/persistence
 ```
 
-重点看 `persist_active` 是否为 `bucket`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 和 `plugin_identifiers[].installed_exists` 是否都为 `true`、`missing_package_files`、`missing_installed_files` 和 `missing_runtime_states` 是否为空。再看 `plugin_runtime_state.identifiers[].state_count`：如果 package 和 installed 文件都在，但 state count 为 `0`，就是“文件和安装记录仍在，但 local runtime 没有注册到 Redis `plugin_state`”的状态。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。此时不要只改模型 provider 配置；按下方 Plugin Runtime Not Found 的卸载重装路径修复。
+重点看 `persist_active` 是否为 `bucket`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 和 `plugin_identifiers[].installed_exists` 是否都为 `true`、`missing_package_files`、`missing_installed_files` 和 `missing_runtime_states` 是否为空。再看 `plugin_runtime_state.checked`、`plugin_runtime_state.identifiers[].state_count` 和 `plugin_runtime_state.identifiers[].log.ready`：Redis `plugin_state` 是 cluster routing 视图，单容器本机 runtime 已 ready 时，`state_count` 可能不是唯一证据。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。如果 package/installed 文件缺失，或日志没有 `local runtime ready`，再按下方 Plugin Runtime Not Found 的卸载重装路径修复。
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
@@ -479,7 +479,7 @@ no plugin states found in redis hashed_plugin_id=<hash>
 | --- | --- | --- |
 | Dify 主库 | `provider_models`、`provider_model_credentials`、`provider_model_settings` | 模型配置和 credential；页面能读到已有模型通常说明这层仍在 |
 | Plugin 安装元数据 | `dify_plugin` 数据库中的 plugin、installation、model installation 记录 | 决定插件是否被认为已安装 |
-| Plugin local runtime | `/data/plugin_daemon/plugin`、`/data/plugin_daemon/plugin_packages`、`/data/plugin_daemon/cwd`、Redis runtime state | 决定插件进程是否已展开、启动并注册 |
+| Plugin local runtime | `/data/plugin_daemon/plugin`、`/data/plugin_daemon/plugin_packages`、`/data/plugin_daemon/cwd`、Plugin Daemon `local runtime ready` 日志、Redis runtime state | 决定插件进程是否已展开、启动并可被路由 |
 
 本工程的 bucket-lite 布局会持久化 `/data/plugin_daemon/plugin_packages` 到 `/persist/plugin_daemon/plugin_packages`，并持久化 `/data/plugin_daemon/plugin` 到 `/persist/plugin_daemon/plugin`。前者是 package cache，后者是 local runtime watchdog 启动时枚举的 installed bucket。bucket-lite 下 Plugin Daemon 的 `PLUGIN_STORAGE_LOCAL_ROOT` 默认会指向真实目录 `/persist/plugin_daemon`，而不是 `/data/plugin_daemon`；这是为了避免 Go `filepath.WalkDir` 在扫描 `/data/plugin_daemon/plugin` 这个 symlink root 时不下钻，导致重建后 installed 文件明明存在但 runtime 不会 relaunch。local package upload 会先写 package bucket，后续安装流程再把包复制到 installed bucket、写安装元数据并启动 runtime。仅重新上传同一个 `.difypkg` 不一定修复已损坏的安装状态，因为数据库可能仍认为插件已安装，从而跳过完整 runtime install / launch 流程。
 
@@ -487,7 +487,7 @@ no plugin states found in redis hashed_plugin_id=<hash>
 
 1. 确认使用同一个插件包，例如 `langgenius/openai_api_compatible:0.0.49@...` 对应的 `.difypkg`。
 2. 如果刚部署了 storage-root 修复，先用 `/_admin/api/actions/restart-service` 重启 `plugin-daemon`，等待日志出现 `local runtime starting` / `local runtime ready`。
-3. 如果 `missing_installed_files` 非空，或重启后仍没有 runtime state，再在 Dify 插件页面卸载损坏的插件。
+3. 如果 `missing_installed_files` 非空，或重启后仍没有 `local runtime ready` 证据，再在 Dify 插件页面卸载损坏的插件。
 4. 重新从本地 `.difypkg` 安装插件。
 5. 等待安装任务完成，并让 Plugin Daemon 重新拉起 runtime。
 6. 回到模型 provider 页面保存 credential 或模型参数。

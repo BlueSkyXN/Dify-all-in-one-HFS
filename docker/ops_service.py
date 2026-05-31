@@ -94,6 +94,7 @@ SAFE_CONFIG_KEYS = [
     "DB_DATABASE",
     "REDIS_HOST",
     "REDIS_PORT",
+    "REDIS_DB",
     "REDIS_KEY_PREFIX",
     "PLUGIN_DAEMON_URL",
     "CODE_EXECUTION_ENDPOINT",
@@ -886,16 +887,50 @@ def plugin_hashed_identity(plugin_unique_identifier: str) -> str:
     return hashlib.sha256(plugin_unique_identifier.encode("utf-8")).hexdigest()
 
 
-def redis_cli_base_args() -> tuple[list[str], dict[str, str] | None]:
-    args = ["redis-cli", "-h", env("REDIS_HOST", "127.0.0.1"), "-p", env("REDIS_PORT", "6379"), "--raw"]
+def redis_cli_base_args(db: int | None = None) -> tuple[list[str], dict[str, str] | None]:
+    args = ["redis-cli", "-h", env("REDIS_HOST", "127.0.0.1"), "-p", env("REDIS_PORT", "6379")]
+    if db is not None:
+        args.extend(["-n", str(db)])
+    args.append("--raw")
     extra_env = {"REDISCLI_AUTH": env("REDIS_PASSWORD")} if env("REDIS_PASSWORD") else None
     return args, extra_env
 
 
-def redis_hash_scan_json(hash_name: str, match: str = "*", limit: int = 500) -> dict[str, Any]:
-    prefix = env("REDIS_KEY_PREFIX", "plugin_daemon") or "plugin_daemon"
-    key = f"{prefix}:{hash_name}"
-    base_args, extra_env = redis_cli_base_args()
+def redis_db_candidates() -> list[int]:
+    primary = parse_int(env("REDIS_DB"), 0)
+    if primary is None or primary < 0:
+        primary = 0
+    candidates: list[int] = []
+    for db in [primary, 0, 1]:
+        if db not in candidates:
+            candidates.append(db)
+    return candidates
+
+
+def redis_prefix_candidates() -> list[str]:
+    configured = env("REDIS_KEY_PREFIX", "").strip()
+    candidates: list[str] = []
+    for prefix in [configured or "plugin_daemon", "plugin_daemon", configured, ""]:
+        if prefix not in candidates:
+            candidates.append(prefix)
+    return candidates
+
+
+def redis_hash_key(hash_name: str, prefix: str) -> str:
+    return f"{prefix}:{hash_name}" if prefix else hash_name
+
+
+def redis_hash_scan_json(
+    hash_name: str,
+    match: str = "*",
+    limit: int = 500,
+    prefix: str | None = None,
+    db: int | None = None,
+) -> dict[str, Any]:
+    selected_prefix = redis_prefix_candidates()[0] if prefix is None else prefix
+    selected_db = redis_db_candidates()[0] if db is None else db
+    key = redis_hash_key(hash_name, selected_prefix)
+    base_args, extra_env = redis_cli_base_args(selected_db)
     cursor = "0"
     fields: dict[str, Any] = {}
     invalid_values = 0
@@ -912,6 +947,8 @@ def redis_hash_scan_json(hash_name: str, match: str = "*", limit: int = 500) -> 
             return {
                 "ok": False,
                 "key": key,
+                "db": selected_db,
+                "prefix": selected_prefix,
                 "match": match,
                 "fields": fields,
                 "count": len(fields),
@@ -945,11 +982,53 @@ def redis_hash_scan_json(hash_name: str, match: str = "*", limit: int = 500) -> 
     return {
         "ok": True,
         "key": key,
+        "db": selected_db,
+        "prefix": selected_prefix,
         "match": match,
         "fields": fields,
         "count": len(fields),
         "invalid_values": invalid_values,
     }
+
+
+def redis_hash_scan_candidates(hash_name: str, match: str = "*", limit: int = 500) -> dict[str, Any]:
+    attempts = []
+    first_ok: dict[str, Any] | None = None
+    first_error: dict[str, Any] | None = None
+    for db in redis_db_candidates():
+        for prefix in redis_prefix_candidates():
+            result = redis_hash_scan_json(hash_name, match=match, limit=limit, prefix=prefix, db=db)
+            attempt = {
+                "db": result.get("db"),
+                "key": result.get("key"),
+                "prefix": result.get("prefix"),
+                "ok": result.get("ok"),
+                "count": result.get("count", 0),
+                "invalid_values": result.get("invalid_values", 0),
+                "error": result.get("error", ""),
+            }
+            attempts.append(attempt)
+            if result.get("ok") and first_ok is None:
+                first_ok = result
+            if not result.get("ok") and first_error is None:
+                first_error = result
+            if result.get("ok") and result.get("count", 0) > 0:
+                result["checked"] = attempts
+                return result
+
+    selected = first_ok or first_error or {
+        "ok": False,
+        "key": "",
+        "db": None,
+        "prefix": "",
+        "match": match,
+        "fields": {},
+        "count": 0,
+        "invalid_values": 0,
+        "error": "no Redis hash scan attempts were executed",
+    }
+    selected["checked"] = attempts
+    return selected
 
 
 def runtime_state_summary(plugin_unique_identifier: str, state_fields: dict[str, Any]) -> dict[str, Any]:
@@ -981,6 +1060,46 @@ def runtime_state_summary(plugin_unique_identifier: str, state_fields: dict[str,
         "state_count": len(matches),
         "states": matches,
     }
+
+
+def plugin_runtime_log_summary(plugin_unique_identifier: str, lines: int = 2000) -> dict[str, Any]:
+    log_path = LOG_DIR / SERVICE_LOGS.get("plugin-daemon", "plugin-daemon.log")
+    summary: dict[str, Any] = {
+        "plugin_unique_identifier": plugin_unique_identifier,
+        "log_path": str(log_path),
+        "log_exists": log_path.exists(),
+        "ready": False,
+        "starting_count": 0,
+        "scale_up_count": 0,
+        "instance_ready_count": 0,
+        "ready_count": 0,
+        "error_count_after_last_ready": 0,
+        "last_ready_line": "",
+    }
+    if not log_path.exists():
+        return summary
+
+    content = tail_file(log_path, lines)
+    last_ready_index = -1
+    for index, line in enumerate(content.splitlines()):
+        if plugin_unique_identifier not in line:
+            continue
+        if "local runtime starting" in line:
+            summary["starting_count"] += 1
+        if "local runtime scale up" in line:
+            summary["scale_up_count"] += 1
+        if "local runtime instance ready" in line:
+            summary["instance_ready_count"] += 1
+        if "local runtime ready" in line:
+            summary["ready"] = True
+            summary["ready_count"] += 1
+            summary["last_ready_line"] = line[:500]
+            last_ready_index = index
+        if last_ready_index >= 0 and index > last_ready_index:
+            lowered = line.lower()
+            if "error" in lowered or "failed" in lowered or "plugin runtime not found" in lowered or "no available node" in lowered:
+                summary["error_count_after_last_ready"] += 1
+    return summary
 
 
 def psql_rows(database: str, columns: list[str], sql: str) -> dict[str, Any]:
@@ -1109,13 +1228,24 @@ def persistence_payload() -> dict[str, Any]:
     missing_installed = [item for item in identifiers if not item["installed_exists"]]
     orphan_packages = sorted(package_entries - expected_packages)
     orphan_installed = sorted(installed_entries - expected_packages)
-    runtime_state = redis_hash_scan_json("plugin_state")
+    runtime_state = redis_hash_scan_candidates("plugin_state")
     runtime_state_fields = runtime_state.get("fields", {}) if runtime_state.get("ok") else {}
     runtime_identifiers = [
-        runtime_state_summary(item["plugin_unique_identifier"], runtime_state_fields)
+        {
+            **runtime_state_summary(item["plugin_unique_identifier"], runtime_state_fields),
+            "log": plugin_runtime_log_summary(item["plugin_unique_identifier"]),
+        }
         for item in identifiers
     ]
-    missing_runtime_states = [item for item in runtime_identifiers if item["state_count"] == 0]
+    missing_runtime_states = [
+        item
+        for item in runtime_identifiers
+        if item["state_count"] == 0
+        and (
+            not item.get("log", {}).get("ready")
+            or item.get("log", {}).get("error_count_after_last_ready", 0) > 0
+        )
+    ]
     core_paths = {
         "data": path_summary(Path("/data")),
         "persist_root": path_summary(Path(env("PERSIST_ROOT", "/persist"))),
@@ -1152,6 +1282,9 @@ def persistence_payload() -> dict[str, Any]:
         "plugin_runtime_state": {
             "ok": runtime_state.get("ok"),
             "key": runtime_state.get("key"),
+            "db": runtime_state.get("db"),
+            "prefix": runtime_state.get("prefix"),
+            "checked": runtime_state.get("checked", []),
             "count": runtime_state.get("count", 0),
             "invalid_values": runtime_state.get("invalid_values", 0),
             "error": runtime_state.get("error", ""),
@@ -1166,7 +1299,7 @@ def persistence_payload() -> dict[str, Any]:
             "Current dify-plugin-daemon stores local packages by plugin_unique_identifier under PLUGIN_PACKAGE_CACHE_PATH.",
             "The local runtime watchdog launches plugins from PLUGIN_INSTALLED_PATH, while PLUGIN_PACKAGE_CACHE_PATH is the package cache used during install/reinstall.",
             "A missing package or installed file with an existing plugin DB/API reference means configuration can remain visible while local plugin runtime cannot be rebuilt.",
-            "plugin_runtime_state summarizes the Redis plugin_state hash that plugin-daemon uses when routing plugin invocations.",
+            "plugin_runtime_state summarizes Redis plugin_state plus plugin-daemon local-runtime log evidence; in single-container local mode the in-process runtime can be ready even when the Redis cluster hash is empty.",
         ],
     }
 
