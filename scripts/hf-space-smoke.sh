@@ -69,6 +69,67 @@ check_ops() {
   exit 1
 }
 
+check_ops_persistence() {
+  local label="ops-persistence"
+  local path="/_ops/persistence"
+  local status
+  local attempt
+
+  if [ -z "$OPS_TOKEN" ]; then
+    printf 'SKIP %s: OPS_TOKEN is not set\n' "$label"
+    return
+  fi
+
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+      -H "X-Ops-Token: $OPS_TOKEN" \
+      "$BASE_URL$path" || true)
+    if [ "$status" = "200" ] && python3 - "$tmp_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = json.load(fh)
+
+failures = []
+if payload.get("ok") is not True:
+    failures.append("ok is not true")
+for key in ["missing_package_files", "missing_installed_files", "missing_runtime_states", "plugin_storage_layout_issues"]:
+    if payload.get(key):
+        failures.append(f"{key} is not empty")
+
+if payload.get("persist_active") == "bucket":
+    paths = payload.get("paths") or {}
+    persist_root = ((paths.get("persist_root") or {}).get("path") or "/persist").rstrip("/")
+    expected_storage_root = f"{persist_root}/plugin_daemon"
+    storage_root = paths.get("plugin_storage_root") or {}
+    installed = paths.get("plugin_installed") or {}
+    package_cache = paths.get("plugin_package_cache") or {}
+    if storage_root.get("path") != expected_storage_root:
+        failures.append(f"bucket plugin_storage_root is not {expected_storage_root}")
+    for name, summary in [("plugin_installed", installed), ("plugin_package_cache", package_cache)]:
+        if summary.get("is_symlink"):
+            failures.append(f"{name} is a symlink root")
+
+if failures:
+    print("persistence payload failed: " + "; ".join(failures), file=sys.stderr)
+    sys.exit(1)
+PY
+    then
+      printf 'PASS %s: HTTP %s and payload is healthy\n' "$label" "$status"
+      return
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected healthy persistence payload, got HTTP %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
+  printf 'FAIL %s: persistence payload did not become healthy\n' "$label" >&2
+  sed -n '1,120p' "$tmp_body" >&2 || true
+  exit 1
+}
+
 check_ops_cookie_migration() {
   local status
   if [ -z "$OPS_TOKEN" ]; then
@@ -218,7 +279,7 @@ check_status "setup-api" "$BASE_URL/console/api/setup" "200"
 check_status "init-api" "$BASE_URL/console/api/init" "200"
 check_ops "ops-health" "/_ops/health"
 check_ops "ops-system" "/_ops/system"
-check_ops "ops-persistence" "/_ops/persistence"
+check_ops_persistence
 check_ops "ops-metrics" "/_ops/metrics"
 check_ops "ops-errors" "/_ops/errors"
 check_ops_cookie_migration

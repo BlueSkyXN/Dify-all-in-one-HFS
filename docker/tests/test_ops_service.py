@@ -113,6 +113,67 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(paths["media_cache"], Path("/external/assets"))
         self.assertEqual(paths["working"], Path("/tmp/plugin-cwd"))
 
+    def test_plugin_storage_layout_flags_bucket_symlink_root(self):
+        issues = ops_service.plugin_storage_layout_issues(
+            "bucket",
+            {
+                "plugin_storage_root": {
+                    "path": "/data/plugin_daemon",
+                    "exists": True,
+                    "is_symlink": False,
+                    "real_path": "/data/plugin_daemon",
+                },
+                "plugin_installed": {
+                    "path": "/data/plugin_daemon/plugin",
+                    "exists": True,
+                    "is_symlink": True,
+                    "real_path": "/persist/plugin_daemon/plugin",
+                },
+                "plugin_package_cache": {
+                    "path": "/data/plugin_daemon/plugin_packages",
+                    "exists": True,
+                    "is_symlink": True,
+                    "real_path": "/persist/plugin_daemon/plugin_packages",
+                },
+            },
+        )
+
+        self.assertEqual(
+            [issue["code"] for issue in issues],
+            [
+                "plugin_storage_root_uses_data_symlink_view",
+                "plugin_installed_is_symlink_root",
+                "plugin_package_cache_is_symlink_root",
+            ],
+        )
+
+    def test_plugin_storage_layout_accepts_bucket_real_persist_root(self):
+        issues = ops_service.plugin_storage_layout_issues(
+            "bucket",
+            {
+                "plugin_storage_root": {
+                    "path": "/persist/plugin_daemon",
+                    "exists": True,
+                    "is_symlink": False,
+                    "real_path": "/persist/plugin_daemon",
+                },
+                "plugin_installed": {
+                    "path": "/persist/plugin_daemon/plugin",
+                    "exists": True,
+                    "is_symlink": False,
+                    "real_path": "/persist/plugin_daemon/plugin",
+                },
+                "plugin_package_cache": {
+                    "path": "/persist/plugin_daemon/plugin_packages",
+                    "exists": True,
+                    "is_symlink": False,
+                    "real_path": "/persist/plugin_daemon/plugin_packages",
+                },
+            },
+        )
+
+        self.assertEqual(issues, [])
+
     def test_collect_plugin_identifiers_flags_missing_package_and_installed_files(self):
         identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
         db_payload = {
@@ -152,6 +213,50 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             ready = ops_service.collect_plugin_identifiers(db_payload, package_dir, installed_dir)
             self.assertTrue(ready[0]["package_exists"])
             self.assertTrue(ready[0]["installed_exists"])
+
+    def test_collect_plugin_identifiers_deduplicates_plugin_tables(self):
+        identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
+        db_payload = {
+            "plugins": {
+                "ok": True,
+                "rows": [
+                    {
+                        "plugin_id": "langgenius/openai_api_compatible",
+                        "plugin_unique_identifier": identifier,
+                    }
+                ],
+            },
+            "plugin_installations": {
+                "ok": True,
+                "rows": [
+                    {
+                        "tenant_id": "tenant-a",
+                        "plugin_id": "langgenius/openai_api_compatible",
+                        "plugin_unique_identifier": identifier,
+                    }
+                ],
+            },
+            "api_plugin_references": {"ok": True, "rows": []},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            package_dir = root / "plugin_packages"
+            installed_dir = root / "plugin"
+            package_dir.mkdir()
+            installed_dir.mkdir()
+            (package_dir / "langgenius").mkdir()
+            (installed_dir / "langgenius").mkdir()
+            (package_dir / identifier).write_text("pkg", encoding="utf-8")
+            (installed_dir / identifier).write_text("pkg", encoding="utf-8")
+
+            identifiers = ops_service.collect_plugin_identifiers(db_payload, package_dir, installed_dir)
+
+        self.assertEqual(len(identifiers), 1)
+        self.assertEqual(identifiers[0]["sources"], ["plugins", "plugin_installations"])
+        self.assertEqual(identifiers[0]["tenant_ids"], ["tenant-a"])
+        self.assertEqual(identifiers[0]["plugin_ids"], ["langgenius/openai_api_compatible"])
+        self.assertTrue(identifiers[0]["package_exists"])
+        self.assertTrue(identifiers[0]["installed_exists"])
 
     def test_runtime_state_summary_sanitizes_redis_plugin_state(self):
         identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
@@ -239,6 +344,71 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(payload["missing_package_files"], [])
         self.assertEqual(payload["missing_installed_files"], [])
         self.assertEqual(payload["missing_runtime_states"][0]["plugin_unique_identifier"], identifier)
+
+    def test_persistence_payload_fails_bucket_symlink_layout(self):
+        original_plugin_storage_paths = ops_service.plugin_storage_paths
+        original_plugin_db_payload = ops_service.plugin_db_payload
+        original_redis_hash_scan_candidates = ops_service.redis_hash_scan_candidates
+        original_path_summary = ops_service.path_summary
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            active_file = root / "persist-active"
+            active_file.write_text("bucket\n", encoding="utf-8")
+
+            def fake_plugin_storage_paths():
+                return {
+                    "storage_root": Path("/data/plugin_daemon"),
+                    "installed": Path("/data/plugin_daemon/plugin"),
+                    "package_cache": Path("/data/plugin_daemon/plugin_packages"),
+                    "media_cache": Path("/data/plugin_daemon/assets"),
+                    "working": Path("/data/plugin_daemon/cwd"),
+                }
+
+            def fake_plugin_db_payload():
+                return {
+                    "plugins": {"ok": True, "rows": []},
+                    "plugin_installations": {"ok": True, "rows": []},
+                    "api_plugin_references": {"ok": True, "rows": []},
+                }
+
+            def fake_path_summary(path):
+                summary = {"path": str(path), "exists": True, "is_symlink": False}
+                if str(path) in {"/data/plugin_daemon/plugin", "/data/plugin_daemon/plugin_packages"}:
+                    summary["is_symlink"] = True
+                    summary["real_path"] = str(path).replace("/data", "/persist", 1)
+                return summary
+
+            try:
+                os.environ["PERSIST_ACTIVE_FILE"] = str(active_file)
+                ops_service.plugin_storage_paths = fake_plugin_storage_paths
+                ops_service.plugin_db_payload = fake_plugin_db_payload
+                ops_service.redis_hash_scan_candidates = lambda _hash_name: {
+                    "ok": True,
+                    "key": "plugin_daemon:plugin_state",
+                    "db": 0,
+                    "prefix": "plugin_daemon",
+                    "checked": [],
+                    "count": 0,
+                    "fields": {},
+                }
+                ops_service.path_summary = fake_path_summary
+                payload = ops_service.persistence_payload()
+            finally:
+                ops_service.plugin_storage_paths = original_plugin_storage_paths
+                ops_service.plugin_db_payload = original_plugin_db_payload
+                ops_service.redis_hash_scan_candidates = original_redis_hash_scan_candidates
+                ops_service.path_summary = original_path_summary
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["persist_active"], "bucket")
+        self.assertEqual(
+            [issue["code"] for issue in payload["plugin_storage_layout_issues"]],
+            [
+                "plugin_storage_root_uses_data_symlink_view",
+                "plugin_installed_is_symlink_root",
+                "plugin_package_cache_is_symlink_root",
+            ],
+        )
 
     def test_persistence_payload_accepts_local_runtime_log_evidence(self):
         identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
