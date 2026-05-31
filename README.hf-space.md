@@ -84,7 +84,7 @@ OPS_TOKEN=<fixed-random-token> \
   scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
-`/_ops/` 是只读诊断入口，主要用于查看 dashboard、Supervisor XML-RPC 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 必须覆盖默认 token，并建议设置为 Private 或 Protected。
+`/_ops/` 是只读诊断入口，主要用于查看 dashboard、Supervisor XML-RPC 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要、持久化/插件包缓存摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 必须覆盖默认 token，并建议设置为 Private 或 Protected。
 
 `/_ops/` 和 `/_admin/` dashboard 均支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 

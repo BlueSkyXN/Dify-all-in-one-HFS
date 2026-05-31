@@ -218,6 +218,7 @@ check_status "setup-api" "$BASE_URL/console/api/setup" "200"
 check_status "init-api" "$BASE_URL/console/api/init" "200"
 check_ops "ops-health" "/_ops/health"
 check_ops "ops-system" "/_ops/system"
+check_ops "ops-persistence" "/_ops/persistence"
 check_ops "ops-metrics" "/_ops/metrics"
 check_ops "ops-errors" "/_ops/errors"
 check_ops_cookie_migration

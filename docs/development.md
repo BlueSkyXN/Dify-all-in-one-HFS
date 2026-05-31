@@ -199,6 +199,7 @@ python3 -m py_compile docker/ops_service.py
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/health
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/status
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/system
+curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/persistence
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/config
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/errors
 curl -H "X-Ops-Token: $OPS_TOKEN" <base>/_ops/metrics

@@ -338,6 +338,15 @@ def file_sha256(path: Path, max_bytes: int = 1_000_000) -> str | None:
         return None
 
 
+def read_small_text(path: Path, max_bytes: int = 4096) -> str:
+    try:
+        if not path.exists() or not path.is_file() or path.stat().st_size > max_bytes:
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
 def requirements_summary(path: Path) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "path": str(path),
@@ -366,7 +375,12 @@ def requirements_summary(path: Path) -> dict[str, Any]:
     return summary
 
 
-def run_cmd(args: list[str], timeout: float = 2.0, extra_env: dict[str, str] | None = None) -> dict[str, Any]:
+def run_cmd(
+    args: list[str],
+    timeout: float = 2.0,
+    extra_env: dict[str, str] | None = None,
+    output_limit: int = 2048,
+) -> dict[str, Any]:
     started = time.time()
     try:
         command_env = None
@@ -384,8 +398,8 @@ def run_cmd(args: list[str], timeout: float = 2.0, extra_env: dict[str, str] | N
         return {
             "ok": completed.returncode == 0,
             "returncode": completed.returncode,
-            "stdout": truncate_text(completed.stdout.strip()),
-            "stderr": truncate_text(completed.stderr.strip()),
+            "stdout": truncate_text(completed.stdout.strip(), output_limit),
+            "stderr": truncate_text(completed.stderr.strip(), output_limit),
             "duration_ms": round((time.time() - started) * 1000),
         }
     except FileNotFoundError as exc:
@@ -400,7 +414,7 @@ def run_cmd(args: list[str], timeout: float = 2.0, extra_env: dict[str, str] | N
         return {
             "ok": False,
             "returncode": None,
-            "stdout": truncate_text((exc.stdout or "").strip()),
+            "stdout": truncate_text((exc.stdout or "").strip(), output_limit),
             "stderr": f"timeout after {timeout}s",
             "duration_ms": round((time.time() - started) * 1000),
         }
@@ -757,6 +771,261 @@ def disk_usage(path: str) -> dict[str, Any]:
         "available_bytes": available,
         "used_bytes": used,
         "used_percent": round((used / total) * 100, 2) if total else 0,
+    }
+
+
+def path_summary(path: Path) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+        "is_symlink": path.is_symlink(),
+    }
+    try:
+        if path.is_symlink():
+            payload["link_target"] = os.readlink(path)
+        if path.exists():
+            resolved = path.resolve(strict=False)
+            stat = path.stat()
+            payload.update(
+                {
+                    "real_path": str(resolved),
+                    "is_dir": path.is_dir(),
+                    "is_file": path.is_file(),
+                    "mode": oct(stat.st_mode & 0o777),
+                    "uid": stat.st_uid,
+                    "gid": stat.st_gid,
+                    "writable": os.access(path, os.W_OK),
+                    "mountpoint": os.path.ismount(path) or os.path.ismount(resolved),
+                }
+            )
+    except OSError as exc:
+        payload["error"] = str(exc)
+    return payload
+
+
+def resolve_plugin_storage_path(root: Path, configured: str) -> Path:
+    path = Path(configured)
+    if path.is_absolute():
+        return path
+    return root / path
+
+
+def plugin_storage_paths() -> dict[str, Path]:
+    root = Path(env("PLUGIN_STORAGE_LOCAL_ROOT", "/data/plugin_daemon"))
+    return {
+        "storage_root": root,
+        "installed": resolve_plugin_storage_path(root, env("PLUGIN_INSTALLED_PATH", "plugin")),
+        "package_cache": resolve_plugin_storage_path(root, env("PLUGIN_PACKAGE_CACHE_PATH", "plugin_packages")),
+        "media_cache": resolve_plugin_storage_path(root, env("PLUGIN_MEDIA_CACHE_PATH", "assets")),
+        "working": Path(env("PLUGIN_WORKING_PATH", "/data/plugin_daemon/cwd")),
+    }
+
+
+def directory_inventory(
+    path: Path,
+    suffix: str | None = None,
+    limit: int = 100,
+    recursive: bool = False,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+        "is_dir": path.is_dir(),
+        "file_count": 0,
+        "dir_count": 0,
+        "total_file_bytes": 0,
+        "entries": [],
+    }
+    if not path.exists() or not path.is_dir():
+        return payload
+    try:
+        children = path.rglob("*") if recursive else path.iterdir()
+        for child in sorted(children, key=lambda item: str(item.relative_to(path)) if item != path else item.name):
+            try:
+                stat = child.stat()
+            except OSError:
+                continue
+            relative_name = str(child.relative_to(path))
+            if child.is_dir():
+                payload["dir_count"] += 1
+            elif child.is_file():
+                payload["file_count"] += 1
+                payload["total_file_bytes"] += stat.st_size
+                if suffix and not relative_name.endswith(suffix):
+                    continue
+                if len(payload["entries"]) < limit:
+                    payload["entries"].append(
+                        {
+                            "name": relative_name,
+                            "bytes": stat.st_size,
+                            "mtime": int(stat.st_mtime),
+                        }
+                    )
+    except OSError as exc:
+        payload["error"] = str(exc)
+    return payload
+
+
+def legacy_hashed_plugin_package_filename(plugin_unique_identifier: str) -> str:
+    digest = hashlib.sha256(plugin_unique_identifier.encode("utf-8")).hexdigest()
+    return f"{digest}.difypkg"
+
+
+def plugin_package_candidates(plugin_unique_identifier: str) -> list[str]:
+    # Current dify-plugin-daemon uses the plugin_unique_identifier as the package
+    # bucket key. Keep the older hashed .difypkg candidate for compatibility with
+    # previous experimental builds and diagnostics.
+    return [
+        plugin_unique_identifier,
+        legacy_hashed_plugin_package_filename(plugin_unique_identifier),
+    ]
+
+
+def psql_rows(database: str, columns: list[str], sql: str) -> dict[str, Any]:
+    if not database:
+        return {"ok": False, "error": "database name is empty", "rows": []}
+    args = [
+        "psql",
+        "-h",
+        env("DB_HOST", "127.0.0.1"),
+        "-p",
+        env("DB_PORT", "5432"),
+        "-U",
+        env("DB_USERNAME", "dify"),
+        "-d",
+        database,
+        "-F",
+        "\t",
+        "-Atc",
+        sql,
+    ]
+    extra_env = {"PGPASSWORD": env("DB_PASSWORD")} if env("DB_PASSWORD") else None
+    result = run_cmd(args, timeout=5.0, extra_env=extra_env, output_limit=50_000)
+    if not result["ok"]:
+        return {
+            "ok": False,
+            "error": result["stderr"] or result["stdout"],
+            "returncode": result["returncode"],
+            "duration_ms": result["duration_ms"],
+            "rows": [],
+        }
+    rows = []
+    for line in result["stdout"].splitlines():
+        if not line:
+            continue
+        values = line.split("\t")
+        row = {column: values[index] if index < len(values) else "" for index, column in enumerate(columns)}
+        rows.append(row)
+    return {
+        "ok": True,
+        "duration_ms": result["duration_ms"],
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
+def plugin_db_payload() -> dict[str, Any]:
+    plugin_database = env("DB_PLUGIN_DATABASE", "dify_plugin")
+    main_database = env("DB_DATABASE", "dify")
+    return {
+        "plugin_database": plugin_database,
+        "main_database": main_database,
+        "plugins": psql_rows(
+            plugin_database,
+            ["plugin_id", "plugin_unique_identifier"],
+            "select plugin_id, plugin_unique_identifier from plugins limit 500",
+        ),
+        "plugin_installations": psql_rows(
+            plugin_database,
+            ["tenant_id", "plugin_id", "plugin_unique_identifier"],
+            "select tenant_id, plugin_id, plugin_unique_identifier from plugin_installations limit 500",
+        ),
+        "api_plugin_references": psql_rows(
+            main_database,
+            ["source", "tenant_id", "provider_name"],
+            """
+            select 'providers' as source, tenant_id, provider_name from providers where provider_name like '%/%'
+            union all
+            select 'provider_models' as source, tenant_id, provider_name from provider_models where provider_name like '%/%'
+            union all
+            select 'provider_model_settings' as source, tenant_id, provider_name from provider_model_settings where provider_name like '%/%'
+            union all
+            select 'provider_credentials' as source, tenant_id, provider_name from provider_credentials where provider_name like '%/%'
+            union all
+            select 'provider_model_credentials' as source, tenant_id, provider_name from provider_model_credentials where provider_name like '%/%'
+            limit 500
+            """,
+        ),
+    }
+
+
+def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path) -> list[dict[str, Any]]:
+    identifiers: dict[tuple[str, str], dict[str, Any]] = {}
+    sources = {
+        "plugins": ("plugin_id",),
+        "plugin_installations": ("tenant_id", "plugin_id"),
+    }
+    for source, extra_keys in sources.items():
+        section = db_payload.get(source, {})
+        for row in section.get("rows", []):
+            identifier = row.get("plugin_unique_identifier") or ""
+            if not identifier:
+                continue
+            key = (source, identifier)
+            package_candidates = plugin_package_candidates(identifier)
+            found_package = next((candidate for candidate in package_candidates if (package_dir / candidate).is_file()), "")
+            entry = {
+                "source": source,
+                "plugin_unique_identifier": identifier,
+                "package_candidates": package_candidates,
+                "found_package": found_package,
+                "package_exists": bool(found_package),
+            }
+            for extra_key in extra_keys:
+                if row.get(extra_key):
+                    entry[extra_key] = row[extra_key]
+            identifiers[key] = entry
+    return list(identifiers.values())
+
+
+def persistence_payload() -> dict[str, Any]:
+    plugin_paths = plugin_storage_paths()
+    package_dir = plugin_paths["package_cache"]
+    packages = directory_inventory(package_dir, limit=200, recursive=True)
+    db_payload = plugin_db_payload()
+    identifiers = collect_plugin_identifiers(db_payload, package_dir)
+    expected_packages = {candidate for item in identifiers for candidate in item["package_candidates"]}
+    package_entries = {entry["name"] for entry in packages.get("entries", [])}
+    missing_packages = [item for item in identifiers if not item["package_exists"]]
+    orphan_packages = sorted(package_entries - expected_packages)
+    core_paths = {
+        "data": path_summary(Path("/data")),
+        "persist_root": path_summary(Path(env("PERSIST_ROOT", "/persist"))),
+        "runtime_root": path_summary(Path(env("RUNTIME_ROOT", "/tmp/dify-aio"))),
+        "app_storage": path_summary(Path(env("OPENDAL_FS_ROOT", "/data/dify/storage"))),
+        "postgres": path_summary(Path("/data/postgres")),
+        "redis": path_summary(Path("/data/redis")),
+        "config": path_summary(Path("/data/config")),
+        **{f"plugin_{name}": path_summary(path) for name, path in plugin_paths.items()},
+    }
+    db_sections = [db_payload["plugins"], db_payload["plugin_installations"], db_payload["api_plugin_references"]]
+    db_ok = all(section.get("ok") for section in db_sections)
+    paths_ok = all(core_paths[name].get("exists") for name in ["data", "plugin_storage_root", "plugin_package_cache"])
+    return {
+        "ok": bool(paths_ok and db_ok and not missing_packages),
+        "persist_mode": env("PERSIST_MODE", "auto"),
+        "persist_active": read_small_text(Path(env("PERSIST_ACTIVE_FILE", "/tmp/dify-aio/persist-active"))),
+        "plugin_storage_type": env("PLUGIN_STORAGE_TYPE", "local"),
+        "paths": core_paths,
+        "plugin_packages": packages,
+        "plugin_database": db_payload,
+        "plugin_identifiers": identifiers,
+        "missing_package_files": missing_packages,
+        "orphan_package_files": orphan_packages[:200],
+        "notes": [
+            "Current dify-plugin-daemon stores local packages by plugin_unique_identifier under PLUGIN_PACKAGE_CACHE_PATH.",
+            "A missing package file with an existing plugin DB/API reference means configuration can remain visible while local plugin runtime cannot be rebuilt.",
+        ],
     }
 
 
@@ -1705,6 +1974,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(status_payload())
         elif path == "/system":
             self.send_json({"ok": True, "system": system_payload()})
+        elif path == "/persistence":
+            payload = persistence_payload()
+            self.send_json(payload, status=200 if payload["ok"] else 503)
         elif path == "/config":
             self.send_json({"ok": True, "config": config_payload()})
         elif path == "/version":

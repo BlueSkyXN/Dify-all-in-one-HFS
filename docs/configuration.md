@@ -312,6 +312,8 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES` | `false` | 是否强制 LangGenius plugin signature |
 | `FORCE_VERIFYING_SIGNATURE` | `false` | 是否强制验证签名 |
 
+Plugin Daemon 会用 `plugin_unique_identifier` 作为 package bucket key 在 `PLUGIN_PACKAGE_CACHE_PATH` 下查找本地包，例如 `plugin_packages/langgenius/openai_api_compatible:0.0.49@<checksum>`。重建后如果数据库中的 `plugin_unique_identifier` 还在、但对应包文件丢失，Dify 页面可能仍显示 provider 配置，实际 plugin runtime 却无法重新拉起。用 `/_ops/persistence` 检查 `missing_package_files` 可以直接确认这类错配。
+
 `with-plugin-env` 会把 `DB_PLUGIN_DATABASE` 映射到 Plugin Daemon 期望的 `DB_DATABASE`。
 
 ## Nginx

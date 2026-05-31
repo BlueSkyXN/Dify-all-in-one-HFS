@@ -100,6 +100,7 @@ setup-api
 init-api
 ops-health
 ops-system
+ops-persistence
 ops-metrics
 ops-errors
 ```

@@ -95,6 +95,51 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
         self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
 
+    def test_plugin_storage_paths_resolve_relative_cache_under_root(self):
+        os.environ.update(
+            {
+                "PLUGIN_STORAGE_LOCAL_ROOT": "/tmp/plugin-root",
+                "PLUGIN_INSTALLED_PATH": "plugin",
+                "PLUGIN_PACKAGE_CACHE_PATH": "plugin_packages",
+                "PLUGIN_MEDIA_CACHE_PATH": "/external/assets",
+                "PLUGIN_WORKING_PATH": "/tmp/plugin-cwd",
+            }
+        )
+
+        paths = ops_service.plugin_storage_paths()
+
+        self.assertEqual(paths["installed"], Path("/tmp/plugin-root/plugin"))
+        self.assertEqual(paths["package_cache"], Path("/tmp/plugin-root/plugin_packages"))
+        self.assertEqual(paths["media_cache"], Path("/external/assets"))
+        self.assertEqual(paths["working"], Path("/tmp/plugin-cwd"))
+
+    def test_collect_plugin_identifiers_flags_missing_package_cache_files(self):
+        identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
+        db_payload = {
+            "plugins": {
+                "ok": True,
+                "rows": [
+                    {
+                        "plugin_id": "langgenius/openai_api_compatible",
+                        "plugin_unique_identifier": identifier,
+                    }
+                ],
+            },
+            "plugin_installations": {"ok": True, "rows": []},
+            "api_plugin_references": {"ok": True, "rows": []},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            package_dir = Path(tmpdir)
+            missing = ops_service.collect_plugin_identifiers(db_payload, package_dir)
+            self.assertIn(identifier, missing[0]["package_candidates"])
+            self.assertFalse(missing[0]["package_exists"])
+
+            (package_dir / "langgenius").mkdir()
+            (package_dir / identifier).write_text("pkg", encoding="utf-8")
+            present = ops_service.collect_plugin_identifiers(db_payload, package_dir)
+            self.assertTrue(present[0]["package_exists"])
+            self.assertEqual(present[0]["found_package"], identifier)
+
     def test_redis_check_uses_redicli_auth_env(self):
         captured = {}
         original_run_cmd = ops_service.run_cmd

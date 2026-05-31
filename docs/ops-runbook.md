@@ -60,6 +60,7 @@ nginx:7860
 /_ops/health
 /_ops/status
 /_ops/system
+/_ops/persistence
 /_ops/config
 /_ops/version
 /_ops/errors
@@ -242,6 +243,15 @@ container uptime
 ops-service uptime
 process count
 ```
+
+`/_ops/persistence` 返回只读持久化和插件包缓存摘要：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" \
+  https://your-space.hf.space/_ops/persistence
+```
+
+重点看 `persist_active` 是否为 `bucket`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 是否都为 `true`、`missing_package_files` 是否为空。如果 `dify_plugin` 数据库里仍有 `plugin_unique_identifier`，但 `missing_package_files` 非空，就是“配置/登记还在，但 `.difypkg` package cache 缺失”的状态。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。此时不要只改模型 provider 配置；按下方 Plugin Runtime Not Found 的卸载重装路径修复。
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
