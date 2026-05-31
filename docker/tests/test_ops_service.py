@@ -113,7 +113,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(paths["media_cache"], Path("/external/assets"))
         self.assertEqual(paths["working"], Path("/tmp/plugin-cwd"))
 
-    def test_collect_plugin_identifiers_flags_missing_package_cache_files(self):
+    def test_collect_plugin_identifiers_flags_missing_package_and_installed_files(self):
         identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
         db_payload = {
             "plugins": {
@@ -129,16 +129,113 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             "api_plugin_references": {"ok": True, "rows": []},
         }
         with tempfile.TemporaryDirectory() as tmpdir:
-            package_dir = Path(tmpdir)
-            missing = ops_service.collect_plugin_identifiers(db_payload, package_dir)
+            root = Path(tmpdir)
+            package_dir = root / "plugin_packages"
+            installed_dir = root / "plugin"
+            package_dir.mkdir()
+            installed_dir.mkdir()
+            missing = ops_service.collect_plugin_identifiers(db_payload, package_dir, installed_dir)
             self.assertIn(identifier, missing[0]["package_candidates"])
             self.assertFalse(missing[0]["package_exists"])
+            self.assertFalse(missing[0]["installed_exists"])
+            self.assertEqual(missing[0]["hashed_plugin_id"], ops_service.plugin_hashed_identity(identifier))
 
             (package_dir / "langgenius").mkdir()
             (package_dir / identifier).write_text("pkg", encoding="utf-8")
-            present = ops_service.collect_plugin_identifiers(db_payload, package_dir)
+            present = ops_service.collect_plugin_identifiers(db_payload, package_dir, installed_dir)
             self.assertTrue(present[0]["package_exists"])
             self.assertEqual(present[0]["found_package"], identifier)
+            self.assertFalse(present[0]["installed_exists"])
+
+            (installed_dir / "langgenius").mkdir()
+            (installed_dir / identifier).write_text("pkg", encoding="utf-8")
+            ready = ops_service.collect_plugin_identifiers(db_payload, package_dir, installed_dir)
+            self.assertTrue(ready[0]["package_exists"])
+            self.assertTrue(ready[0]["installed_exists"])
+
+    def test_runtime_state_summary_sanitizes_redis_plugin_state(self):
+        identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
+        hashed = ops_service.plugin_hashed_identity(identifier)
+        summary = ops_service.runtime_state_summary(
+            identifier,
+            {
+                f"node-a:{hashed}": {
+                    "identity": identifier,
+                    "status": "active",
+                    "working_path": "/data/plugin_daemon/cwd/example",
+                    "verified": True,
+                    "restarts": 1,
+                    "scheduled_at": "2026-05-31T10:00:00Z",
+                    "logs": ["not returned"],
+                },
+                "node-b:other": {"identity": "other", "status": "active"},
+            },
+        )
+
+        self.assertEqual(summary["state_count"], 1)
+        self.assertEqual(summary["states"][0]["node_id"], "node-a")
+        self.assertEqual(summary["states"][0]["status"], "active")
+        self.assertNotIn("logs", summary["states"][0])
+
+    def test_persistence_payload_flags_missing_runtime_state(self):
+        identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
+        original_plugin_storage_paths = ops_service.plugin_storage_paths
+        original_plugin_db_payload = ops_service.plugin_db_payload
+        original_redis_hash_scan_json = ops_service.redis_hash_scan_json
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            package_dir = root / "plugin_packages"
+            installed_dir = root / "plugin"
+            package_dir.mkdir()
+            installed_dir.mkdir()
+            (package_dir / "langgenius").mkdir()
+            (installed_dir / "langgenius").mkdir()
+            (package_dir / identifier).write_text("pkg", encoding="utf-8")
+            (installed_dir / identifier).write_text("pkg", encoding="utf-8")
+
+            def fake_plugin_storage_paths():
+                return {
+                    "storage_root": root,
+                    "installed": installed_dir,
+                    "package_cache": package_dir,
+                    "media_cache": root / "assets",
+                    "working": root / "cwd",
+                }
+
+            def fake_plugin_db_payload():
+                return {
+                    "plugins": {
+                        "ok": True,
+                        "rows": [
+                            {
+                                "plugin_id": "langgenius/openai_api_compatible",
+                                "plugin_unique_identifier": identifier,
+                            }
+                        ],
+                    },
+                    "plugin_installations": {"ok": True, "rows": []},
+                    "api_plugin_references": {"ok": True, "rows": []},
+                }
+
+            try:
+                ops_service.plugin_storage_paths = fake_plugin_storage_paths
+                ops_service.plugin_db_payload = fake_plugin_db_payload
+                ops_service.redis_hash_scan_json = lambda _hash_name: {
+                    "ok": True,
+                    "key": "plugin_daemon:plugin_state",
+                    "count": 0,
+                    "fields": {},
+                }
+                payload = ops_service.persistence_payload()
+            finally:
+                ops_service.plugin_storage_paths = original_plugin_storage_paths
+                ops_service.plugin_db_payload = original_plugin_db_payload
+                ops_service.redis_hash_scan_json = original_redis_hash_scan_json
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["missing_package_files"], [])
+        self.assertEqual(payload["missing_installed_files"], [])
+        self.assertEqual(payload["missing_runtime_states"][0]["plugin_unique_identifier"], identifier)
 
     def test_redis_check_uses_redicli_auth_env(self):
         captured = {}

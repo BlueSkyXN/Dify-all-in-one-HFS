@@ -15,6 +15,8 @@ shell_quote() {
   printf "'%s'" "$s"
 }
 
+EXTERNAL_PLUGIN_STORAGE_LOCAL_ROOT=${PLUGIN_STORAGE_LOCAL_ROOT-}
+
 source_defaults_env() {
   set -a
   # shellcheck disable=SC1091
@@ -34,6 +36,36 @@ source_runtime_env() {
     . /etc/dify/generated.env
   fi
   set +a
+}
+
+default_plugin_storage_root() {
+  local runtime_root=${RUNTIME_ROOT:-/tmp/dify-aio}
+  local persist_root=${PERSIST_ROOT:-/persist}
+  local active_file=${PERSIST_ACTIVE_FILE:-${runtime_root}/persist-active}
+  local active=""
+  if [ -f "$active_file" ]; then
+    active=$(cat "$active_file" 2>/dev/null || true)
+  fi
+  if [ "$active" = "bucket" ] && [ -d "${persist_root}/plugin_daemon" ]; then
+    printf '%s/plugin_daemon\n' "$persist_root"
+  else
+    printf '/data/plugin_daemon\n'
+  fi
+}
+
+configure_plugin_storage_root() {
+  local selected_root
+  selected_root=$(default_plugin_storage_root)
+  if [ -n "${EXTERNAL_PLUGIN_STORAGE_LOCAL_ROOT:-}" ]; then
+    export PLUGIN_STORAGE_LOCAL_ROOT="$EXTERNAL_PLUGIN_STORAGE_LOCAL_ROOT"
+    return
+  fi
+  if [ -z "${PLUGIN_STORAGE_LOCAL_ROOT:-}" ] || [ "${PLUGIN_STORAGE_LOCAL_ROOT:-}" = "/data/plugin_daemon" ]; then
+    export PLUGIN_STORAGE_LOCAL_ROOT="$selected_root"
+    if [ "$selected_root" != "/data/plugin_daemon" ]; then
+      log "Using real plugin storage root ${selected_root} so plugin-daemon can list installed plugins after restart."
+    fi
+  fi
 }
 
 write_generated_env() {
@@ -797,6 +829,7 @@ run_dify_migration() {
 
 main() {
   prepare_dirs
+  configure_plugin_storage_root
   write_generated_env
   source_runtime_env
   log "PUBLIC_URL=${PUBLIC_URL}"

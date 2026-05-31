@@ -57,6 +57,8 @@ bucket-lite 模式下会持久化：
 
 默认会先尝试把 `/persist/postgres` 当 live PostgreSQL data directory 使用。若 bucket mount 的文件系统语义导致 PostgreSQL 无法启动，`POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会让容器退回 `/tmp/dify-aio/postgres`，并继续把周期 dump 写到 `/persist/postgres-backups/`，校验后更新 `latest.sql.gz`。
 
+bucket-lite 下 Plugin Daemon 默认直接以 `/persist/plugin_daemon` 作为 `PLUGIN_STORAGE_LOCAL_ROOT`。`/data/plugin_daemon/*` 仍保留为兼容路径，但启动扫描必须避开 symlink root，否则重建后 installed 插件文件可能存在却不会自动 relaunch runtime。
+
 这些目录不会占用 bucket：
 
 ```text
@@ -84,7 +86,7 @@ OPS_TOKEN=<fixed-random-token> \
   scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
-`/_ops/` 是只读诊断入口，主要用于查看 dashboard、Supervisor XML-RPC 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要、持久化/插件包缓存摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 必须覆盖默认 token，并建议设置为 Private 或 Protected。
+`/_ops/` 是只读诊断入口，主要用于查看 dashboard、Supervisor XML-RPC 状态、内部健康探针、系统资源、Prometheus-style metrics、非敏感配置摘要、持久化/插件包/插件 runtime state 摘要和近期错误日志。不要把 `OPS_TOKEN` 当作生产级安全边界；公开 Space 必须覆盖默认 token，并建议设置为 Private 或 Protected。
 
 `/_ops/` 和 `/_admin/` dashboard 均支持 English / 中文切换，默认跟随浏览器语言，并把选择保存在浏览器本地。
 

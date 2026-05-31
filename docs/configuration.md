@@ -299,7 +299,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `PLUGIN_DIFY_INNER_API_URL` | `http://127.0.0.1:5001` | Dify inner API URL |
 | `INNER_API_KEY_FOR_PLUGIN` | `${PLUGIN_DIFY_INNER_API_KEY}` | Dify API 使用的 inner API key |
 | `PLUGIN_STORAGE_TYPE` | `local` | Plugin storage 类型 |
-| `PLUGIN_STORAGE_LOCAL_ROOT` | `/data/plugin_daemon` | Plugin storage 根目录 |
+| `PLUGIN_STORAGE_LOCAL_ROOT` | bucket-lite: `/persist/plugin_daemon`; legacy: `/data/plugin_daemon` | Plugin storage 根目录；bucket-lite 下默认使用真实 `/persist` 目录，避免 Plugin Daemon 启动扫描停在 `/data` symlink |
 | `PLUGIN_WORKING_PATH` | `/data/plugin_daemon/cwd` | Plugin working directory |
 | `PLUGIN_INSTALLED_PATH` | `plugin` | 已安装插件目录 |
 | `PLUGIN_PACKAGE_CACHE_PATH` | `plugin_packages` | 插件包目录；bucket-lite 下由 `/persist/plugin_daemon/plugin_packages` 持久化 |
@@ -312,7 +312,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES` | `false` | 是否强制 LangGenius plugin signature |
 | `FORCE_VERIFYING_SIGNATURE` | `false` | 是否强制验证签名 |
 
-Plugin Daemon 会用 `plugin_unique_identifier` 作为 package bucket key 在 `PLUGIN_PACKAGE_CACHE_PATH` 下查找本地包，例如 `plugin_packages/langgenius/openai_api_compatible:0.0.49@<checksum>`。重建后如果数据库中的 `plugin_unique_identifier` 还在、但对应包文件丢失，Dify 页面可能仍显示 provider 配置，实际 plugin runtime 却无法重新拉起。用 `/_ops/persistence` 检查 `missing_package_files` 可以直接确认这类错配。
+Plugin Daemon 会用 `plugin_unique_identifier` 作为 package bucket key 在 `PLUGIN_PACKAGE_CACHE_PATH` 下查找本地包，例如 `plugin_packages/langgenius/openai_api_compatible:0.0.49@<checksum>`。本地 runtime watchdog 则从 `PLUGIN_INSTALLED_PATH` 枚举已安装插件并写入 Redis `plugin_state`。bucket-lite 下 wrapper 会让 Plugin Daemon 直接使用 `/persist/plugin_daemon` 作为 storage root；不要把 `PLUGIN_STORAGE_LOCAL_ROOT` 强制回 `/data/plugin_daemon`，否则 Go `filepath.WalkDir` 不会跟随 `/data/plugin_daemon/plugin` 这个 symlink root，重建后已安装插件可能不会被重新拉起。重建后如果数据库中的 `plugin_unique_identifier` 还在、但 package cache、installed bucket 或 Redis runtime state 缺失，Dify 页面可能仍显示 provider 配置，实际 plugin runtime 却无法重新拉起。用 `/_ops/persistence` 检查 `missing_package_files`、`missing_installed_files` 和 `missing_runtime_states` 可以直接确认这类错配。
 
 `with-plugin-env` 会把 `DB_PLUGIN_DATABASE` 映射到 Plugin Daemon 期望的 `DB_DATABASE`。
 

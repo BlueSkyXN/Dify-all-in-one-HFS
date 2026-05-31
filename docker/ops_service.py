@@ -94,6 +94,7 @@ SAFE_CONFIG_KEYS = [
     "DB_DATABASE",
     "REDIS_HOST",
     "REDIS_PORT",
+    "REDIS_KEY_PREFIX",
     "PLUGIN_DAEMON_URL",
     "CODE_EXECUTION_ENDPOINT",
     "OPS_PORT",
@@ -881,6 +882,107 @@ def plugin_package_candidates(plugin_unique_identifier: str) -> list[str]:
     ]
 
 
+def plugin_hashed_identity(plugin_unique_identifier: str) -> str:
+    return hashlib.sha256(plugin_unique_identifier.encode("utf-8")).hexdigest()
+
+
+def redis_cli_base_args() -> tuple[list[str], dict[str, str] | None]:
+    args = ["redis-cli", "-h", env("REDIS_HOST", "127.0.0.1"), "-p", env("REDIS_PORT", "6379"), "--raw"]
+    extra_env = {"REDISCLI_AUTH": env("REDIS_PASSWORD")} if env("REDIS_PASSWORD") else None
+    return args, extra_env
+
+
+def redis_hash_scan_json(hash_name: str, match: str = "*", limit: int = 500) -> dict[str, Any]:
+    prefix = env("REDIS_KEY_PREFIX", "plugin_daemon") or "plugin_daemon"
+    key = f"{prefix}:{hash_name}"
+    base_args, extra_env = redis_cli_base_args()
+    cursor = "0"
+    fields: dict[str, Any] = {}
+    invalid_values = 0
+    iterations = 0
+    while True:
+        iterations += 1
+        result = run_cmd(
+            [*base_args, "HSCAN", key, cursor, "MATCH", match, "COUNT", "100"],
+            timeout=5.0,
+            extra_env=extra_env,
+            output_limit=200_000,
+        )
+        if not result["ok"]:
+            return {
+                "ok": False,
+                "key": key,
+                "match": match,
+                "fields": fields,
+                "count": len(fields),
+                "invalid_values": invalid_values,
+                "error": result["stderr"] or result["stdout"],
+                "returncode": result["returncode"],
+                "duration_ms": result["duration_ms"],
+            }
+
+        lines = result["stdout"].splitlines()
+        cursor = lines[0].strip() if lines else "0"
+        values = lines[1:]
+        for index in range(0, len(values), 2):
+            if len(fields) >= limit:
+                cursor = "0"
+                break
+            if index + 1 >= len(values):
+                invalid_values += 1
+                continue
+            field = values[index]
+            try:
+                parsed = json.loads(values[index + 1])
+            except json.JSONDecodeError:
+                invalid_values += 1
+                continue
+            fields[field] = parsed
+
+        if cursor == "0" or iterations >= 100:
+            break
+
+    return {
+        "ok": True,
+        "key": key,
+        "match": match,
+        "fields": fields,
+        "count": len(fields),
+        "invalid_values": invalid_values,
+    }
+
+
+def runtime_state_summary(plugin_unique_identifier: str, state_fields: dict[str, Any]) -> dict[str, Any]:
+    hashed_identity = plugin_hashed_identity(plugin_unique_identifier)
+    matches = []
+    for field, state in state_fields.items():
+        if not field.endswith(f":{hashed_identity}"):
+            continue
+        node_id = field.rsplit(":", 1)[0]
+        if not isinstance(state, dict):
+            continue
+        matches.append(
+            {
+                "field": field,
+                "node_id": node_id,
+                "identity": str(state.get("identity", "")),
+                "status": str(state.get("status", "")),
+                "working_path": str(state.get("working_path", "")),
+                "verified": bool(state.get("verified", False)),
+                "restarts": parse_optional_int(state.get("restarts")),
+                "active_at": state.get("active_at"),
+                "stopped_at": state.get("stopped_at"),
+                "scheduled_at": state.get("scheduled_at"),
+            }
+        )
+    return {
+        "plugin_unique_identifier": plugin_unique_identifier,
+        "hashed_plugin_id": hashed_identity,
+        "state_count": len(matches),
+        "states": matches,
+    }
+
+
 def psql_rows(database: str, columns: list[str], sql: str) -> dict[str, Any]:
     if not database:
         return {"ok": False, "error": "database name is empty", "rows": []}
@@ -959,7 +1061,7 @@ def plugin_db_payload() -> dict[str, Any]:
     }
 
 
-def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path) -> list[dict[str, Any]]:
+def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path, installed_dir: Path) -> list[dict[str, Any]]:
     identifiers: dict[tuple[str, str], dict[str, Any]] = {}
     sources = {
         "plugins": ("plugin_id",),
@@ -974,12 +1076,16 @@ def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path) ->
             key = (source, identifier)
             package_candidates = plugin_package_candidates(identifier)
             found_package = next((candidate for candidate in package_candidates if (package_dir / candidate).is_file()), "")
+            found_installed = next((candidate for candidate in package_candidates if (installed_dir / candidate).is_file()), "")
             entry = {
                 "source": source,
                 "plugin_unique_identifier": identifier,
+                "hashed_plugin_id": plugin_hashed_identity(identifier),
                 "package_candidates": package_candidates,
                 "found_package": found_package,
                 "package_exists": bool(found_package),
+                "found_installed": found_installed,
+                "installed_exists": bool(found_installed),
             }
             for extra_key in extra_keys:
                 if row.get(extra_key):
@@ -991,13 +1097,25 @@ def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path) ->
 def persistence_payload() -> dict[str, Any]:
     plugin_paths = plugin_storage_paths()
     package_dir = plugin_paths["package_cache"]
+    installed_dir = plugin_paths["installed"]
     packages = directory_inventory(package_dir, limit=200, recursive=True)
+    installed = directory_inventory(installed_dir, limit=200, recursive=True)
     db_payload = plugin_db_payload()
-    identifiers = collect_plugin_identifiers(db_payload, package_dir)
+    identifiers = collect_plugin_identifiers(db_payload, package_dir, installed_dir)
     expected_packages = {candidate for item in identifiers for candidate in item["package_candidates"]}
     package_entries = {entry["name"] for entry in packages.get("entries", [])}
+    installed_entries = {entry["name"] for entry in installed.get("entries", [])}
     missing_packages = [item for item in identifiers if not item["package_exists"]]
+    missing_installed = [item for item in identifiers if not item["installed_exists"]]
     orphan_packages = sorted(package_entries - expected_packages)
+    orphan_installed = sorted(installed_entries - expected_packages)
+    runtime_state = redis_hash_scan_json("plugin_state")
+    runtime_state_fields = runtime_state.get("fields", {}) if runtime_state.get("ok") else {}
+    runtime_identifiers = [
+        runtime_state_summary(item["plugin_unique_identifier"], runtime_state_fields)
+        for item in identifiers
+    ]
+    missing_runtime_states = [item for item in runtime_identifiers if item["state_count"] == 0]
     core_paths = {
         "data": path_summary(Path("/data")),
         "persist_root": path_summary(Path(env("PERSIST_ROOT", "/persist"))),
@@ -1010,21 +1128,45 @@ def persistence_payload() -> dict[str, Any]:
     }
     db_sections = [db_payload["plugins"], db_payload["plugin_installations"], db_payload["api_plugin_references"]]
     db_ok = all(section.get("ok") for section in db_sections)
-    paths_ok = all(core_paths[name].get("exists") for name in ["data", "plugin_storage_root", "plugin_package_cache"])
+    paths_ok = all(
+        core_paths[name].get("exists")
+        for name in ["data", "plugin_storage_root", "plugin_package_cache", "plugin_installed"]
+    )
     return {
-        "ok": bool(paths_ok and db_ok and not missing_packages),
+        "ok": bool(
+            paths_ok
+            and db_ok
+            and not missing_packages
+            and not missing_installed
+            and not missing_runtime_states
+            and runtime_state.get("ok")
+        ),
         "persist_mode": env("PERSIST_MODE", "auto"),
         "persist_active": read_small_text(Path(env("PERSIST_ACTIVE_FILE", "/tmp/dify-aio/persist-active"))),
         "plugin_storage_type": env("PLUGIN_STORAGE_TYPE", "local"),
         "paths": core_paths,
         "plugin_packages": packages,
+        "plugin_installed": installed,
         "plugin_database": db_payload,
         "plugin_identifiers": identifiers,
+        "plugin_runtime_state": {
+            "ok": runtime_state.get("ok"),
+            "key": runtime_state.get("key"),
+            "count": runtime_state.get("count", 0),
+            "invalid_values": runtime_state.get("invalid_values", 0),
+            "error": runtime_state.get("error", ""),
+            "identifiers": runtime_identifiers,
+        },
         "missing_package_files": missing_packages,
+        "missing_installed_files": missing_installed,
+        "missing_runtime_states": missing_runtime_states,
         "orphan_package_files": orphan_packages[:200],
+        "orphan_installed_files": orphan_installed[:200],
         "notes": [
             "Current dify-plugin-daemon stores local packages by plugin_unique_identifier under PLUGIN_PACKAGE_CACHE_PATH.",
-            "A missing package file with an existing plugin DB/API reference means configuration can remain visible while local plugin runtime cannot be rebuilt.",
+            "The local runtime watchdog launches plugins from PLUGIN_INSTALLED_PATH, while PLUGIN_PACKAGE_CACHE_PATH is the package cache used during install/reinstall.",
+            "A missing package or installed file with an existing plugin DB/API reference means configuration can remain visible while local plugin runtime cannot be rebuilt.",
+            "plugin_runtime_state summarizes the Redis plugin_state hash that plugin-daemon uses when routing plugin invocations.",
         ],
     }
 

@@ -188,6 +188,8 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 
 `/persist/postgres-backups/` 会由 `postgres-backup` 进程定期生成 timestamped dump，并在校验通过后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，然后把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并在有可用 dump 时先从 `latest.sql.gz` 恢复。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
 
+bucket-lite 下 Plugin Daemon 默认直接以 `/persist/plugin_daemon` 作为 `PLUGIN_STORAGE_LOCAL_ROOT`，避免启动时从 `/data/plugin_daemon/plugin` 这个 symlink root 枚举 installed 插件失败。`/data/plugin_daemon/*` 仍作为兼容访问路径保留。
+
 如果显式设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
 ## 运维与可观测入口

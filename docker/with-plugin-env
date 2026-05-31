@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+external_plugin_storage_local_root=${PLUGIN_STORAGE_LOCAL_ROOT-}
 set -a
 # shellcheck disable=SC1091
 . /etc/dify/dify.env.runtime
@@ -11,6 +12,24 @@ elif [ -f /etc/dify/generated.env ]; then
   # shellcheck disable=SC1091
   . /etc/dify/generated.env
 fi
+set +a
+
+default_plugin_storage_root() {
+  local runtime_root=${RUNTIME_ROOT:-/tmp/dify-aio}
+  local persist_root=${PERSIST_ROOT:-/persist}
+  local active_file=${PERSIST_ACTIVE_FILE:-${runtime_root}/persist-active}
+  local active=""
+  if [ -f "$active_file" ]; then
+    active=$(cat "$active_file" 2>/dev/null || true)
+  fi
+  if [ "$active" = "bucket" ] && [ -d "${persist_root}/plugin_daemon" ]; then
+    printf '%s/plugin_daemon\n' "$persist_root"
+  else
+    printf '/data/plugin_daemon\n'
+  fi
+}
+
+plugin_storage_local_root_default=$(default_plugin_storage_root)
 # Plugin daemon expects unprefixed service variables.
 export DB_DATABASE="${DB_PLUGIN_DATABASE:-dify_plugin}"
 export DB_HOST="${DB_HOST:-127.0.0.1}"
@@ -34,7 +53,13 @@ export MAX_PLUGIN_PACKAGE_SIZE="${PLUGIN_MAX_PACKAGE_SIZE:-52428800}"
 export PPROF_ENABLED="${PLUGIN_PPROF_ENABLED:-false}"
 
 export PLUGIN_STORAGE_TYPE="${PLUGIN_STORAGE_TYPE:-local}"
-export PLUGIN_STORAGE_LOCAL_ROOT="${PLUGIN_STORAGE_LOCAL_ROOT:-/data/plugin_daemon}"
+if [ -n "$external_plugin_storage_local_root" ]; then
+  export PLUGIN_STORAGE_LOCAL_ROOT="$external_plugin_storage_local_root"
+elif [ -z "${PLUGIN_STORAGE_LOCAL_ROOT:-}" ] || [ "${PLUGIN_STORAGE_LOCAL_ROOT:-}" = "/data/plugin_daemon" ]; then
+  export PLUGIN_STORAGE_LOCAL_ROOT="$plugin_storage_local_root_default"
+else
+  export PLUGIN_STORAGE_LOCAL_ROOT
+fi
 export PLUGIN_WORKING_PATH="${PLUGIN_WORKING_PATH:-/data/plugin_daemon/cwd}"
 export PLUGIN_INSTALLED_PATH="${PLUGIN_INSTALLED_PATH:-plugin}"
 export PLUGIN_PACKAGE_CACHE_PATH="${PLUGIN_PACKAGE_CACHE_PATH:-plugin_packages}"
@@ -61,5 +86,4 @@ export ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES="${ENFORCE_LANGGENIUS_PLUGIN_SIGNATU
 export PIP_MIRROR_URL="${PIP_MIRROR_URL:-}"
 export PLUGIN_IGNORE_UV_LOCK="${PLUGIN_IGNORE_UV_LOCK:-false}"
 export PYTHON_COMPILE_ALL_EXTRA_ARGS="${PYTHON_COMPILE_ALL_EXTRA_ARGS:--x \.venv}"
-set +a
 exec "$@"
