@@ -106,19 +106,19 @@ PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
 ```
 
-开发默认值仍偏便利，允许可移动 tag：
+NEXT branch 默认值 pin 到当前上游 main digest set：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
-DIFY_API_IMAGE_REF=langgenius/dify-api:latest
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-UV_VERSION=latest
-DIFY_VERSION=latest
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b45630940d288f3c8c6caa7c88f1003832
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+UV_VERSION=0.11.21
+DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
 ```
 
-这不等于发布态可复现。发布或长期演示前必须记录并传入 digest ref：
+更新 NEXT 上游时必须记录并传入新的 digest ref：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm@sha256:...

@@ -18,13 +18,13 @@ for arg_name in \
 done
 
 # 自定义构建参数可通过同名环境变量透传，例如：
-# DIFY_API_IMAGE_REF=langgenius/dify-api:1.14.2 \
-# DIFY_WEB_IMAGE_REF=langgenius/dify-web:1.14.2 \
-# PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:0.6.1-local \
-# SANDBOX_IMAGE_REF=langgenius/dify-sandbox:0.2.15 \
+# DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:... \
+# DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:... \
+# PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:... \
+# SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:... \
 # BASE_IMAGE_REF=python:3.12-slim-bookworm \
-# DIFY_VERSION=1.14.2 \
-# UV_VERSION=0.11.16 \
+# DIFY_VERSION=main-<commit> \
+# UV_VERSION=0.11.21 \
 #   scripts/build.sh "$IMAGE_TAG"
-# 发布构建应把 *_IMAGE_REF 和 BASE_IMAGE_REF 换成 image@sha256 digest ref。
+# NEXT 构建默认已 pin 到 main digest set；覆盖时也应使用 image@sha256 digest ref。
 docker build "${build_args[@]}" -t "$IMAGE_TAG" .

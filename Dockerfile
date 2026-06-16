@@ -15,12 +15,12 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api:latest
-ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-ARG DIFY_VERSION=latest
-ARG UV_VERSION=latest
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b45630940d288f3c8c6caa7c88f1003832
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d
+ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
+ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+ARG DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
+ARG UV_VERSION=0.11.21
 
 # -----------------------------
 # Use official prebuilt Dify Web assets

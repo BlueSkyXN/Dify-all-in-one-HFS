@@ -64,7 +64,7 @@ UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。开发默认值允许使用可移动 tag；发布构建应传入 `image@sha256:...` digest ref。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源。
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。NEXT branch 默认值已 pin 到上游 main digest set；更新上游或回到稳定版时必须作为一组 co-pin 修改。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源。
 
 ### `.dockerignore`
 

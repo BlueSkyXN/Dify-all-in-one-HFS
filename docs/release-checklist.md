@@ -64,7 +64,7 @@ All image refs use digest? yes/no:
 Mutable defaults used? yes/no + reason:
 ```
 
-开发默认值可以使用 `latest` / `main-local`。发布或长期演示必须记录并传入 `image@sha256:...` digest ref；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据。
+NEXT branch 默认值已经 pin 到 `image@sha256:...` digest ref。更新上游 main 或回到稳定版时，必须重新记录 Web/API/Plugin Daemon/Sandbox 的 co-pin set；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据。
 
 `scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
 
