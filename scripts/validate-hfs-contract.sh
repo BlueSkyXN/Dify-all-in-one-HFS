@@ -272,12 +272,16 @@ require_grep '^\*\.key$' .dockerignore \
 require_grep '^\*\.pem$' .dockerignore \
   ".dockerignore must exclude *.pem"
 
+require_grep 'location /openapi' docker/nginx.conf \
+  "docker/nginx.conf must expose /openapi through the internal API proxy"
 require_grep '/nginx-health' scripts/hf-space-smoke.sh \
   "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh \
   "smoke script must check /healthz"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh \
   "smoke script must check /_ops/health"
+require_grep 'SMOKE_OPENAPI_ENABLED' scripts/hf-space-smoke.sh \
+  "smoke script must support optional OpenAPI checks"
 require_grep 'web-root' scripts/hf-space-smoke.sh \
   "smoke script must check the web root"
 

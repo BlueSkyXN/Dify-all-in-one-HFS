@@ -98,6 +98,8 @@ ops-healthz
 admin-disabled
 setup-api
 init-api
+openapi-health    # 仅 SMOKE_OPENAPI_ENABLED=true 时
+openapi-version   # 仅 SMOKE_OPENAPI_ENABLED=true 时
 ops-health
 ops-system
 ops-persistence
@@ -108,6 +110,8 @@ ops-errors
 `ops-persistence` 不只检查 HTTP 200，还会断言 `/_ops/persistence` 的 `ok=true`，并要求 `missing_package_files`、`missing_installed_files`、`missing_runtime_states` 和 `plugin_storage_layout_issues` 为空；bucket-lite 下还会确认 Plugin Daemon 看到的 storage root 是真实 `/persist/...` 目录而不是 `/data/plugin_daemon/*` symlink root。
 
 如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status`、`/_admin/api/actions` 与 `/_admin/api/audit`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`。Web terminal / WebSSH 已移除，不再属于 smoke 范围。
+
+如果目标实例是 NEXT Space 且已设置 `OPENAPI_ENABLED=true`、`ENABLE_OAUTH_BEARER=true`，可额外设置 `SMOKE_OPENAPI_ENABLED=true`，脚本会检查 `/openapi/v1/_health` 和 `/openapi/v1/_version`。这只验证 OpenAPI route 和服务端版本探针；`difyctl auth login` 仍需要人工在 `/device` 页面批准，属于单独的半自动验收。
 
 默认重试：
 

@@ -7,6 +7,7 @@ OPS_TOKEN=${OPS_TOKEN:-}
 ADMIN_TOKEN=${ADMIN_TOKEN:-}
 SMOKE_ADMIN_ENABLED=${SMOKE_ADMIN_ENABLED:-${ADMIN_ENABLED:-false}}
 SMOKE_ADMIN_ACTIONS=${SMOKE_ADMIN_ACTIONS:-false}
+SMOKE_OPENAPI_ENABLED=${SMOKE_OPENAPI_ENABLED:-false}
 SMOKE_RETRIES=${SMOKE_RETRIES:-30}
 SMOKE_DELAY=${SMOKE_DELAY:-5}
 
@@ -277,6 +278,13 @@ else
 fi
 check_status "setup-api" "$BASE_URL/console/api/setup" "200"
 check_status "init-api" "$BASE_URL/console/api/init" "200"
+if [ "$SMOKE_OPENAPI_ENABLED" = "true" ]; then
+  check_status "openapi-health" "$BASE_URL/openapi/v1/_health" "200"
+  check_status "openapi-version" "$BASE_URL/openapi/v1/_version" "200"
+else
+  printf 'SKIP openapi-health: SMOKE_OPENAPI_ENABLED is not true\n'
+  printf 'SKIP openapi-version: SMOKE_OPENAPI_ENABLED is not true\n'
+fi
 check_ops "ops-health" "/_ops/health"
 check_ops "ops-system" "/_ops/system"
 check_ops_persistence

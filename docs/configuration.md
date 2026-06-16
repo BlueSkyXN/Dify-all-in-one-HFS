@@ -123,6 +123,21 @@ POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime
 - 与 `docker/dify.env.runtime` 默认值一致的变量不要上传到 HF Variables。
 - `POSTGRES_BUCKET_FAILURE_MODE=exit` 适合故障演练或强制暴露 bucket live PGDATA 问题；当前 HF bucket 上 PostgreSQL 启动可能超过 `pg_ctl` 等待窗口，线上服务默认保留 `fallback-to-runtime`。
 
+## NEXT-only OpenAPI Variables
+
+稳定 Space 默认不要开启 OpenAPI。NEXT Space 需要验证 `difyctl` 或其他 `/openapi/v1` 客户端时，才在 NEXT Space Settings 中单独设置：
+
+```env
+OPENAPI_ENABLED=true
+ENABLE_OAUTH_BEARER=true
+OPENAPI_KNOWN_CLIENT_IDS=difyctl
+OPENAPI_RATE_LIMIT_PER_TOKEN=60
+DEVICE_FLOW_APPROVE_RATE_LIMIT_PER_HOUR=10
+OPENAPI_CORS_ALLOW_ORIGINS=
+```
+
+`OPENAPI_ENABLED=true` 暴露的是整个 `/openapi/v1` user/workspace-scoped programmatic surface，不是只开放 `difyctl` 子集。`difyctl auth login` 使用 OAuth device flow，需要在 NEXT Console 的 `/device` 页面人工批准；如果要做无人值守 CI，需要另行设计 token 注入方式，且不能把 `dfoa_` / `dfoe_` token 写入 tracked docs、logs 或示例配置。
+
 ## 推荐 Space Secrets
 
 ```env
@@ -261,6 +276,19 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `MARKETPLACE_API_URL` | `https://marketplace.dify.ai` | Marketplace API |
 | `MARKETPLACE_URL` | `https://marketplace.dify.ai` | Marketplace Web |
 | `MARKETPLACE_ENABLED` | `true` | 是否启用 Marketplace |
+
+## OpenAPI / difyctl
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `OPENAPI_ENABLED` | `false` | 是否注册 `/openapi/v1/*` endpoint group |
+| `OPENAPI_CORS_ALLOW_ORIGINS` | empty | `/openapi/v1/*` CORS allowlist；默认 same-origin |
+| `OPENAPI_KNOWN_CLIENT_IDS` | `difyctl` | 允许发起 device flow 的 client id |
+| `OPENAPI_RATE_LIMIT_PER_TOKEN` | `60` | `/openapi/v1/*` bearer token 每分钟请求限制 |
+| `DEVICE_FLOW_APPROVE_RATE_LIMIT_PER_HOUR` | `10` | `/device` approve 相关限流 |
+| `ENABLE_OAUTH_BEARER` | `false` | 是否接受 `dfoa_` / `dfoe_` bearer token |
+
+Nginx 会把 `/openapi` 代理到内部 Dify API。`/openapi/v1/_health` 和 `/openapi/v1/_version` 可作为启用后的基础探针；`/_version` 返回的是上游 Dify 服务端版本，`difyctl version --check-compat` 按这个值判断兼容性，不按本仓库 `DIFY_VERSION` metadata 判断。
 
 ## Storage
 

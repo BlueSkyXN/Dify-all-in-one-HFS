@@ -121,7 +121,7 @@ GitHub Actions 轻量静态检查 workflow。
 职责：
 
 - 保留已有 Docker/HF env。
-- 为 Dify API/Web/Worker/Beat、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
+- 为 Dify API/Web/Worker/Beat、OpenAPI、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
 - 为 Admin Service 设置默认值。
 - 被 `entrypoint.sh`、`with-*` wrapper 和 `wait-for-core` source。
 
@@ -368,6 +368,7 @@ env-file=docker/dify.env.demo
 - `OPS_TOKEN` 可选，用于检查 `/_ops`。
 - 设置 `OPS_TOKEN` 时会额外验证 query token 迁移到 cookie-backed dashboard，且 HTML 不再包含完整 token。
 - `ADMIN_TOKEN` + `SMOKE_ADMIN_ENABLED=true` 可选，用于检查已开启的 `/_admin`。
+- `SMOKE_OPENAPI_ENABLED=true` 可选，用于检查 NEXT OpenAPI `/_health` 和 `/_version`。
 - `SMOKE_RETRIES` 和 `SMOKE_DELAY` 控制重试。
 
 检查：
@@ -380,6 +381,8 @@ env-file=docker/dify.env.demo
 /_admin/
 /console/api/setup
 /console/api/init
+/openapi/v1/_health    # 仅 SMOKE_OPENAPI_ENABLED=true 时
+/openapi/v1/_version   # 仅 SMOKE_OPENAPI_ENABLED=true 时
 /_ops/health
 /_ops/system
 /_ops/metrics
