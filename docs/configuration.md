@@ -85,6 +85,7 @@ docker/dify.env.demo
 PUBLIC_URL
 CONSOLE_WEB_URL
 CONSOLE_API_URL
+SERVER_CONSOLE_API_URL
 APP_WEB_URL
 APP_API_URL
 FILES_URL
@@ -197,6 +198,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `PUBLIC_URL` | `https://${SPACE_HOST}` 或 `http://localhost:8080` | 浏览器看到的外部 URL |
 | `CONSOLE_WEB_URL` | `${PUBLIC_URL}` | Console Web URL |
 | `CONSOLE_API_URL` | `${PUBLIC_URL}` | Console API URL |
+| `SERVER_CONSOLE_API_URL` | `http://127.0.0.1:5001` | Web SSR server-side Console API URL；NEXT/main web 在容器内请求 console API 时使用 |
 | `SERVICE_API_URL` | `http://127.0.0.1:5001` | 容器内服务 API URL |
 | `APP_WEB_URL` | `${PUBLIC_URL}` | App Web URL |
 | `APP_API_URL` | `${PUBLIC_URL}` | App API URL |
