@@ -22,7 +22,7 @@
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
 4. `sandbox-image`
-   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到 upstream compose 使用的 `dify-sandbox:0.2.15` manifest digest `langgenius/dify-sandbox@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e`。
+   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到 HFS `sandbox_exec` 启动自检已通过的 config/dependencies digest `langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788`。
    - 最终复制 `/conf` 和 `/dependencies`。
    - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
@@ -46,13 +46,13 @@ BASE_IMAGE_REF=python:3.12-slim-bookworm
 DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3
 DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 DIFY_VERSION=main-e970cbde0f6048e2e5ab4021b250aa6d9b934653
 UV_VERSION=0.11.21
 ```
 
-NEXT branch 默认值已使用 digest ref 和 sandbox source ref，便于复现当前 main 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。不要用上游 `docker/docker-compose.yaml` 里的 `1.14.2` image tag 判断 main 代码是否已经运行；NEXT 走的是官方 main commit-tag image digest，不是 compose release tag。
+NEXT branch 默认值已使用 digest ref 和 sandbox source ref，便于复现当前 main 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。不要用上游 `docker/docker-compose.yaml` 里的 `1.14.2` image tag 判断 main 代码是否已经运行；NEXT 走的是官方 main commit-tag image digest，不是 compose release tag。若最新 main 源码已经前进但对应 Web/API commit-tag 镜像还不存在，保持上一个可验证 digest set 比只改 `DIFY_VERSION` 更准确。
 
 `DIFY_VERSION` 只作为 build/runtime metadata，不再参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`。Plugin Daemon 使用 `0.6.2-local` 对应 digest，发布验证不要依赖可变的 `latest-local` tag。
 

@@ -73,7 +73,7 @@
 DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329
 DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 BASE_IMAGE_REF=python:3.12-slim-bookworm
 DIFY_VERSION=main-e970cbde0f6048e2e5ab4021b250aa6d9b934653
@@ -82,9 +82,9 @@ PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-NEXT branch 默认值已 pin 到上游 main commit image digest set 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
+NEXT branch 默认值已 pin 到官方 main commit-tag image digest set、HFS 已验证的 Sandbox config/dependencies digest 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
 
-注意：上游 `main/docker/docker-compose.yaml` 仍可能引用最新 release 镜像 tag，例如 `1.14.2`。这不代表 main 源码未变化，也不代表 `docker compose up` 会跑到 main 代码。NEXT/HFS 使用的是官方 Docker Hub 上按 main commit 发布的 `dify-api` / `dify-web` commit-tag 镜像 digest，再叠加本仓库的 all-in-one runtime glue。
+注意：上游 `main/docker/docker-compose.yaml` 仍可能引用最新 release 镜像 tag，例如 `1.14.2`。这不代表 main 源码未变化，也不代表 `docker compose up` 会跑到 main 代码。NEXT/HFS 使用的是官方 Docker Hub 上按 main commit 发布的 `dify-api` / `dify-web` commit-tag 镜像 digest，再叠加本仓库的 all-in-one runtime glue。如果上游 main 源码已经前进但 Docker Hub 尚未发布对应 commit-tag 镜像，NEXT 只能记录差距或改走源码自建镜像，不能只改 metadata 声称已运行该 commit。
 
 ## 运行状态入口
 
