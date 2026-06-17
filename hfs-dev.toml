@@ -57,6 +57,13 @@ dev_mutable_default_allowed = true
 release_requires_digest = true
 
 [[release_pins]]
+name = "DIFY_SANDBOX_SOURCE_REF"
+type = "source_revision"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+
+[[release_pins]]
 name = "UV_VERSION"
 type = "package_version"
 source = "Dockerfile ARG"

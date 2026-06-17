@@ -12,7 +12,8 @@
 
 | 类别 | 引入方式 | 组件 |
 | --- | --- | --- |
-| Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 4 个 build stage，由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` / `PLUGIN_DAEMON_IMAGE_REF` / `SANDBOX_IMAGE_REF` 选择镜像；发布态使用 digest ref | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon` 的 `/app`；`langgenius/dify-sandbox` 的 `main` + `conf` + `dependencies` |
+| Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 image stages，由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` / `PLUGIN_DAEMON_IMAGE_REF` / `SANDBOX_IMAGE_REF` 选择镜像；发布态使用 digest ref | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon` 的 `/app`；`langgenius/dify-sandbox` 的 `conf` + `dependencies` |
+| NEXT Sandbox binary patch | `sandbox-builder` 从 `DIFY_SANDBOX_SOURCE_REF` 拉取上游 `dify-sandbox` source 并应用 `docker/patches/dify-sandbox-hfs-uidpool.patch` | 只替换 `/opt/dify/sandbox/main`，用于 HFS rootless UID/GID 兼容；仍保留 upstream chroot/seccomp 路径 |
 | Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv` |
 | 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
 
@@ -78,7 +79,7 @@ flowchart TD
 
 ## 容器内进程
 
-容器以 `/usr/bin/tini --` 作为 PID 1，包裹 `docker/entrypoint.sh`；初始化完成后由 `supervisord` 接管所有长期运行进程（详见 `runtime-lifecycle.md`）。镜像内创建 UID `1000` 的 `user` 与 UID `65537` 的 `sandbox` 两个非 root 账号，匹配 Hugging Face Docker Space 的非 root 约束；除了 `/opt/dify/sandbox/main`（setuid root，sandbox runtime 需要）以外，全部 program 均以 `user` 运行。
+容器以 `/usr/bin/tini --` 作为 PID 1，包裹 `docker/entrypoint.sh`；初始化完成后由 `supervisord` 接管所有长期运行进程（详见 `runtime-lifecycle.md`）。镜像内创建 UID `1000` 的 `user` 与 UID `65537` 的 `sandbox` 两个非 root 账号，匹配 Hugging Face Docker Space 的非 root 约束；除了 `/opt/dify/sandbox/main`（setuid root，sandbox runtime 需要，NEXT/HFS 默认执行 UID/GID 为 `1000`）以外，全部 program 均以 `user` 运行。
 
 | program | 端口 | 作用 | 日志 |
 | --- | --- | --- | --- |

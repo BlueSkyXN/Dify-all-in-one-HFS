@@ -315,6 +315,9 @@ Nginx 会把 `/openapi` 代理到内部 Dify API。`/openapi/v1/_health` 和 `/o
 | `SANDBOX_PORT` | `8194` | Sandbox port |
 | `SANDBOX_PYTHON_PATH` | `/usr/local/bin/python3` | Python path |
 | `SANDBOX_NODEJS_PATH` | `/usr/bin/node` | Node path |
+| `SANDBOX_UID_POOL_MIN` | `1000` | NEXT/HFS patched sandbox 的执行 UID pool 起点；HF rootless 环境默认只能使用映射的 Space user |
+| `SANDBOX_UID_POOL_MAX` | `1001` | NEXT/HFS patched sandbox 的执行 UID pool 终点（不含）；默认串行化为单 UID |
+| `SANDBOX_RUN_GID` | `1000` | NEXT/HFS patched sandbox 执行 GID；默认使用映射的 Space group |
 | `SANDBOX_SELFCHECK_ENABLED` | `true` | 启动后一次性调用内部 `/v1/sandbox/run`，验证 Python code execution 热路径 |
 | `SANDBOX_SELFCHECK_STRICT` | `false` | `false` 时自检失败只在 `/_ops/health.sandbox_exec` 标记 degraded；`true` 时让 health 失败 |
 | `SANDBOX_SELFCHECK_RESULT_PATH` | `${RUNTIME_ROOT}/sandbox-selfcheck.json` | 自检结果文件；`ops-service` 只读读取，不包含 secret 原文 |

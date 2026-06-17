@@ -73,6 +73,7 @@ DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6b
 DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b45630940d288f3c8c6caa7c88f1003832
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 BASE_IMAGE_REF=python:3.12-slim-bookworm
 DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
 UV_VERSION=0.11.21
@@ -80,7 +81,7 @@ PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-NEXT branch 默认值已 pin 到上游 main digest set。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF` 和 `SANDBOX_IMAGE_REF`。
+NEXT branch 默认值已 pin 到上游 main digest set 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
 
 ## 运行状态入口
 

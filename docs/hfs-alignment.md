@@ -104,6 +104,7 @@ DIFY_WEB_IMAGE_REF
 DIFY_API_IMAGE_REF
 PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
+DIFY_SANDBOX_SOURCE_REF
 ```
 
 NEXT branch 默认值 pin 到当前上游 main digest set：
@@ -114,6 +115,7 @@ DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b456
 DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 UV_VERSION=0.11.21
 DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
 ```
@@ -126,10 +128,11 @@ DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:...
 DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:...
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:...
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:...
+DIFY_SANDBOX_SOURCE_REF=<dify-sandbox-commit>
 UV_VERSION=<pinned-version>
 ```
 
-`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源。
+`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源。NEXT/HFS 的 Sandbox server binary 来自 `DIFY_SANDBOX_SOURCE_REF` 加本仓库 patch，`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`。
 
 ## 对其他 HFS 项目的迁移规则
 

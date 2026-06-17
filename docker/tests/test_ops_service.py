@@ -84,17 +84,26 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                 "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF": "langgenius/dify-web@sha256:web",
                 "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF": "langgenius/dify-plugin-daemon@sha256:plugin",
                 "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF": "langgenius/dify-sandbox@sha256:sandbox",
+                "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF": "44cdbd5",
+                "SANDBOX_UID_POOL_MIN": "1000",
+                "SANDBOX_UID_POOL_MAX": "1001",
+                "SANDBOX_RUN_GID": "1000",
             }
         )
 
         build = ops_service.version_payload()["build"]
+        sandbox = ops_service.version_payload()["sandbox"]
 
         self.assertEqual(build["base_image_ref"], "python:3.12-slim-bookworm@sha256:base")
         self.assertEqual(build["dify_api_image_ref"], "langgenius/dify-api@sha256:api")
         self.assertEqual(build["dify_web_image_ref"], "langgenius/dify-web@sha256:web")
         self.assertEqual(build["plugin_daemon_image_ref"], "langgenius/dify-plugin-daemon@sha256:plugin")
         self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
+        self.assertEqual(build["sandbox_source_ref"], "44cdbd5")
         self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
+        self.assertEqual(sandbox["uid_pool_min"], "1000")
+        self.assertEqual(sandbox["uid_pool_max"], "1001")
+        self.assertEqual(sandbox["run_gid"], "1000")
 
     def test_sandbox_selfcheck_payload_reads_sanitized_result(self):
         with tempfile.TemporaryDirectory() as tmpdir:

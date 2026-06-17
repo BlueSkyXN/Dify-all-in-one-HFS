@@ -125,6 +125,11 @@ expected_pins = {
         "dev_mutable_default_allowed": True,
         "release_requires_digest": True,
     },
+    "DIFY_SANDBOX_SOURCE_REF": {
+        "type": "source_revision",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+    },
     "UV_VERSION": {
         "type": "package_version",
         "required_for_release": True,
@@ -238,6 +243,8 @@ require_grep '^ARG PLUGIN_DAEMON_IMAGE_REF=' Dockerfile \
   "Dockerfile must expose PLUGIN_DAEMON_IMAGE_REF build input"
 require_grep '^ARG SANDBOX_IMAGE_REF=' Dockerfile \
   "Dockerfile must expose SANDBOX_IMAGE_REF build input"
+require_grep '^ARG DIFY_SANDBOX_SOURCE_REF=' Dockerfile \
+  "Dockerfile must expose DIFY_SANDBOX_SOURCE_REF build input"
 require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
   "Dockerfile must select web image from DIFY_WEB_IMAGE_REF"
 require_grep '^FROM \${DIFY_API_IMAGE_REF} AS api-image$' Dockerfile \

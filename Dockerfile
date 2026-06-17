@@ -19,6 +19,7 @@ ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435
 ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+ARG DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 ARG DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
 ARG UV_VERSION=0.11.21
 
@@ -51,6 +52,34 @@ FROM ${SANDBOX_IMAGE_REF} AS sandbox-image
 
 
 # -----------------------------
+# Build a small HFS-compatible Dify Sandbox binary patch
+# -----------------------------
+FROM golang:1.25-bookworm AS sandbox-builder
+ARG DIFY_SANDBOX_SOURCE_REF
+ARG TARGETARCH
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       ca-certificates git pkg-config gcc libseccomp-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git init \
+    && git remote add origin https://github.com/langgenius/dify-sandbox.git \
+    && git fetch --depth 1 origin "${DIFY_SANDBOX_SOURCE_REF}" \
+    && git checkout --detach FETCH_HEAD
+COPY docker/patches/dify-sandbox-hfs-uidpool.patch /tmp/dify-sandbox-hfs-uidpool.patch
+RUN git apply --unidiff-zero /tmp/dify-sandbox-hfs-uidpool.patch \
+    && go mod download \
+    && case "${TARGETARCH:-amd64}" in \
+         amd64) export GOARCH=amd64 ;; \
+         arm64) export GOARCH=arm64 ;; \
+         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+       esac \
+    && CGO_ENABLED=1 GOOS=linux go build -o internal/core/runner/python/python.so -buildmode=c-shared -ldflags="-s -w" cmd/lib/python/main.go \
+    && CGO_ENABLED=1 GOOS=linux go build -o internal/core/runner/nodejs/nodejs.so -buildmode=c-shared -ldflags="-s -w" cmd/lib/nodejs/main.go \
+    && GOOS=linux go build -o main -ldflags="-s -w" cmd/server/main.go
+
+
+# -----------------------------
 # Final runtime image
 # -----------------------------
 FROM ${BASE_IMAGE_REF} AS runtime
@@ -61,6 +90,7 @@ ARG DIFY_WEB_IMAGE_REF
 ARG DIFY_API_IMAGE_REF
 ARG PLUGIN_DAEMON_IMAGE_REF
 ARG SANDBOX_IMAGE_REF
+ARG DIFY_SANDBOX_SOURCE_REF
 ARG DIFY_VERSION
 ARG UV_VERSION
 ARG TARGETARCH
@@ -73,6 +103,7 @@ ENV DIFY_AIO_BUILD_DIFY_API_IMAGE_REF=${DIFY_API_IMAGE_REF}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF=${DIFY_WEB_IMAGE_REF}
 ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF=${PLUGIN_DAEMON_IMAGE_REF}
 ENV DIFY_AIO_BUILD_SANDBOX_IMAGE_REF=${SANDBOX_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF=${DIFY_SANDBOX_SOURCE_REF}
 ENV DIFY_AIO_BUILD_DIFY_API_IMAGE=${DIFY_API_IMAGE_REF}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE=${DIFY_WEB_IMAGE_REF}
 ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE=${PLUGIN_DAEMON_IMAGE_REF}
@@ -154,9 +185,10 @@ RUN mkdir -p /app
 COPY --from=web-builder --chown=user:user /app/targets/ /app/targets/
 COPY --from=web-builder --chown=user:user --chmod=755 /app/entrypoint.sh /app/entrypoint.sh
 
-# Copy official Plugin Daemon and Sandbox runtime artifacts.
+# Copy official Plugin Daemon and Sandbox runtime artifacts. NEXT replaces the
+# sandbox server binary with a tiny source-pinned HFS UID/GID compatibility patch.
 COPY --from=plugin-daemon-image --chown=user:user /app /opt/dify/plugin-daemon
-COPY --from=sandbox-image /main /opt/dify/sandbox/main
+COPY --from=sandbox-builder /src/main /opt/dify/sandbox/main
 COPY --from=sandbox-image --chown=user:user /conf /conf
 COPY --from=sandbox-image --chown=user:user /dependencies /dependencies
 COPY docker/sandbox-python-requirements.txt /dependencies/python-requirements.txt

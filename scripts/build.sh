@@ -9,6 +9,7 @@ for arg_name in \
   DIFY_WEB_IMAGE_REF \
   PLUGIN_DAEMON_IMAGE_REF \
   SANDBOX_IMAGE_REF \
+  DIFY_SANDBOX_SOURCE_REF \
   DIFY_VERSION \
   UV_VERSION; do
   arg_value=${!arg_name-}
@@ -22,6 +23,7 @@ done
 # DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:... \
 # PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:... \
 # SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:... \
+# DIFY_SANDBOX_SOURCE_REF=<dify-sandbox-commit> \
 # BASE_IMAGE_REF=python:3.12-slim-bookworm \
 # DIFY_VERSION=main-<commit> \
 # UV_VERSION=0.11.21 \

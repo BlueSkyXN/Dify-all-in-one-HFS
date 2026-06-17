@@ -157,7 +157,7 @@ SANDBOX_ENABLE_NETWORK=false
 - 是否需要 HTTP/HTTPS proxy。
 - 是否要限制 package install。
 
-镜像中的 `/opt/dify/sandbox/main` 保留 setuid root 权限，这是上游 Dify Sandbox 用于创建隔离执行环境的 runtime 边界。这个 SUID binary 的安全性依赖上游 sandbox 的 syscall/隔离实现和本仓库默认关闭出网的配置；不要把 `SANDBOX_ENABLE_NETWORK=true` 当作普通功能开关在公开 Space 中长期启用。
+镜像中的 `/opt/dify/sandbox/main` 保留 setuid root 权限，这是上游 Dify Sandbox 用于创建隔离执行环境的 runtime 边界。NEXT/HFS 镜像使用 source-pinned sandbox binary patch，使 sandbox 在 Hugging Face rootless/userns 环境中默认使用映射的 UID/GID `1000`，避免 upstream 默认 `10000..10999` UID pool 在 HFS 上 `chown` 失败；它仍保留 upstream 的 chroot/seccomp 路径，但默认会把 sandbox code execution 串行化到单 UID。这个 SUID binary 的安全性依赖上游 sandbox 的 syscall/隔离实现、本仓库的 HFS 兼容 patch 和默认关闭出网的配置；不要把 `SANDBOX_ENABLE_NETWORK=true` 当作普通功能开关在公开 Space 中长期启用。
 
 ## Plugin
 

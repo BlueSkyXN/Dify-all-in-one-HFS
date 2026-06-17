@@ -1,0 +1,79 @@
+diff --git a/internal/core/runner/init.go b/internal/core/runner/init.go
+index b4be396..edb18cb 100644
+--- a/internal/core/runner/init.go
++++ b/internal/core/runner/init.go
+@@ -5,0 +6 @@ import (
++	"os"
+@@ -28,0 +30,11 @@ func init() {
++	if gidOverride := strings.TrimSpace(os.Getenv("SANDBOX_RUN_GID")); gidOverride != "" {
++		gid, err := strconv.Atoi(gidOverride)
++		if err != nil {
++			slog.Error("failed to parse SANDBOX_RUN_GID", "err", err, "value", gidOverride)
++			panic(fmt.Sprintf("failed to parse SANDBOX_RUN_GID: %v", err))
++		}
++		static.SANDBOX_GROUP_ID = gid
++		slog.Info("sandbox group id overridden", "gid", gid)
++		return
++	}
++
+diff --git a/internal/core/runner/uidpool/uid_pool.go b/internal/core/runner/uidpool/uid_pool.go
+index 08d0437..ad0967d 100644
+--- a/internal/core/runner/uidpool/uid_pool.go
++++ b/internal/core/runner/uidpool/uid_pool.go
+@@ -8,0 +9,2 @@ import (
++	"strconv"
++	"strings"
+@@ -59,2 +61,4 @@ func AcquireUID(ctx context.Context) (int, error) {
+-		globalPool = NewUIDPool(10000, 11000)
+-		ensurePasswdEntries(10000, 11000)
++		min, max := uidPoolBounds()
++		globalPool = NewUIDPool(min, max)
++		ensurePasswdEntries(min, max)
++		slog.Info("sandbox UID pool initialized", "range", fmt.Sprintf("%d-%d", min, max-1))
+@@ -64,0 +69,22 @@ func AcquireUID(ctx context.Context) (int, error) {
++func uidPoolBounds() (int, int) {
++	min := envInt("SANDBOX_UID_POOL_MIN", 10000)
++	max := envInt("SANDBOX_UID_POOL_MAX", 11000)
++	if max <= min {
++		max = min + 1
++	}
++	return min, max
++}
++
++func envInt(name string, fallback int) int {
++	value := strings.TrimSpace(os.Getenv(name))
++	if value == "" {
++		return fallback
++	}
++	parsed, err := strconv.Atoi(value)
++	if err != nil {
++		slog.Warn("invalid sandbox uid pool value, using fallback", "name", name, "value", value, "fallback", fallback)
++		return fallback
++	}
++	return parsed
++}
++
+@@ -74,0 +101,3 @@ func ensurePasswdEntries(min, max int) {
++		if passwdEntryExists(i) {
++			continue
++		}
+@@ -79,0 +109,15 @@ func ensurePasswdEntries(min, max int) {
++func passwdEntryExists(uid int) bool {
++	data, err := os.ReadFile("/etc/passwd")
++	if err != nil {
++		return false
++	}
++	uidText := strconv.Itoa(uid)
++	for _, line := range strings.Split(string(data), "\n") {
++		fields := strings.Split(line, ":")
++		if len(fields) > 2 && fields[2] == uidText {
++			return true
++		}
++	}
++	return false
++}
++
+@@ -82 +126,2 @@ func ReleaseUID(uid int) {
+-		globalPool = NewUIDPool(10000, 11000)
++		min, max := uidPoolBounds()
++		globalPool = NewUIDPool(min, max)
