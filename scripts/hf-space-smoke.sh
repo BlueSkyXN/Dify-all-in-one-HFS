@@ -258,6 +258,17 @@ check_admin() {
   exit 1
 }
 
+check_admin_enabled_without_token() {
+  if [ "$SMOKE_ADMIN_ACTIONS" = "true" ]; then
+    printf 'FAIL admin-tokenless-actions: ADMIN_TOKEN is required when SMOKE_ADMIN_ACTIONS=true\n' >&2
+    exit 1
+  fi
+
+  check_status "admin-root" "$BASE_URL/_admin/" "200"
+  check_status "admin-status-unauthorized" "$BASE_URL/_admin/api/status" "401"
+  printf 'SKIP admin-token-authenticated: ADMIN_TOKEN is not set; verified enabled unauthenticated boundary only\n'
+}
+
 check_admin_action() {
   local label="admin-run-health-checks"
   local status
@@ -333,11 +344,15 @@ check_space_frame_headers
 check_status "nginx-health" "$BASE_URL/nginx-health" "200"
 check_status "ops-healthz" "$BASE_URL/healthz" "200"
 if [ "$SMOKE_ADMIN_ENABLED" = "true" ]; then
-  check_status "admin-root" "$BASE_URL/_admin/" "200"
-  check_admin "admin-status" "/_admin/api/status"
-  check_admin "admin-actions" "/_admin/api/actions"
-  check_admin "admin-audit" "/_admin/api/audit?limit=5"
-  check_admin_action
+  if [ -z "$ADMIN_TOKEN" ]; then
+    check_admin_enabled_without_token
+  else
+    check_status "admin-root" "$BASE_URL/_admin/" "200"
+    check_admin "admin-status" "/_admin/api/status"
+    check_admin "admin-actions" "/_admin/api/actions"
+    check_admin "admin-audit" "/_admin/api/audit?limit=5"
+    check_admin_action
+  fi
 else
   check_status "admin-disabled" "$BASE_URL/_admin/" "404"
 fi

@@ -105,6 +105,16 @@ Reason if skipped:
 
 `agent_backend.status=ok` 只能证明内部 `dify-agent` backend 可达；真实 Agent v2 发布验收需要再跑 Agent App 或 workflow Agent node，最好包含一次 plugin tool 调用。
 
+如果 NEXT Space 开启 `ADMIN_ENABLED=true` 但本轮不提供 `ADMIN_TOKEN`，可以用：
+
+```bash
+SMOKE_ADMIN_ENABLED=true \
+SMOKE_OPENAPI_ENABLED=true \
+scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one-next.hf.space
+```
+
+这只验证 admin UI 可达和未鉴权 API 返回 401，不验证 authenticated admin API 或写 action。需要完整 admin smoke 时仍必须设置 `ADMIN_TOKEN`。
+
 ## 合并到 GitHub main
 
 合并后记录：
