@@ -697,7 +697,12 @@ def sandbox_selfcheck_payload() -> dict[str, Any]:
         "duration_ms",
         "health_status",
         "run_status",
+        "json_ok",
+        "outer_code",
+        "exit_code",
         "contains_marker",
+        "sandbox_error",
+        "stderr_present",
         "error",
     }
     payload = {key: data.get(key) for key in allowed if key in data}

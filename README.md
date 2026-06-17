@@ -245,7 +245,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_ops/metrics          Prometheus-style text metrics
 ```
 
-`/_ops/health` 会包含 `sandbox_exec` 字段。它来自容器启动后一次性内部调用 `POST /v1/sandbox/run` 的结果，用来确认 Sandbox 不只是端口存活，而是真能执行 `python3` code。默认失败只标记 degraded，不把 demo Space 直接拉挂；受控验证可设置 `SANDBOX_SELFCHECK_STRICT=true`。
+`/_ops/health` 会包含 `sandbox_exec` 字段。它来自容器启动后一次性内部调用 `POST /v1/sandbox/run` 的结果，用来确认 Sandbox 不只是端口存活，而是真能执行 `python3` code；判定条件包括 HTTP 200、sandbox JSON envelope 成功、`exit_code=0`、`error=""`，以及 stdout 命中 marker。默认失败只标记 degraded，不把 demo Space 直接拉挂；受控验证可设置 `SANDBOX_SELFCHECK_STRICT=true`。
 
 NEXT/HFS 镜像的 Sandbox server binary 使用 `DIFY_SANDBOX_SOURCE_REF` 指向的 upstream source 加一处 HFS UID/GID 兼容 patch 构建；`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`。`/_ops/version` 会同时展示 image ref、source ref 和当前 `SANDBOX_UID_POOL_*` / `SANDBOX_RUN_GID` 配置。
 

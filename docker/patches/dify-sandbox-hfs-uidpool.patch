@@ -95,7 +95,7 @@ index c5dd37d..5459910 100644
 +	SYS_GETCPU      = 309
 +	SYS_MEMBARRIER  = 324
 +	SYS_STATX       = 332
-@@ -39,0 +47,11 @@ var ALLOW_SYSCALLS = []int{
+@@ -39,0 +47,12 @@ var ALLOW_SYSCALLS = []int{
 +	// Python 3.12 on current HFS base images can issue these after the
 +	// prescript installs seccomp. They are read-only/process-introspection
 +	// or descriptor housekeeping calls; network syscalls remain gated by
@@ -104,6 +104,7 @@ index c5dd37d..5459910 100644
 +	syscall.SYS_STAT, syscall.SYS_LSTAT, syscall.SYS_STATFS, syscall.SYS_FSTATFS, SYS_STATX,
 +	syscall.SYS_OPEN, SYS_OPENAT2, syscall.SYS_READLINK, syscall.SYS_READLINKAT,
 +	syscall.SYS_READV, syscall.SYS_WRITEV, syscall.SYS_PREAD64,
++	syscall.SYS_POLL, syscall.SYS_PPOLL, syscall.SYS_EPOLL_WAIT, syscall.SYS_EPOLL_PWAIT,
 +	syscall.SYS_GETCWD, syscall.SYS_GETRLIMIT, syscall.SYS_PRLIMIT64,
 +	syscall.SYS_GETRUSAGE, syscall.SYS_GETGID, syscall.SYS_GETEUID, syscall.SYS_GETEGID, syscall.SYS_GETGROUPS,
 +	syscall.SYS_PRCTL, SYS_GETCPU, syscall.SYS_UTIMENSAT, SYS_CLOSE_RANGE, SYS_MEMBARRIER,

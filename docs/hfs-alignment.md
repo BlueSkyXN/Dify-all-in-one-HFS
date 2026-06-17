@@ -134,7 +134,7 @@ DIFY_SANDBOX_SOURCE_REF=<dify-sandbox-commit>
 UV_VERSION=<pinned-version>
 ```
 
-`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源。NEXT/HFS 的 Sandbox server binary 来自 `DIFY_SANDBOX_SOURCE_REF` 加本仓库 patch，`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`，并且必须通过启动期 `sandbox_exec` 真实执行自检后才能进入可送审状态。
+`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源。NEXT/HFS 的 Sandbox server binary 来自 `DIFY_SANDBOX_SOURCE_REF` 加本仓库 patch，`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`，并且必须通过启动期 `sandbox_exec` 真实执行自检后才能进入可送审状态。这个自检不只看 marker，还要求 sandbox response 的 `exit_code=0` 且 `error=""`。
 
 ## 对其他 HFS 项目的迁移规则
 

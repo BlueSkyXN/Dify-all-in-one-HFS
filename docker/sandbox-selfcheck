@@ -113,6 +113,57 @@ def run_sandbox_probe(base_url: str, api_key: str, timeout: float) -> tuple[int 
     )
 
 
+def parse_run_response(response_text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(response_text)
+    except Exception as exc:
+        return {
+            "json_ok": False,
+            "contains_marker": MARKER in response_text,
+            "error": f"invalid sandbox JSON response: {exc}",
+        }
+
+    if not isinstance(payload, dict):
+        return {
+            "json_ok": False,
+            "contains_marker": MARKER in response_text,
+            "error": "sandbox JSON response is not an object",
+        }
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return {
+            "json_ok": True,
+            "outer_code": payload.get("code"),
+            "outer_message": payload.get("message"),
+            "contains_marker": MARKER in response_text,
+            "error": "sandbox JSON response does not include object data",
+        }
+
+    stdout = data.get("stdout")
+    sandbox_error = data.get("error")
+    exit_code = data.get("exit_code")
+    contains_marker = isinstance(stdout, str) and MARKER in stdout
+    parsed = {
+        "json_ok": True,
+        "outer_code": payload.get("code"),
+        "outer_message": payload.get("message"),
+        "exit_code": exit_code,
+        "contains_marker": contains_marker,
+        "sandbox_error": sandbox_error if isinstance(sandbox_error, str) else "",
+        "stderr_present": bool(data.get("stderr")),
+    }
+    if payload.get("code") != 0:
+        parsed["error"] = f"sandbox outer response code is {payload.get('code')!r}"
+    elif exit_code != 0:
+        parsed["error"] = f"sandbox process exit_code is {exit_code!r}"
+    elif parsed["sandbox_error"]:
+        parsed["error"] = "sandbox process reported execution error"
+    elif not contains_marker:
+        parsed["error"] = "sandbox stdout did not include selfcheck marker"
+    return parsed
+
+
 def result(
     *,
     ok: bool,
@@ -188,8 +239,15 @@ def main() -> int:
         return 1 if strict else 0
 
     run_status, response_text, run_error = run_sandbox_probe(base_url, api_key, request_timeout)
-    contains_marker = MARKER in response_text
-    ok = run_status == 200 and contains_marker
+    parsed_response = parse_run_response(response_text)
+    ok = (
+        run_status == 200
+        and parsed_response.get("json_ok") is True
+        and parsed_response.get("outer_code") == 0
+        and parsed_response.get("exit_code") == 0
+        and parsed_response.get("sandbox_error") == ""
+        and parsed_response.get("contains_marker") is True
+    )
     payload = result(
         ok=ok,
         status="ok" if ok else "failed",
@@ -198,13 +256,18 @@ def main() -> int:
         strict=strict,
         health_status=health_status,
         run_status=run_status,
-        contains_marker=contains_marker,
+        json_ok=parsed_response.get("json_ok"),
+        outer_code=parsed_response.get("outer_code"),
+        exit_code=parsed_response.get("exit_code"),
+        contains_marker=parsed_response.get("contains_marker"),
+        sandbox_error=truncate(str(parsed_response.get("sandbox_error") or ""), 512),
+        stderr_present=parsed_response.get("stderr_present"),
         response_sample=truncate(response_text),
     )
     if run_error:
         payload["error"] = run_error
-    elif not contains_marker:
-        payload["error"] = "sandbox response did not include selfcheck marker"
+    elif parsed_response.get("error"):
+        payload["error"] = parsed_response.get("error")
 
     write_result(path, payload)
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)

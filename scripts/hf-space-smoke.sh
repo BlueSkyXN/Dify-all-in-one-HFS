@@ -170,6 +170,8 @@ print(
             "status": sandbox_exec.get("status"),
             "run_status": sandbox_exec.get("run_status"),
             "health_status": sandbox_exec.get("health_status"),
+            "exit_code": sandbox_exec.get("exit_code"),
+            "sandbox_error": sandbox_exec.get("sandbox_error"),
             "error": sandbox_exec.get("error"),
         },
         ensure_ascii=False,

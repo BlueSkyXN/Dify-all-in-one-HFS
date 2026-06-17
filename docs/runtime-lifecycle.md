@@ -22,7 +22,7 @@
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
 4. `sandbox-image`
-   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到 HFS `sandbox_exec` 启动自检已通过的 config/dependencies digest `langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788`。
+   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到 HFS `sandbox_exec` 启动自检已通过的 config/dependencies digest `langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788`。`sandbox_exec` 判定必须同时满足 sandbox HTTP 200、JSON envelope 成功、`exit_code=0`、`error=""` 和 stdout marker。
    - 最终复制 `/conf` 和 `/dependencies`。
    - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
