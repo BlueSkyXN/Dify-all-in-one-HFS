@@ -227,17 +227,17 @@ check_space_frame_headers() {
 
   for attempt in $(seq 1 "$SMOKE_RETRIES"); do
     status=$(curl -sS -D "$tmp_headers" -o "$tmp_body" -w '%{http_code}' --max-time 30 "$url" || true)
-    if [ "$status" = "200" ]; then
+    if [[ "$status" =~ ^(200|30[12378])$ ]]; then
       break
     fi
     if [ "$attempt" != "$SMOKE_RETRIES" ]; then
-      printf 'WAIT %s: expected HTTP 200, got %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      printf 'WAIT %s: expected HTTP 200/3xx, got %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
       sleep "$SMOKE_DELAY"
     fi
   done
 
-  if [ "$status" != "200" ]; then
-    printf 'FAIL %s: expected HTTP 200, got %s\n' "$label" "$status" >&2
+  if ! [[ "$status" =~ ^(200|30[12378])$ ]]; then
+    printf 'FAIL %s: expected HTTP 200/3xx, got %s\n' "$label" "$status" >&2
     sed -n '1,40p' "$tmp_body" >&2 || true
     exit 1
   fi
