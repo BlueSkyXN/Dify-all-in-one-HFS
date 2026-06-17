@@ -132,6 +132,7 @@ RUN apt-get update \
        ca-certificates curl gnupg lsb-release git \
        openssl tini procps netcat-openbsd \
        nginx supervisor redis-server \
+       libcap2-bin \
        libgmp-dev libmpfr-dev libmpc-dev \
        libseccomp2 libseccomp-dev \
        libmagic1 media-types fonts-noto-cjk \
@@ -212,7 +213,11 @@ COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/healthcheck.sh /usr/local/bin/dify-demo-healthcheck
 COPY docker/wait-for-core /usr/local/bin/wait-for-core
 
-RUN chmod +x \
+RUN cp "$(readlink -f /usr/local/bin/python3)" /opt/dify/sandbox/python3-sandbox \
+    && chmod 755 /opt/dify/sandbox/python3-sandbox \
+    && setcap cap_sys_chroot,cap_setuid,cap_setgid+ep /opt/dify/sandbox/python3-sandbox \
+    && getcap /opt/dify/sandbox/python3-sandbox \
+    && chmod +x \
       /usr/local/bin/dify-all-in-one-entrypoint \
       /usr/local/bin/with-dify-env \
       /usr/local/bin/with-plugin-env \
@@ -228,6 +233,7 @@ RUN chmod +x \
       /opt/dify/plugin-daemon/commandline \
       /opt/dify/plugin-daemon/main \
       /opt/dify/sandbox/main \
+      /opt/dify/sandbox/python3-sandbox \
     && test -x /opt/dify/plugin-daemon/commandline \
     && mkdir -p \
       /data/postgres /data/redis /data/dify/storage /data/plugin_daemon /data/config /data/logs /data/run/postgresql \

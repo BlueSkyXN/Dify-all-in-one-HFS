@@ -33,18 +33,20 @@ fi
 
 prepare_sandbox_python_wrapper() {
   local real_python=${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}
+  local real_python_literal
   local wrapper=${RUNTIME_ROOT:-/tmp/dify-aio}/sandbox-python-wrapper
 
+  printf -v real_python_literal '%q' "$real_python"
   mkdir -p "$(dirname "$wrapper")"
-  cat > "$wrapper" <<'EOF_WRAPPER'
-#!/usr/bin/env bash
+  cat > "$wrapper" <<EOF_WRAPPER
+#!/bin/bash
 set -euo pipefail
 
-real_python=${SANDBOX_REAL_PYTHON_PATH:-/usr/local/bin/python3}
+real_python=${real_python_literal}
 
-if [ "${1:-}" = "-P" ] && [ "${2:-}" = "-c" ]; then
-  discovery_output=$("$real_python" "$@")
-  "$real_python" - "$discovery_output" <<'PY'
+if [ "\${1:-}" = "-P" ] && [ "\${2:-}" = "-c" ]; then
+  discovery_output=\$("\$real_python" "\$@")
+  "\$real_python" - "\$discovery_output" <<'PY'
 import json
 import os
 import sys
@@ -68,7 +70,7 @@ PY
   exit 0
 fi
 
-exec "$real_python" "$@"
+exec "\$real_python" "\$@"
 EOF_WRAPPER
   chmod 755 "$wrapper"
 
