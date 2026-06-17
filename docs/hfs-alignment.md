@@ -111,13 +111,13 @@ NEXT branch 默认值 pin 到当前可运行的 NEXT digest set：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:8dc4959fe0353003c9dab558652764dfba111440bddb6f3d94716b05415b08c5
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:62aa0af97dd1fd53b07e03aca90304414cc8bf9019c003dcf199c70e7c885d96
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 UV_VERSION=0.11.21
-DIFY_VERSION=main-e970cbde0f6048e2e5ab4021b250aa6d9b934653
+DIFY_VERSION=main-872b5a081f0d3ac608ee167553abdd7c7e5cdf0b
 ```
 
 这个 pin set 对 Web/API 指向 Docker Hub 上已发布的 main commit-tag image digest；Sandbox 的 `/conf` 和 `/dependencies` 使用 HFS 执行自检已通过的 digest，Sandbox server binary 仍来自 source-pinned patch build。不要把上游 `docker/docker-compose.yaml` 中仍引用 `1.14.2` release image tag 的事实，误读为 main 源码没有进入 NEXT；直接 `docker compose up` upstream main 仍会跑 release 镜像，NEXT/HFS 则显式选择 commit digest。若上游 main 源码领先但 Docker Hub commit-tag 镜像尚未发布，NEXT 必须继续停在上一个可验证 digest set，或单独立项改成源码自建 API/Web。

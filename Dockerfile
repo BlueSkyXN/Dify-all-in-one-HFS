@@ -15,12 +15,12 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:8dc4959fe0353003c9dab558652764dfba111440bddb6f3d94716b05415b08c5
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:62aa0af97dd1fd53b07e03aca90304414cc8bf9019c003dcf199c70e7c885d96
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 ARG DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-ARG DIFY_VERSION=main-e970cbde0f6048e2e5ab4021b250aa6d9b934653
+ARG DIFY_VERSION=main-872b5a081f0d3ac608ee167553abdd7c7e5cdf0b
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
