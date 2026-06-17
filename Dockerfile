@@ -177,18 +177,27 @@ COPY --from=api-image --chown=user:user /app/api /app/api
 # NEXT Agent v2 needs the local dify-agent FastAPI run server. The official API
 # image installs the client package, but the server extras are intentionally
 # optional upstream, so this all-in-one image pins and verifies them explicitly.
-RUN uv pip install --python /app/api/.venv/bin/python --no-cache \
+RUN set -eu; \
+    uv pip install --python /app/api/.venv/bin/python --no-cache \
       "fastapi==0.136.0" \
       "graphon==0.5.1" \
       "jsonschema>=4.23.0,<5.0.0" \
       "jwcrypto>=1.5.6,<2" \
-      "pydantic-ai-slim[anthropic,google,openai]>=1.85.1,<2.0.0" \
+      "pydantic-ai-slim>=1.85.1,<2.0.0" \
       "pydantic-settings>=2.12.0,<3.0.0" \
       "redis>=7.4.0,<8.0.0" \
       "shell-session-manager==2.2.0" \
       "uvicorn[standard]==0.46.0" \
     && /app/api/.venv/bin/python -c "import dify_agent.server.app" \
-    && uv pip check --python /app/api/.venv/bin/python
+    && if ! uv pip check --python /app/api/.venv/bin/python > /tmp/dify-agent-uv-pip-check.txt 2>&1; then \
+         cat /tmp/dify-agent-uv-pip-check.txt; \
+         unexpected="$(grep '^The package ' /tmp/dify-agent-uv-pip-check.txt | grep -Fv 'The package `clickzetta-connector-python` requires `pyarrow>=10.0.1,<15`, but `23.0.1` is installed' || true)"; \
+         if [ -n "$unexpected" ]; then \
+           printf '%s\n' "$unexpected"; \
+           exit 1; \
+         fi; \
+         grep -F 'The package `clickzetta-connector-python` requires `pyarrow>=10.0.1,<15`, but `23.0.1` is installed' /tmp/dify-agent-uv-pip-check.txt >/dev/null; \
+       fi
 
 # Download NLTK/tiktoken caches during image build, mirroring Dify's official API image behavior.
 RUN mkdir -p /usr/local/share/nltk_data ${TIKTOKEN_CACHE_DIR} \
