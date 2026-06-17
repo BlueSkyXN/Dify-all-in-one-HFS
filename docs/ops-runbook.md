@@ -484,9 +484,11 @@ no plugin states found in redis hashed_plugin_id=<hash>
 
 本工程的 bucket-lite 布局会持久化 `/data/plugin_daemon/plugin_packages` 到 `/persist/plugin_daemon/plugin_packages`，并持久化 `/data/plugin_daemon/plugin` 到 `/persist/plugin_daemon/plugin`。前者是 package cache，后者是 local runtime watchdog 启动时枚举的 installed bucket。bucket-lite 下 Plugin Daemon 的 `PLUGIN_STORAGE_LOCAL_ROOT` 默认会指向真实目录 `/persist/plugin_daemon`，而不是 `/data/plugin_daemon`；这是为了避免 Go `filepath.WalkDir` 在扫描 `/data/plugin_daemon/plugin` 这个 symlink root 时不下钻，导致重建后 installed 文件明明存在但 runtime 不会 relaunch。local package upload 会先写 package bucket，后续安装流程再把包复制到 installed bucket、写安装元数据并启动 runtime。仅重新上传同一个 `.difypkg` 不一定修复已损坏的安装状态，因为数据库可能仍认为插件已安装，从而跳过完整 runtime install / launch 流程。
 
+插件 Python 环境初始化还依赖 uv cache。`with-plugin-env` 会把 `UV_CACHE_DIR` 固定到 `PLUGIN_UV_CACHE_DIR`，默认 `${RUNTIME_ROOT}/plugin-uv-cache`，并在 Plugin Daemon 启动前确认目录可写。如果日志出现 `failed to initialize cache at /home/user/.cache/uv`、`sdists-v9/.git` 或 `Permission denied`，说明进程仍在回落到不可控的 home cache，优先检查当前镜像是否包含 `PLUGIN_UV_CACHE_DIR` 修复，而不是只重试安装插件。
+
 推荐恢复路径：
 
-1. 确认使用同一个插件包，例如 `langgenius/openai_api_compatible:0.0.49@...` 对应的 `.difypkg`。
+1. 确认使用同一个插件包，例如 `langgenius/openai_api_compatible:<version>@<checksum>` 对应的 `.difypkg`。
 2. 如果刚部署了 storage-root 修复，先用 `/_admin/api/actions/restart-service` 重启 `plugin-daemon`，等待日志出现 `local runtime starting` / `local runtime ready`。
 3. 如果 `missing_installed_files` 非空，或重启后仍没有 `local runtime ready` 证据，再在 Dify 插件页面卸载损坏的插件。
 4. 重新从本地 `.difypkg` 安装插件。
