@@ -96,7 +96,7 @@ python3 -m pip download --only-binary=:all: --python-version 3.14 --implementati
 如果 NEXT Space 开启 `DIFY_AGENT_ENABLED=true`，额外记录：
 
 ```text
-dify-agent import gate passed in Docker build? yes/no:
+dify-agent import / uv pip check gate passed in Docker build? yes/no:
 /_ops/health.agent_backend.status:
 Agent App or workflow Agent node smoke:
 Reason if skipped:

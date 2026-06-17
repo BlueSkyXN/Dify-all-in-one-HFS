@@ -177,7 +177,7 @@ COPY --from=api-image --chown=user:user /app/api /app/api
 # NEXT Agent v2 needs the local dify-agent FastAPI run server. The official API
 # image installs the client package, but the server extras are intentionally
 # optional upstream, so this all-in-one image pins and verifies them explicitly.
-RUN /app/api/.venv/bin/python -m pip install --no-cache-dir \
+RUN uv pip install --python /app/api/.venv/bin/python --no-cache \
       "fastapi==0.136.0" \
       "graphon==0.5.1" \
       "jsonschema>=4.23.0,<5.0.0" \
@@ -188,7 +188,7 @@ RUN /app/api/.venv/bin/python -m pip install --no-cache-dir \
       "shell-session-manager==2.2.0" \
       "uvicorn[standard]==0.46.0" \
     && /app/api/.venv/bin/python -c "import dify_agent.server.app" \
-    && /app/api/.venv/bin/python -m pip check
+    && uv pip check --python /app/api/.venv/bin/python
 
 # Download NLTK/tiktoken caches during image build, mirroring Dify's official API image behavior.
 RUN mkdir -p /usr/local/share/nltk_data ${TIKTOKEN_CACHE_DIR} \

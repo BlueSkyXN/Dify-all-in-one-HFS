@@ -34,7 +34,7 @@
 6. `runtime`
    - 来源：`${BASE_IMAGE_REF}`，开发默认 `python:3.12-slim-bookworm`。
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv 等运行时依赖。
-   - 在官方 API venv 中补齐并 pin `dify-agent[server]` 运行所需依赖，执行 `import dify_agent.server.app` 和 `pip check` 作为 build gate。
+   - 通过 `uv pip install --python /app/api/.venv/bin/python` 在官方 API venv 中补齐并 pin `dify-agent[server]` 运行所需依赖，执行 `import dify_agent.server.app` 和 `uv pip check` 作为 build gate。
    - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
    - 将 Sandbox binary 设置为 setuid root，满足 sandbox runtime 需求。

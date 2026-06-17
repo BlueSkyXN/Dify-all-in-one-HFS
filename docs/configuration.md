@@ -145,7 +145,7 @@ OPENAPI_CORS_ALLOW_ORIGINS=
 
 ## NEXT-only Agent Backend Variables
 
-稳定 Space 默认不要开启 Agent backend。NEXT Space 需要验证 Agent v2 / `dify-agent` runtime 时，先确保镜像 build 已通过 `import dify_agent.server.app` 和 `pip check` gate，再单独设置：
+稳定 Space 默认不要开启 Agent backend。NEXT Space 需要验证 Agent v2 / `dify-agent` runtime 时，先确保镜像 build 已通过 `import dify_agent.server.app` 和 `uv pip check` gate，再单独设置：
 
 ```env
 DIFY_AGENT_ENABLED=true
