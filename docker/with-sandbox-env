@@ -31,6 +31,55 @@ if [ -z "${SANDBOX_PYTHON_LIB_PATH:-}" ]; then
   SANDBOX_PYTHON_LIB_PATH=$(sandbox_python_lib_path_default)
 fi
 
+prepare_sandbox_python_wrapper() {
+  local real_python=${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}
+  local wrapper=${RUNTIME_ROOT:-/tmp/dify-aio}/sandbox-python-wrapper
+
+  mkdir -p "$(dirname "$wrapper")"
+  cat > "$wrapper" <<'EOF_WRAPPER'
+#!/usr/bin/env bash
+set -euo pipefail
+
+real_python=${SANDBOX_REAL_PYTHON_PATH:-/usr/local/bin/python3}
+
+if [ "${1:-}" = "-P" ] && [ "${2:-}" = "-c" ]; then
+  discovery_output=$("$real_python" "$@")
+  "$real_python" - "$discovery_output" <<'PY'
+import json
+import os
+import sys
+
+data = json.loads(sys.argv[1])
+filtered = []
+
+for item in data.get("paths") or []:
+    path = os.path.normpath(item)
+    if not path or not os.path.isabs(path):
+        continue
+    prefix = path.rstrip(os.sep) + os.sep
+    if any(path == existing or path.startswith(existing.rstrip(os.sep) + os.sep) for existing in filtered):
+        continue
+    filtered = [existing for existing in filtered if not existing.startswith(prefix)]
+    filtered.append(path)
+
+data["paths"] = filtered
+print(json.dumps(data))
+PY
+  exit 0
+fi
+
+exec "$real_python" "$@"
+EOF_WRAPPER
+  chmod 755 "$wrapper"
+
+  export SANDBOX_REAL_PYTHON_PATH="$real_python"
+  export SANDBOX_PYTHON_PATH="$wrapper"
+}
+
+if [ -z "${SANDBOX_DISABLE_PYTHON_DISCOVERY_WRAPPER:-}" ]; then
+  prepare_sandbox_python_wrapper
+fi
+
 export API_KEY="${SANDBOX_API_KEY:-${CODE_EXECUTION_API_KEY}}"
 export GIN_MODE="${SANDBOX_GIN_MODE:-release}"
 export WORKER_TIMEOUT="${SANDBOX_WORKER_TIMEOUT:-15}"
