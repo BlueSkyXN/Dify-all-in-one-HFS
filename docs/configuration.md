@@ -376,6 +376,7 @@ Nginx 会把 `/openapi` 代理到内部 Dify API。`/openapi/v1/_health` 和 `/o
 | `PLUGIN_STORAGE_TYPE` | `local` | Plugin storage 类型 |
 | `PLUGIN_STORAGE_LOCAL_ROOT` | bucket-lite: `/persist/plugin_daemon`; legacy: `/data/plugin_daemon` | Plugin storage 根目录；bucket-lite 下默认使用真实 `/persist` 目录，避免 Plugin Daemon 启动扫描停在 `/data` symlink |
 | `PLUGIN_WORKING_PATH` | `/data/plugin_daemon/cwd` | Plugin working directory |
+| `PLUGIN_UV_CACHE_DIR` | `${RUNTIME_ROOT}/plugin-uv-cache` | Plugin Python 环境初始化使用的 uv cache；`with-plugin-env` 会映射为 `UV_CACHE_DIR` 并确保目录可写，避免回落到 `/home/user/.cache/uv` |
 | `PLUGIN_INSTALLED_PATH` | `plugin` | 已安装插件目录 |
 | `PLUGIN_PACKAGE_CACHE_PATH` | `plugin_packages` | 插件包目录；bucket-lite 下由 `/persist/plugin_daemon/plugin_packages` 持久化 |
 | `PLUGIN_MEDIA_CACHE_PATH` | `assets` | 插件媒体缓存目录 |
