@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if ! is_true "${DIFY_AGENT_ENABLED:-false}"; then
+  printf '[dify-agent] DIFY_AGENT_ENABLED is false; keeping supervisor program idle.\n'
+  exec sleep infinity
+fi
+
+host=${DIFY_AGENT_HOST:-127.0.0.1}
+port=${DIFY_AGENT_PORT:-5005}
+
+exec /usr/local/bin/wait-for-core redis plugin-daemon -- bash -c \
+  'cd /app/api && exec /app/api/.venv/bin/uvicorn dify_agent.server.app:app --host "$1" --port "$2"' \
+  _ "$host" "$port"

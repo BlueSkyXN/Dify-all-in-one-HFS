@@ -122,7 +122,7 @@ GitHub Actions 轻量静态检查 workflow。
 职责：
 
 - 保留已有 Docker/HF env。
-- 为 Dify API/Web/Worker/Beat、OpenAPI、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
+- 为 Dify API/Web/Worker/Beat、OpenAPI、Agent backend、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
 - 为 Admin Service 设置默认值。
 - 被 `entrypoint.sh`、`with-*` wrapper 和 `wait-for-core` source。
 
@@ -189,7 +189,7 @@ main
 
 职责：
 
-- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
+- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-agent、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
 - 定义 admin-service，默认由 `ADMIN_ENABLED=false` 返回 404。
 - 设置启动 priority、autorestart、日志路径。
 - 暴露 supervisor unix socket：`/data/run/supervisor.sock`。
@@ -260,7 +260,18 @@ Dify API/Web/Worker/Beat 的环境包装器。
 
 - source runtime defaults 和 generated secrets。
 - 确保 `/app/api/.venv/bin` 在 `PATH` 中。
+- `DIFY_AGENT_ENABLED=true` 时派生 `AGENT_BACKEND_BASE_URL`、URL-encoded `DIFY_AGENT_REDIS_URL`、`DIFY_AGENT_PLUGIN_DAEMON_API_KEY` 和 `DIFY_AGENT_DIFY_API_INNER_API_KEY`。
 - 执行传入命令。
+
+### `docker/run-dify-agent`
+
+NEXT Agent backend 启动脚本。
+
+职责：
+
+- `DIFY_AGENT_ENABLED=false` 时保持 supervisor program idle，不影响稳定 demo。
+- `DIFY_AGENT_ENABLED=true` 时等待 Redis 和 Plugin Daemon，然后启动 `uvicorn dify_agent.server.app:app`。
+- 只监听内部 `DIFY_AGENT_HOST:DIFY_AGENT_PORT`，默认 `127.0.0.1:5005`。
 
 ### `docker/with-plugin-env`
 
@@ -297,6 +308,7 @@ Sandbox 环境包装器。
 postgres
 redis
 api
+plugin-daemon
 ```
 
 用法：
@@ -304,6 +316,7 @@ api
 ```bash
 wait-for-core postgres redis -- <command>
 wait-for-core api -- <command>
+wait-for-core redis plugin-daemon -- <command>
 ```
 
 ### `docker/healthcheck.sh`

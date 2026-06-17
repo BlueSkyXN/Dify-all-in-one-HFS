@@ -52,6 +52,7 @@ bash -n \
   docker/with-dify-env \
   docker/with-plugin-env \
   docker/with-sandbox-env \
+  docker/run-dify-agent \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
@@ -68,6 +69,7 @@ require_executable scripts/hf-space-smoke.sh
 require_executable scripts/run-demo.sh
 require_executable scripts/static-check.sh
 require_executable scripts/validate-hfs-contract.sh
+require_executable docker/run-dify-agent
 require_executable docker/sandbox-selfcheck
 
 scripts/validate-hfs-contract.sh

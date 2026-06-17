@@ -30,6 +30,7 @@
 | Plugin 存储 | `/data/plugin_daemon`，插件包、已安装插件和 assets 指向 `/persist`，工作目录默认在 `/tmp/dify-aio` | 插件和 runtime relaunch 所需包保留，scratch/cache 不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认开启 | 便于 demo/plugin 验证；公开或稳定演示环境可按需关闭以减少外部依赖 |
+| NEXT Agent Runtime | `dify-agent` backend 默认关闭，可在 NEXT Space 单独开启 | main 已把 Agent v2 / dify-agent 纳入主链路；本仓库先提供 HFS 可观测的基础 backend，不把它写成生产完成态 |
 | 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
 
 ## 目录结构
@@ -69,19 +70,21 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b45630940d288f3c8c6caa7c88f1003832
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
+DIFY_VERSION=main-e970cbde0f6048e2e5ab4021b250aa6d9b934653
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-NEXT branch 默认值已 pin 到上游 main digest set 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
+NEXT branch 默认值已 pin 到上游 main commit image digest set 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
+
+注意：上游 `main/docker/docker-compose.yaml` 仍可能引用最新 release 镜像 tag，例如 `1.14.2`。这不代表 main 源码未变化，也不代表 `docker compose up` 会跑到 main 代码。NEXT/HFS 使用的是官方 Docker Hub 上按 main commit 发布的 `dify-api` / `dify-web` commit-tag 镜像 digest，再叠加本仓库的 all-in-one runtime glue。
 
 ## 运行状态入口
 

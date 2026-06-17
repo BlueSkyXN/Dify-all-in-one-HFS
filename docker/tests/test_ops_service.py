@@ -165,6 +165,36 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["checks"][-1]["name"], "sandbox-exec-selfcheck")
 
+    def test_agent_backend_disabled_is_non_degrading(self):
+        os.environ["DIFY_AGENT_ENABLED"] = "false"
+        payload = {"ok": True, "checks": []}
+
+        ops_service.enrich_health_with_agent_backend(payload)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["agent_backend"]["status"], "disabled")
+        self.assertNotIn("degraded", payload)
+
+    def test_agent_backend_enabled_failure_fails_health(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            return {"name": name, "ok": False, "duration_ms": 1, "error": "connection refused"}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["DIFY_AGENT_PORT"] = "5005"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["degraded"])
+        self.assertEqual(payload["agent_backend"]["status"], "failed")
+        self.assertEqual(payload["checks"][-1]["name"], "agent-backend")
+
     def test_plugin_storage_paths_resolve_relative_cache_under_root(self):
         os.environ.update(
             {

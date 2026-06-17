@@ -40,11 +40,20 @@ wait_api() {
   done
 }
 
+wait_plugin_daemon() {
+  local host=127.0.0.1
+  local port=${PLUGIN_DAEMON_PORT:-5002}
+  until nc -z "$host" "$port" >/dev/null 2>&1; do
+    sleep 1
+  done
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     postgres) wait_postgres ;;
     redis) wait_redis ;;
     api) wait_api ;;
+    plugin-daemon) wait_plugin_daemon ;;
     --) shift; break ;;
     *) break ;;
   esac

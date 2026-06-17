@@ -95,9 +95,13 @@ CELERY_BROKER_URL
 PGVECTOR_PASSWORD
 INNER_API_KEY_FOR_PLUGIN
 SANDBOX_API_KEY
+AGENT_BACKEND_BASE_URL
+DIFY_AGENT_REDIS_URL
+DIFY_AGENT_PLUGIN_DAEMON_API_KEY
+DIFY_AGENT_DIFY_API_INNER_API_KEY
 ```
 
-其中 `CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。重复上传这些变量会增加配置漂移风险。
+其中 `CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。`DIFY_AGENT_ENABLED=true` 时，`with-dify-env` 会派生 Agent backend base URL、Redis URL、Plugin Daemon key 和 Dify inner API key。重复上传这些变量会增加配置漂移风险。
 
 ## Hugging Face Space Metadata
 
@@ -138,6 +142,39 @@ OPENAPI_CORS_ALLOW_ORIGINS=
 ```
 
 `OPENAPI_ENABLED=true` 暴露的是整个 `/openapi/v1` user/workspace-scoped programmatic surface，不是只开放 `difyctl` 子集。`difyctl auth login` 使用 OAuth device flow，需要在 NEXT Console 的 `/device` 页面人工批准；如果要做无人值守 CI，需要另行设计 token 注入方式，且不能把 `dfoa_` / `dfoe_` token 写入 tracked docs、logs 或示例配置。
+
+## NEXT-only Agent Backend Variables
+
+稳定 Space 默认不要开启 Agent backend。NEXT Space 需要验证 Agent v2 / `dify-agent` runtime 时，先确保镜像 build 已通过 `import dify_agent.server.app` 和 `pip check` gate，再单独设置：
+
+```env
+DIFY_AGENT_ENABLED=true
+```
+
+通常不要额外上传下面这些派生值；它们由 `with-dify-env` 在 `DIFY_AGENT_ENABLED=true` 时从同容器默认值和 generated secrets 派生：
+
+```env
+AGENT_BACKEND_BASE_URL=http://127.0.0.1:5005
+DIFY_AGENT_REDIS_URL=redis://:<url-encoded-REDIS_PASSWORD>@127.0.0.1:6379/2
+DIFY_AGENT_PLUGIN_DAEMON_URL=http://127.0.0.1:5002
+DIFY_AGENT_PLUGIN_DAEMON_API_KEY=${PLUGIN_DAEMON_KEY}
+DIFY_AGENT_DIFY_API_BASE_URL=http://127.0.0.1:5001
+DIFY_AGENT_DIFY_API_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
+```
+
+可按需覆盖的非 secret 开关：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DIFY_AGENT_ENABLED` | `false` | 是否启动本容器内 `dify-agent` FastAPI backend |
+| `DIFY_AGENT_HOST` | `127.0.0.1` | backend 监听地址；不要绑定公网 |
+| `DIFY_AGENT_PORT` | `5005` | backend 内部端口 |
+| `AGENT_BACKEND_USE_FAKE` | `false` | API 侧 fake backend 开关，仅用于局部开发/测试 |
+| `AGENT_SHELL_ENABLED` | `false` | shell layer 开关；公开 HFS demo 默认关闭 |
+| `AGENT_DRIVE_MANIFEST_ENABLED` | `false` | drive manifest 开关；公开 HFS demo 默认关闭 |
+| `DIFY_AGENT_REDIS_PREFIX` | `dify-agent-next` | Agent backend Redis key prefix |
+
+`/_ops/health` 会暴露 `agent_backend` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后会检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达，失败会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
 
 ## 推荐 Space Secrets
 

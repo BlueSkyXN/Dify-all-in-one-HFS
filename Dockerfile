@@ -15,12 +15,12 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b45630940d288f3c8c6caa7c88f1003832
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d
-ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
-ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329
+ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
+ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e
 ARG DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-ARG DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
+ARG DIFY_VERSION=main-e970cbde0f6048e2e5ab4021b250aa6d9b934653
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
@@ -174,6 +174,22 @@ ENV HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub
 # script shebangs inside .venv point there.
 COPY --from=api-image --chown=user:user /app/api /app/api
 
+# NEXT Agent v2 needs the local dify-agent FastAPI run server. The official API
+# image installs the client package, but the server extras are intentionally
+# optional upstream, so this all-in-one image pins and verifies them explicitly.
+RUN /app/api/.venv/bin/python -m pip install --no-cache-dir \
+      "fastapi==0.136.0" \
+      "graphon==0.5.1" \
+      "jsonschema>=4.23.0,<5.0.0" \
+      "jwcrypto>=1.5.6,<2" \
+      "pydantic-ai-slim[anthropic,google,openai]>=1.85.1,<2.0.0" \
+      "pydantic-settings>=2.12.0,<3.0.0" \
+      "redis>=7.4.0,<8.0.0" \
+      "shell-session-manager==2.2.0" \
+      "uvicorn[standard]==0.46.0" \
+    && /app/api/.venv/bin/python -c "import dify_agent.server.app" \
+    && /app/api/.venv/bin/python -m pip check
+
 # Download NLTK/tiktoken caches during image build, mirroring Dify's official API image behavior.
 RUN mkdir -p /usr/local/share/nltk_data ${TIKTOKEN_CACHE_DIR} \
     && python -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger'); nltk.download('stopwords')" \
@@ -204,6 +220,7 @@ COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
+COPY docker/run-dify-agent /usr/local/bin/run-dify-agent
 COPY docker/sandbox-selfcheck /usr/local/bin/dify-sandbox-selfcheck
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service
@@ -222,6 +239,7 @@ RUN cp "$(readlink -f /usr/local/bin/python3)" /opt/dify/sandbox/python3-sandbox
       /usr/local/bin/with-dify-env \
       /usr/local/bin/with-plugin-env \
       /usr/local/bin/with-sandbox-env \
+      /usr/local/bin/run-dify-agent \
       /usr/local/bin/dify-sandbox-selfcheck \
       /usr/local/bin/postgres-backup-loop \
       /usr/local/bin/dify-ops-service \

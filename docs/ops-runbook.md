@@ -36,6 +36,7 @@ nginx:7860
       |-- Redis
       |-- Plugin Daemon:5002
       |-- Sandbox:8194
+      |-- Dify Agent backend:5005 (NEXT, disabled by default)
       |-- Dify Worker
       +-- Dify Beat
 ```

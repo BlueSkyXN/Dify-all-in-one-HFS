@@ -51,6 +51,8 @@ DEFAULT_SERVICE_LOGS = {
     "sandbox-selfcheck.err": "sandbox-selfcheck.err",
     "dify-api": "dify-api.log",
     "dify-api.err": "dify-api.err",
+    "dify-agent": "dify-agent.log",
+    "dify-agent.err": "dify-agent.err",
     "dify-worker": "dify-worker.log",
     "dify-worker.err": "dify-worker.err",
     "dify-beat": "dify-beat.log",
@@ -97,6 +99,19 @@ SAFE_CONFIG_KEYS = [
     "SANDBOX_SELFCHECK_STRICT",
     "SANDBOX_SELFCHECK_RESULT_PATH",
     "SANDBOX_SELFCHECK_TIMEOUT_SECONDS",
+    "DIFY_AGENT_ENABLED",
+    "DIFY_AGENT_HOST",
+    "DIFY_AGENT_PORT",
+    "AGENT_BACKEND_BASE_URL",
+    "AGENT_BACKEND_USE_FAKE",
+    "AGENT_BACKEND_FAKE_SCENARIO",
+    "AGENT_SHELL_ENABLED",
+    "AGENT_DRIVE_MANIFEST_ENABLED",
+    "DIFY_AGENT_REDIS_PREFIX",
+    "DIFY_AGENT_PLUGIN_DAEMON_URL",
+    "DIFY_AGENT_DIFY_API_BASE_URL",
+    "DIFY_AGENT_STUB_URL",
+    "DIFY_AGENT_STUB_GRPC_BIND_ADDRESS",
     "VECTOR_STORE",
     "STORAGE_TYPE",
     "DB_TYPE",
@@ -145,6 +160,10 @@ SECRET_KEYS = [
     "INNER_API_KEY_FOR_PLUGIN",
     "CODE_EXECUTION_API_KEY",
     "SANDBOX_API_KEY",
+    "DIFY_AGENT_PLUGIN_DAEMON_API_KEY",
+    "DIFY_AGENT_DIFY_API_INNER_API_KEY",
+    "DIFY_AGENT_SHELLCTL_AUTH_TOKEN",
+    "DIFY_AGENT_SERVER_SECRET_KEY",
     "OPS_TOKEN",
     "ADMIN_TOKEN",
     "ADMIN_CSRF_KEY",
@@ -642,6 +661,7 @@ def collect_checks(checks_to_run: list[Any]) -> list[dict[str, Any]]:
 def health_payload(public: bool = False) -> dict[str, Any]:
     payload = dict(cached_payload("health:checks", _health_checks_payload))
     enrich_health_with_sandbox_selfcheck(payload)
+    enrich_health_with_agent_backend(payload)
     if not public:
         payload["supervisor"] = supervisor_payload()
         payload["version"] = version_payload()
@@ -710,6 +730,60 @@ def enrich_health_with_sandbox_selfcheck(payload: dict[str, Any]) -> None:
 
     if warnings:
         payload["warnings"] = warnings
+
+
+def agent_backend_payload() -> dict[str, Any]:
+    enabled = parse_bool(env("DIFY_AGENT_ENABLED", "false"), default=False)
+    port = parse_int(env("DIFY_AGENT_PORT", "5005"), 5005, minimum=1, maximum=65535)
+    base_url = env("AGENT_BACKEND_BASE_URL") or f"http://127.0.0.1:{port}"
+    payload: dict[str, Any] = {
+        "enabled": enabled,
+        "base_url": base_url,
+        "host": env("DIFY_AGENT_HOST", "127.0.0.1"),
+        "port": port,
+    }
+    if not enabled:
+        payload.update({"ok": True, "status": "disabled"})
+        return payload
+
+    check = tcp_check("agent-backend-tcp", "127.0.0.1", port)
+    payload.update(
+        {
+            "ok": check.get("ok") is True,
+            "status": "ok" if check.get("ok") is True else "failed",
+            "duration_ms": check.get("duration_ms"),
+        }
+    )
+    if check.get("error"):
+        payload["error"] = check["error"]
+    return payload
+
+
+def enrich_health_with_agent_backend(payload: dict[str, Any]) -> None:
+    agent_backend = agent_backend_payload()
+    payload["agent_backend"] = agent_backend
+
+    if not agent_backend.get("enabled"):
+        return
+
+    if agent_backend.get("ok") is True:
+        return
+
+    payload["ok"] = False
+    payload["degraded"] = True
+    warnings = list(payload.get("warnings") or [])
+    warnings.append(f"agent backend {agent_backend.get('status') or 'failed'}")
+    payload["warnings"] = warnings
+    checks = list(payload.get("checks") or [])
+    checks.append(
+        {
+            "name": "agent-backend",
+            "ok": False,
+            "status": agent_backend.get("status"),
+            "error": agent_backend.get("error"),
+        }
+    )
+    payload["checks"] = checks
 
 
 def _health_checks_payload() -> dict[str, Any]:

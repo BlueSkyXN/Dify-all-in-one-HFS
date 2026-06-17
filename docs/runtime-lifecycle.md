@@ -7,22 +7,22 @@
 `Dockerfile` 使用多阶段构建，复用官方镜像资产：
 
 1. `web-builder`
-   - 来源：`${DIFY_WEB_IMAGE_REF}`，NEXT 默认 pin 到上游 main `langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b45630940d288f3c8c6caa7c88f1003832`。
+   - 来源：`${DIFY_WEB_IMAGE_REF}`，NEXT 默认 pin 到上游 main commit image `langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3`。
    - 验证 `/app/targets/next`、`/app/targets/vinext` 和 `/app/entrypoint.sh` 存在。
    - 最终复制 `/app/targets/` 和 `/app/entrypoint.sh` 到 runtime。
 
 2. `api-image`
-   - 来源：`${DIFY_API_IMAGE_REF}`，NEXT 默认 pin 到上游 main `langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d`。
+   - 来源：`${DIFY_API_IMAGE_REF}`，NEXT 默认 pin 到上游 main commit image `langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329`。
    - 验证 `/app/api/.venv/bin/flask` 和 `/app/api/docker/entrypoint.sh` 存在。
    - 最终复制 `/app/api` 到 runtime。
 
 3. `plugin-daemon-image`
-   - 来源：`${PLUGIN_DAEMON_IMAGE_REF}`，NEXT 默认 pin 到 `langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629`。
+   - 来源：`${PLUGIN_DAEMON_IMAGE_REF}`，NEXT 默认 pin 到 `langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c`。
    - 最终复制 `/app` 到 `/opt/dify/plugin-daemon`。
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
 4. `sandbox-image`
-   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到 `langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788`。
+   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到 upstream compose 使用的 `dify-sandbox:0.2.15` manifest digest `langgenius/dify-sandbox@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e`。
    - 最终复制 `/conf` 和 `/dependencies`。
    - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
@@ -34,6 +34,7 @@
 6. `runtime`
    - 来源：`${BASE_IMAGE_REF}`，开发默认 `python:3.12-slim-bookworm`。
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv 等运行时依赖。
+   - 在官方 API venv 中补齐并 pin `dify-agent[server]` 运行所需依赖，执行 `import dify_agent.server.app` 和 `pip check` 作为 build gate。
    - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
    - 将 Sandbox binary 设置为 setuid root，满足 sandbox runtime 需求。
@@ -42,18 +43,18 @@
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a21a112338e1e8c3164e7ca5030435b45630940d288f3c8c6caa7c88f1003832
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:e6aa32af1e4a23d4046ecc0e56b4100f6bffdc05caa14b0ff073a2ec6dd4ec6d
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:2cb67bcb3a6aa2e3148f000ff3aae100635010fecd3cebb39326de333cf3e629
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e20bd2075a8d1bdf123aafce4bc3334d9bdfee7010b5cbfcea53edae3ad0fef3
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:588801c9f1f250c2b0c3558b51305f9f2a1c124cd9dcfafdc26059cdef119329
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-DIFY_VERSION=main-813a1677b2aa2ab1585798bb529e67f185db5eb7
+DIFY_VERSION=main-e970cbde0f6048e2e5ab4021b250aa6d9b934653
 UV_VERSION=0.11.21
 ```
 
-NEXT branch 默认值已使用 digest ref 和 sandbox source ref，便于复现当前 main 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。
+NEXT branch 默认值已使用 digest ref 和 sandbox source ref，便于复现当前 main 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。不要用上游 `docker/docker-compose.yaml` 里的 `1.14.2` image tag 判断 main 代码是否已经运行；NEXT 走的是官方 main commit-tag image digest，不是 compose release tag。
 
-`DIFY_VERSION` 只作为 build/runtime metadata，不再参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`。`langgenius/dify-plugin-daemon` 当前不发布 `latest` tag；NEXT 使用 `main-local` 对应 digest。
+`DIFY_VERSION` 只作为 build/runtime metadata，不再参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`。Plugin Daemon 使用 `0.6.2-local` 对应 digest，发布验证不要依赖可变的 `latest-local` tag。
 
 ## Container Entry Point
 

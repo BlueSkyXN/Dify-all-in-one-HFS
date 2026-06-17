@@ -93,6 +93,17 @@ python3 -m pip download --only-binary=:all: --python-version 3.12 --implementati
 python3 -m pip download --only-binary=:all: --python-version 3.14 --implementation cp --abi cp314 --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 -r docker/sandbox-python-requirements.txt
 ```
 
+如果 NEXT Space 开启 `DIFY_AGENT_ENABLED=true`，额外记录：
+
+```text
+dify-agent import gate passed in Docker build? yes/no:
+/_ops/health.agent_backend.status:
+Agent App or workflow Agent node smoke:
+Reason if skipped:
+```
+
+`agent_backend.status=ok` 只能证明内部 `dify-agent` backend 可达；真实 Agent v2 发布验收需要再跑 Agent App 或 workflow Agent node，最好包含一次 plugin tool 调用。
+
 ## 合并到 GitHub main
 
 合并后记录：
