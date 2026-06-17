@@ -15,7 +15,16 @@ fi
 
 host=${DIFY_AGENT_HOST:-127.0.0.1}
 port=${DIFY_AGENT_PORT:-5005}
+startup_delay=${DIFY_AGENT_STARTUP_DELAY_SECONDS:-30}
+case "$startup_delay" in
+  ''|*[!0-9]*) startup_delay=30 ;;
+esac
 
-exec /usr/local/bin/wait-for-core redis plugin-daemon -- bash -c \
-  'cd /app/api && exec /app/api/.venv/bin/uvicorn dify_agent.server.app:app --host "$1" --port "$2"' \
-  _ "$host" "$port"
+exec /usr/local/bin/wait-for-core redis plugin-daemon api -- bash -c \
+  'delay=$1; host=$2; port=$3
+   if [ "$delay" -gt 0 ]; then
+     printf "[dify-agent] core services are ready; delaying startup for %ss.\\n" "$delay"
+     sleep "$delay"
+   fi
+   cd /app/api && exec /app/api/.venv/bin/uvicorn dify_agent.server.app:app --host "$host" --port "$port"' \
+  _ "$startup_delay" "$host" "$port"

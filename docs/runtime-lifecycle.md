@@ -7,12 +7,12 @@
 `Dockerfile` 使用多阶段构建，复用官方镜像资产：
 
 1. `web-builder`
-   - 来源：`${DIFY_WEB_IMAGE_REF}`，NEXT 默认 pin 到上游 main commit image `langgenius/dify-web@sha256:8dc4959fe0353003c9dab558652764dfba111440bddb6f3d94716b05415b08c5`。
+   - 来源：`${DIFY_WEB_IMAGE_REF}`，NEXT 默认 pin 到上游 main commit image `langgenius/dify-web@sha256:831ce04deb84fa0e682d0c3590e7f49d1a3bc0a7a886352fcf46901670e3993f`。
    - 验证 `/app/targets/next`、`/app/targets/vinext` 和 `/app/entrypoint.sh` 存在。
    - 最终复制 `/app/targets/` 和 `/app/entrypoint.sh` 到 runtime。
 
 2. `api-image`
-   - 来源：`${DIFY_API_IMAGE_REF}`，NEXT 默认 pin 到上游 main commit image `langgenius/dify-api@sha256:62aa0af97dd1fd53b07e03aca90304414cc8bf9019c003dcf199c70e7c885d96`。
+   - 来源：`${DIFY_API_IMAGE_REF}`，NEXT 默认 pin 到上游 main commit image `langgenius/dify-api@sha256:36243a630049fc39697de0282449f2198ea2e0096a859b1895f4714c217263b8`。
    - 验证 `/app/api/.venv/bin/flask` 和 `/app/api/docker/entrypoint.sh` 存在。
    - 最终复制 `/app/api` 到 runtime。
 
@@ -43,12 +43,12 @@
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:8dc4959fe0353003c9dab558652764dfba111440bddb6f3d94716b05415b08c5
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:62aa0af97dd1fd53b07e03aca90304414cc8bf9019c003dcf199c70e7c885d96
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:831ce04deb84fa0e682d0c3590e7f49d1a3bc0a7a886352fcf46901670e3993f
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:36243a630049fc39697de0282449f2198ea2e0096a859b1895f4714c217263b8
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-DIFY_VERSION=main-872b5a081f0d3ac608ee167553abdd7c7e5cdf0b
+DIFY_VERSION=main-e6a91bfcde8549d99f43c834ff8c333be2225b03
 UV_VERSION=0.11.21
 ```
 

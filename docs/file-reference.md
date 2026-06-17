@@ -270,7 +270,7 @@ NEXT Agent backend 启动脚本。
 职责：
 
 - `DIFY_AGENT_ENABLED=false` 时保持 supervisor program idle，不影响稳定 demo。
-- `DIFY_AGENT_ENABLED=true` 时等待 Redis 和 Plugin Daemon，然后启动 `uvicorn dify_agent.server.app:app`。
+- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon 和 Dify API health，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后启动 `uvicorn dify_agent.server.app:app`。
 - 只监听内部 `DIFY_AGENT_HOST:DIFY_AGENT_PORT`，默认 `127.0.0.1:5005`。
 
 ### `docker/with-plugin-env`

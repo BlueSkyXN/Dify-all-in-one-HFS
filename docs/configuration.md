@@ -169,12 +169,13 @@ DIFY_AGENT_DIFY_API_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
 | `DIFY_AGENT_ENABLED` | `false` | 是否启动本容器内 `dify-agent` FastAPI backend |
 | `DIFY_AGENT_HOST` | `127.0.0.1` | backend 监听地址；不要绑定公网 |
 | `DIFY_AGENT_PORT` | `5005` | backend 内部端口 |
+| `DIFY_AGENT_STARTUP_DELAY_SECONDS` | `30` | core API health 通过后再启动 backend 的延迟，降低 HFS cpu-basic 启动期资源竞争 |
 | `AGENT_BACKEND_USE_FAKE` | `false` | API 侧 fake backend 开关，仅用于局部开发/测试 |
 | `AGENT_SHELL_ENABLED` | `false` | shell layer 开关；公开 HFS demo 默认关闭 |
 | `AGENT_DRIVE_MANIFEST_ENABLED` | `false` | drive manifest 开关；公开 HFS demo 默认关闭 |
 | `DIFY_AGENT_REDIS_PREFIX` | `dify-agent-next` | Agent backend Redis key prefix |
 
-`/_ops/health` 会暴露 `agent_backend` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后会检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达，失败会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
+`/_ops/health` 会暴露 `agent_backend` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon 和 Dify API health，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
 
 ## 推荐 Space Secrets
 
