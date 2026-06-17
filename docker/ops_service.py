@@ -35,6 +35,7 @@ DEMO_OPS_TOKEN = "dify_ops_demo_token"
 OPS_SESSION_COOKIE = "dify_ops_session"
 OPS_CACHE: dict[str, tuple[float, Any]] = {}
 OPS_CACHE_LOCK = RLock()
+EXPECTED_EXITED_PROGRAMS = {"sandbox-selfcheck"}
 
 DEFAULT_SERVICE_LOGS = {
     "supervisord": "supervisord.log",
@@ -46,6 +47,8 @@ DEFAULT_SERVICE_LOGS = {
     "postgres-backup.err": "postgres-backup.err",
     "plugin-daemon": "plugin-daemon.log",
     "plugin-daemon.err": "plugin-daemon.err",
+    "sandbox-selfcheck": "sandbox-selfcheck.log",
+    "sandbox-selfcheck.err": "sandbox-selfcheck.err",
     "dify-api": "dify-api.log",
     "dify-api.err": "dify-api.err",
     "dify-worker": "dify-worker.log",
@@ -86,6 +89,10 @@ SAFE_CONFIG_KEYS = [
     "MARKETPLACE_ENABLED",
     "FORCE_VERIFYING_SIGNATURE",
     "SANDBOX_ENABLE_NETWORK",
+    "SANDBOX_SELFCHECK_ENABLED",
+    "SANDBOX_SELFCHECK_STRICT",
+    "SANDBOX_SELFCHECK_RESULT_PATH",
+    "SANDBOX_SELFCHECK_TIMEOUT_SECONDS",
     "VECTOR_STORE",
     "STORAGE_TYPE",
     "DB_TYPE",
@@ -562,12 +569,15 @@ def supervisor_status() -> dict[str, Any]:
         state = str(item.get("statename", "UNKNOWN"))
         name = str(item.get("name", ""))
         group = str(item.get("group", ""))
+        exitstatus = item.get("exitstatus")
+        ok = state == "RUNNING" or (name in EXPECTED_EXITED_PROGRAMS and state == "EXITED" and exitstatus == 0)
         programs.append(
             {
                 "name": f"{group}:{name}" if group and group != name else name,
                 "state": state,
+                "exitstatus": exitstatus,
                 "description": str(item.get("description", "")),
-                "ok": state == "RUNNING",
+                "ok": ok,
             }
         )
     return {
@@ -627,10 +637,75 @@ def collect_checks(checks_to_run: list[Any]) -> list[dict[str, Any]]:
 
 def health_payload(public: bool = False) -> dict[str, Any]:
     payload = dict(cached_payload("health:checks", _health_checks_payload))
+    enrich_health_with_sandbox_selfcheck(payload)
     if not public:
         payload["supervisor"] = supervisor_payload()
         payload["version"] = version_payload()
     return payload
+
+
+def sandbox_selfcheck_result_path() -> Path:
+    runtime_root = env("RUNTIME_ROOT", "/tmp/dify-aio")
+    return Path(env("SANDBOX_SELFCHECK_RESULT_PATH", f"{runtime_root}/sandbox-selfcheck.json"))
+
+
+def sandbox_selfcheck_payload() -> dict[str, Any]:
+    if not parse_bool(env("SANDBOX_SELFCHECK_ENABLED", "true"), default=True):
+        return {"ok": True, "status": "disabled"}
+
+    path = sandbox_selfcheck_result_path()
+    if not path.exists():
+        return {"ok": False, "status": "pending", "path": str(path)}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception as exc:
+        return {"ok": False, "status": "invalid", "path": str(path), "error": str(exc)}
+    if not isinstance(data, dict):
+        return {"ok": False, "status": "invalid", "path": str(path), "error": "result is not an object"}
+
+    allowed = {
+        "ok",
+        "status",
+        "strict",
+        "started_at",
+        "completed_at",
+        "duration_ms",
+        "health_status",
+        "run_status",
+        "contains_marker",
+        "error",
+    }
+    payload = {key: data.get(key) for key in allowed if key in data}
+    payload["ok"] = bool(data.get("ok"))
+    payload["status"] = str(data.get("status") or ("ok" if payload["ok"] else "failed"))
+    payload["path"] = str(path)
+    return payload
+
+
+def enrich_health_with_sandbox_selfcheck(payload: dict[str, Any]) -> None:
+    sandbox_exec = sandbox_selfcheck_payload()
+    payload["sandbox_exec"] = sandbox_exec
+
+    warnings = list(payload.get("warnings") or [])
+    status = sandbox_exec.get("status")
+    sandbox_ok = sandbox_exec.get("ok") is True
+    strict = parse_bool(env("SANDBOX_SELFCHECK_STRICT", "false"), default=False)
+
+    if not sandbox_ok and status != "pending":
+        payload["degraded"] = True
+        warnings.append(f"sandbox selfcheck {status or 'failed'}")
+    else:
+        payload["degraded"] = bool(payload.get("degraded", False))
+
+    if strict and not sandbox_ok:
+        payload["ok"] = False
+        checks = list(payload.get("checks") or [])
+        checks.append({"name": "sandbox-exec-selfcheck", "ok": False, "status": status})
+        payload["checks"] = checks
+
+    if warnings:
+        payload["warnings"] = warnings
 
 
 def _health_checks_payload() -> dict[str, Any]:

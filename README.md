@@ -245,6 +245,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_ops/metrics          Prometheus-style text metrics
 ```
 
+`/_ops/health` 会包含 `sandbox_exec` 字段。它来自容器启动后一次性内部调用 `POST /v1/sandbox/run` 的结果，用来确认 Sandbox 不只是端口存活，而是真能执行 `python3` code。默认失败只标记 degraded，不把 demo Space 直接拉挂；受控验证可设置 `SANDBOX_SELFCHECK_STRICT=true`。
+
 `/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 只包括 restart service、reload nginx 和 run health checks；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
 
 Nginx access log 使用 JSON 格式写到 Nginx stdout；当前 `supervisord` 会把 Nginx stdout 收进 `/data/logs/nginx.log`，可通过 `/_ops/logs?service=nginx` 查看。字段包含 `time`、`request_id`、`remote_addr`、`method`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status`、`upstream_response_time` 和 `host`，便于区分 Web/API/Plugin/Ops 的上游问题。

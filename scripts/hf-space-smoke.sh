@@ -8,6 +8,7 @@ ADMIN_TOKEN=${ADMIN_TOKEN:-}
 SMOKE_ADMIN_ENABLED=${SMOKE_ADMIN_ENABLED:-${ADMIN_ENABLED:-false}}
 SMOKE_ADMIN_ACTIONS=${SMOKE_ADMIN_ACTIONS:-false}
 SMOKE_OPENAPI_ENABLED=${SMOKE_OPENAPI_ENABLED:-false}
+SMOKE_SANDBOX_EXEC_ENABLED=${SMOKE_SANDBOX_EXEC_ENABLED:-true}
 SMOKE_RETRIES=${SMOKE_RETRIES:-30}
 SMOKE_DELAY=${SMOKE_DELAY:-5}
 
@@ -128,6 +129,68 @@ PY
 
   printf 'FAIL %s: persistence payload did not become healthy\n' "$label" >&2
   sed -n '1,120p' "$tmp_body" >&2 || true
+  exit 1
+}
+
+check_ops_sandbox_exec() {
+  local label="ops-sandbox-exec"
+  local path="/_ops/health"
+  local status
+  local attempt
+
+  if [ "$SMOKE_SANDBOX_EXEC_ENABLED" != "true" ]; then
+    printf 'SKIP %s: SMOKE_SANDBOX_EXEC_ENABLED is not true\n' "$label"
+    return
+  fi
+  if [ -z "$OPS_TOKEN" ]; then
+    printf 'SKIP %s: OPS_TOKEN is not set\n' "$label"
+    return
+  fi
+
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+      -H "X-Ops-Token: $OPS_TOKEN" \
+      "$BASE_URL$path" || true)
+    if [ "$status" = "200" ] && python3 - "$tmp_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = json.load(fh)
+
+sandbox_exec = payload.get("sandbox_exec") or {}
+if sandbox_exec.get("ok") is True and sandbox_exec.get("status") == "ok":
+    sys.exit(0)
+
+print(
+    "sandbox_exec is not ok: "
+    + json.dumps(
+        {
+            "ok": sandbox_exec.get("ok"),
+            "status": sandbox_exec.get("status"),
+            "run_status": sandbox_exec.get("run_status"),
+            "health_status": sandbox_exec.get("health_status"),
+            "error": sandbox_exec.get("error"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    ),
+    file=sys.stderr,
+)
+sys.exit(1)
+PY
+    then
+      printf 'PASS %s: sandbox execution selfcheck is ok\n' "$label"
+      return
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected sandbox_exec ok, got HTTP %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
+  printf 'FAIL %s: sandbox execution selfcheck did not become ok\n' "$label" >&2
+  sed -n '1,160p' "$tmp_body" >&2 || true
   exit 1
 }
 
@@ -286,6 +349,7 @@ else
   printf 'SKIP openapi-version: SMOKE_OPENAPI_ENABLED is not true\n'
 fi
 check_ops "ops-health" "/_ops/health"
+check_ops_sandbox_exec
 check_ops "ops-system" "/_ops/system"
 check_ops_persistence
 check_ops "ops-metrics" "/_ops/metrics"

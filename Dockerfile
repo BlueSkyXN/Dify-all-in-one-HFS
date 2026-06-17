@@ -171,6 +171,7 @@ COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
+COPY docker/sandbox-selfcheck /usr/local/bin/dify-sandbox-selfcheck
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service
 COPY docker/admin_service.py /usr/local/bin/dify-admin-service
@@ -184,6 +185,7 @@ RUN chmod +x \
       /usr/local/bin/with-dify-env \
       /usr/local/bin/with-plugin-env \
       /usr/local/bin/with-sandbox-env \
+      /usr/local/bin/dify-sandbox-selfcheck \
       /usr/local/bin/postgres-backup-loop \
       /usr/local/bin/dify-ops-service \
       /usr/local/bin/dify-admin-service \

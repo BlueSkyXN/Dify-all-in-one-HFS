@@ -315,6 +315,10 @@ Nginx 会把 `/openapi` 代理到内部 Dify API。`/openapi/v1/_health` 和 `/o
 | `SANDBOX_PORT` | `8194` | Sandbox port |
 | `SANDBOX_PYTHON_PATH` | `/usr/local/bin/python3` | Python path |
 | `SANDBOX_NODEJS_PATH` | `/usr/bin/node` | Node path |
+| `SANDBOX_SELFCHECK_ENABLED` | `true` | 启动后一次性调用内部 `/v1/sandbox/run`，验证 Python code execution 热路径 |
+| `SANDBOX_SELFCHECK_STRICT` | `false` | `false` 时自检失败只在 `/_ops/health.sandbox_exec` 标记 degraded；`true` 时让 health 失败 |
+| `SANDBOX_SELFCHECK_RESULT_PATH` | `${RUNTIME_ROOT}/sandbox-selfcheck.json` | 自检结果文件；`ops-service` 只读读取，不包含 secret 原文 |
+| `SANDBOX_SELFCHECK_TIMEOUT_SECONDS` | `30` | 等待 sandbox `/health` 并执行 probe 的总超时 |
 | `SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL` | `876000h` | Python deps update interval；HF rootless 环境默认等效禁用周期刷新，避免只读 sandbox rootfs 被重复覆盖 |
 
 ## Plugin Daemon
@@ -397,6 +401,9 @@ OPS_EXTRA_TCP_CHECKS_JSON=[{"name":"queue","host":"127.0.0.1","port":5672,"timeo
 
 自定义 HTTP/TCP 探针最多执行 32 个；HTTP 探针未设置 `expected_status` 时沿用内置语义，即 HTTP `<500` 代表 upstream 可达。
 如果关闭内置探针又没有配置任何额外探针，`/healthz` 会返回不健康，避免空检查被误判为正常。
+
+`/_ops/health` 还会暴露 `sandbox_exec`，它来自启动后一次性 `sandbox-selfcheck` 结果，覆盖真实 `python3` code execution 路径。默认 `SANDBOX_SELFCHECK_STRICT=false`，失败时 `/_ops/health` 会出现 `degraded=true` 和 `warnings`，但不会因为一次性探针失败直接让 Space readiness 掉线；需要 CI/受控验证时可设为 `true`。
+
 `/_ops/config` 不返回这些 JSON 的原文，只返回解析出的检查名称，避免误把 URL 中的敏感片段暴露成配置摘要。`/_ops` 不再支持自定义 command 探针；需要执行命令的受控操作必须放入 `/_admin` 白名单 action。
 
 ## Admin Service

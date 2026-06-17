@@ -68,9 +68,10 @@ require_executable scripts/hf-space-smoke.sh
 require_executable scripts/run-demo.sh
 require_executable scripts/static-check.sh
 require_executable scripts/validate-hfs-contract.sh
+require_executable docker/sandbox-selfcheck
 
 scripts/validate-hfs-contract.sh
-python3 -m py_compile docker/ops_service.py docker/admin_service.py
+python3 -m py_compile docker/ops_service.py docker/admin_service.py docker/sandbox-selfcheck
 python3 -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check
 check_changed_file_trailing_whitespace

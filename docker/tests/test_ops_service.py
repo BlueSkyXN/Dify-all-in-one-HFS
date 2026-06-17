@@ -1,5 +1,6 @@
 import importlib.util
 import http.client
+import json
 import os
 import sys
 import tempfile
@@ -94,6 +95,66 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(build["plugin_daemon_image_ref"], "langgenius/dify-plugin-daemon@sha256:plugin")
         self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
         self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
+
+    def test_sandbox_selfcheck_payload_reads_sanitized_result(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result_path = Path(tmpdir) / "sandbox-selfcheck.json"
+            result_path.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "status": "ok",
+                        "strict": False,
+                        "duration_ms": 123,
+                        "health_status": 200,
+                        "run_status": 200,
+                        "contains_marker": True,
+                        "response_sample": "dify-aio-sandbox-selfcheck",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            os.environ["SANDBOX_SELFCHECK_RESULT_PATH"] = str(result_path)
+
+            payload = ops_service.sandbox_selfcheck_payload()
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["run_status"], 200)
+        self.assertNotIn("response_sample", payload)
+
+    def test_sandbox_selfcheck_failure_degrades_without_failing_default_health(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result_path = Path(tmpdir) / "sandbox-selfcheck.json"
+            result_path.write_text(
+                json.dumps({"ok": False, "status": "failed", "error": "marker missing"}),
+                encoding="utf-8",
+            )
+            os.environ["SANDBOX_SELFCHECK_RESULT_PATH"] = str(result_path)
+            os.environ["SANDBOX_SELFCHECK_STRICT"] = "false"
+            payload = {"ok": True, "checks": [{"name": "sandbox-tcp", "ok": True}]}
+
+            ops_service.enrich_health_with_sandbox_selfcheck(payload)
+
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["degraded"])
+        self.assertEqual(payload["sandbox_exec"]["status"], "failed")
+
+    def test_sandbox_selfcheck_strict_failure_fails_health(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result_path = Path(tmpdir) / "sandbox-selfcheck.json"
+            result_path.write_text(
+                json.dumps({"ok": False, "status": "failed", "error": "marker missing"}),
+                encoding="utf-8",
+            )
+            os.environ["SANDBOX_SELFCHECK_RESULT_PATH"] = str(result_path)
+            os.environ["SANDBOX_SELFCHECK_STRICT"] = "true"
+            payload = {"ok": True, "checks": [{"name": "sandbox-tcp", "ok": True}]}
+
+            ops_service.enrich_health_with_sandbox_selfcheck(payload)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["checks"][-1]["name"], "sandbox-exec-selfcheck")
 
     def test_plugin_storage_paths_resolve_relative_cache_under_root(self):
         os.environ.update(

@@ -279,7 +279,7 @@ bash -n \
   scripts/validate-hfs-contract.sh \
   scripts/static-check.sh
 scripts/validate-hfs-contract.sh
-python3 -m py_compile docker/ops_service.py
+python3 -m py_compile docker/ops_service.py docker/sandbox-selfcheck
 python3 -m py_compile docker/admin_service.py
 git diff --check
 ```
