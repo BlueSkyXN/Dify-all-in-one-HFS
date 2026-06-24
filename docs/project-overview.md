@@ -70,13 +70,13 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:7ea7580493d79ebab478c111226c08be282396e95b6037f05cf5063d0e7841ef
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e88c2f2f1aafd802c2f54bedaefcf39587f6f8fa8c54ff5dee0c00da6e604254
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:9f80c931d8fae98a155e9857539763e94b2c84999f47a09e8b26bae4c3536c21
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e5c8370f098d5c8e422701e725d52292fd06170c3943bf0a3e9b2f998c52b2a1
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=main-1065fe519cac6de99da83816841703254ef00cfb
+DIFY_VERSION=main-1b81ac033fd52a522901e54bc83ca58a667f0214
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
@@ -88,7 +88,7 @@ NEXT branch 默认值已 pin 到官方 main commit-tag image digest set、HFS �
 
 ## 与源码自建 main 的边界
 
-截至当前 NEXT pin 的上游 `main-1065fe519cac6de99da83816841703254ef00cfb`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.1` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
+截至当前 NEXT pin 的上游 `main-1b81ac033fd52a522901e54bc83ca58a667f0214`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.3` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
 
 当前 HFS NEXT 没有把完整 `langgenius/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是官方 main commit image digest：
 

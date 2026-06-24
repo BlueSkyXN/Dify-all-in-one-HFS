@@ -15,12 +15,12 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e88c2f2f1aafd802c2f54bedaefcf39587f6f8fa8c54ff5dee0c00da6e604254
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:7ea7580493d79ebab478c111226c08be282396e95b6037f05cf5063d0e7841ef
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e5c8370f098d5c8e422701e725d52292fd06170c3943bf0a3e9b2f998c52b2a1
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:9f80c931d8fae98a155e9857539763e94b2c84999f47a09e8b26bae4c3536c21
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 ARG DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-ARG DIFY_VERSION=main-1065fe519cac6de99da83816841703254ef00cfb
+ARG DIFY_VERSION=main-1b81ac033fd52a522901e54bc83ca58a667f0214
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
@@ -180,13 +180,13 @@ COPY --from=api-image --chown=user:user /app/api /app/api
 RUN set -eu; \
     uv pip install --python /app/api/.venv/bin/python --no-cache \
       "fastapi==0.136.0" \
-      "graphon==0.5.1" \
+      "graphon==0.5.3" \
       "jsonschema>=4.23.0,<5.0.0" \
       "jwcrypto>=1.5.6,<2" \
       "pydantic-ai-slim>=1.85.1,<2.0.0" \
       "pydantic-settings>=2.12.0,<3.0.0" \
       "redis>=7.4.0,<8.0.0" \
-      "shell-session-manager==2.2.0" \
+      "shell-session-manager==2.2.1" \
       "uvicorn[standard]==0.46.0" \
     && /app/api/.venv/bin/python -c "import dify_agent.server.app" \
     && if ! uv pip check --python /app/api/.venv/bin/python > /tmp/dify-agent-uv-pip-check.txt 2>&1; then \
