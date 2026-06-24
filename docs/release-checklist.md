@@ -111,7 +111,7 @@ python3 -m pip download --only-binary=:all: --python-version 3.14 --implementati
 
 ```text
 dify-agent import / uv pip check gate passed in Docker build? yes/no:
-Known clickzetta/pyarrow upstream check exception only? yes/no:
+Known upstream uv pip check exceptions only? yes/no:
 /_ops/health.agent_backend.status:
 Agent App or workflow Agent node smoke:
 Reason if skipped:

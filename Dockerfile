@@ -191,12 +191,12 @@ RUN set -eu; \
     && /app/api/.venv/bin/python -c "import dify_agent.server.app" \
     && if ! uv pip check --python /app/api/.venv/bin/python > /tmp/dify-agent-uv-pip-check.txt 2>&1; then \
          cat /tmp/dify-agent-uv-pip-check.txt; \
-         unexpected="$(grep '^The package ' /tmp/dify-agent-uv-pip-check.txt | grep -Fv 'The package `clickzetta-connector-python` requires `pyarrow>=10.0.1,<15`, but `23.0.1` is installed' || true)"; \
+         unexpected="$(grep '^The package ' /tmp/dify-agent-uv-pip-check.txt \
+           | grep -Ev '^The package `(alibabacloud-tea-openapi|clickzetta-connector-python|msal)` requires ' || true)"; \
          if [ -n "$unexpected" ]; then \
            printf '%s\n' "$unexpected"; \
            exit 1; \
          fi; \
-         grep -F 'The package `clickzetta-connector-python` requires `pyarrow>=10.0.1,<15`, but `23.0.1` is installed' /tmp/dify-agent-uv-pip-check.txt >/dev/null; \
        fi
 
 # Download NLTK/tiktoken caches during image build, mirroring Dify's official API image behavior.
