@@ -159,6 +159,8 @@ SANDBOX_ENABLE_NETWORK=false
 
 镜像中的 `/opt/dify/sandbox/main` 保留 setuid root 权限，这是上游 Dify Sandbox 用于创建隔离执行环境的 runtime 边界。NEXT/HFS 镜像使用 source-pinned sandbox binary patch，使 sandbox 在 Hugging Face rootless/userns 环境中默认使用映射的 UID/GID `1000`，避免 upstream 默认 `10000..10999` UID pool 在 HFS 上 `chown` 失败；它仍保留 upstream 的 chroot/seccomp 路径，但默认会把 sandbox code execution 串行化到单 UID。这个 SUID binary 的安全性依赖上游 sandbox 的 syscall/隔离实现、本仓库的 HFS 兼容 patch 和默认关闭出网的配置；不要把 `SANDBOX_ENABLE_NETWORK=true` 当作普通功能开关在公开 Space 中长期启用。
 
+NEXT Agent shell layer 由 `shellctl` 提供，默认只监听 `127.0.0.1:5004`，不经 Nginx 暴露到公网。`AGENT_SHELL_ENABLED=true` 会让 Agent runtime 能使用 shell layer；这适合受控 NEXT 验证，不等价于生产安全边界。不要把 `DIFY_AGENT_SHELLCTL_ENTRYPOINT` 指向公网地址，也不要新增 Nginx route 暴露 shellctl。
+
 ## Plugin
 
 默认：

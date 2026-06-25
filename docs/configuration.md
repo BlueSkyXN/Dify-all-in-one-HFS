@@ -155,6 +155,8 @@ NEXT_PUBLIC_ENABLE_COLLABORATION_MODE=true
 NEXT_PUBLIC_SOCKET_URL=wss://<your-space-host>
 DIFY_AGENT_ENABLED=true
 AGENT_DRIVE_MANIFEST_ENABLED=true
+AGENT_SHELL_ENABLED=true
+DIFY_AGENT_SHELLCTL_ENTRYPOINT=http://127.0.0.1:5004
 ```
 
 通常不要额外上传下面这些派生值；它们由 `with-dify-env` 在 `DIFY_AGENT_ENABLED=true` 时从同容器默认值和 generated secrets 派生：
@@ -182,11 +184,12 @@ DIFY_AGENT_DIFY_API_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
 | `DIFY_AGENT_PORT` | `5005` | backend 内部端口 |
 | `DIFY_AGENT_STARTUP_DELAY_SECONDS` | `30` | core API health 通过后再启动 backend 的延迟，降低 HFS cpu-basic 启动期资源竞争 |
 | `AGENT_BACKEND_USE_FAKE` | `false` | API 侧 fake backend 开关，仅用于局部开发/测试 |
-| `AGENT_SHELL_ENABLED` | `false` | shell layer 开关；公开 HFS demo 默认关闭 |
+| `AGENT_SHELL_ENABLED` | `true` | shell layer 开关；NEXT 默认由同容器 loopback `shellctl` 支撑，设为 `false` 时 `run-shellctl` 保持 idle |
 | `AGENT_DRIVE_MANIFEST_ENABLED` | `true` | drive manifest 开关；让 Agent runtime 接收 Skills & Files drive manifest 声明 |
+| `DIFY_AGENT_SHELLCTL_ENTRYPOINT` | `http://127.0.0.1:5004` | Agent shell layer 的内部 shellctl endpoint；只能保持 loopback，不要暴露到 Nginx 或公网 |
 | `DIFY_AGENT_REDIS_PREFIX` | `dify-agent-next` | Agent backend Redis key prefix |
 
-`SERVER_WORKER_CLASS` 和 `API_WEBSOCKET_WORKER_CLASS` 默认使用 `geventwebsocket.gunicorn.workers.GeventWebSocketWorker`，Nginx 保留 `/socket.io/` WebSocket upgrade headers。`/_ops/health` 会暴露 `agent_backend` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon 和 Dify API health，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
+`SERVER_WORKER_CLASS` 和 `API_WEBSOCKET_WORKER_CLASS` 默认使用 `geventwebsocket.gunicorn.workers.GeventWebSocketWorker`，Nginx 保留 `/socket.io/` WebSocket upgrade headers。`/_ops/health` 会暴露 `agent_backend` 和 `shellctl` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 与 shellctl 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
 
 ## 推荐 Space Secrets
 

@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 image stages，由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` / `PLUGIN_DAEMON_IMAGE_REF` / `SANDBOX_IMAGE_REF` 选择镜像；发布态使用 digest ref | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon` 的 `/app`；`langgenius/dify-sandbox` 的 `conf` + `dependencies` |
 | NEXT Sandbox binary patch | `sandbox-builder` 从 `DIFY_SANDBOX_SOURCE_REF` 拉取上游 `dify-sandbox` source 并应用 `docker/patches/dify-sandbox-hfs-uidpool.patch` | 只替换 `/opt/dify/sandbox/main`，用于 HFS rootless UID/GID 兼容；仍保留 upstream chroot/seccomp 路径 |
-| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv` |
+| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv`、`tmux`、`shellctl` |
 | 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
 
 ## 总体拓扑
@@ -30,6 +30,8 @@ flowchart TD
     api --> postgres["PostgreSQL 15 + pgvector :5432"]
     api --> redis["Redis :6379"]
     api --> sandbox["Sandbox :8194"]
+    api --> agent["dify-agent :5005"]
+    agent --> shellctl["shellctl :5004"]
     api --> plugin
     worker["Dify Worker"] --> postgres
     worker --> redis
@@ -65,7 +67,7 @@ flowchart TD
     router --> errors["/errors"]
 
     health --> cmd_checks["command checks: pg_isready, redis-cli"]
-    health --> tcp_checks["TCP checks: plugin-daemon, sandbox"]
+    health --> tcp_checks["TCP checks: plugin-daemon, sandbox, optional shellctl"]
     health --> http_checks["HTTP checks: API, Web, Nginx, setup/init"]
     health --> extra_checks["optional extra checks from env JSON"]
     status --> supervisor_status["Supervisor XML-RPC over unix socket"]
@@ -88,6 +90,8 @@ flowchart TD
 | `postgres-backup` | none | 常驻进程：`POSTGRES_BACKUP_ENABLED=auto` 时仅在 bucket-lite 激活后定期 `pg_dumpall` 到 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验后更新 `latest.sql.gz` / `latest.created_at` / `latest.sha256`；其余状态 `exec sleep infinity` 空闲。默认 60s 首跑、3600s 间隔、保留 5 份，可由 `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` / `POSTGRES_BACKUP_INTERVAL_SECONDS` / `POSTGRES_BACKUP_RETAIN_COUNT` 覆盖 | `/data/logs/postgres-backup.log`, `/data/logs/postgres-backup.err` |
 | `plugin-daemon` | `0.0.0.0:5002`, `0.0.0.0:5003` | Dify plugin runtime 和 remote install | `/data/logs/plugin-daemon.log`, `/data/logs/plugin-daemon.err` |
 | `sandbox` | `127.0.0.1:8194` | Code execution sandbox | stdout/stderr |
+| `shellctl` | `127.0.0.1:5004` | Agent shell layer controller；仅在 `DIFY_AGENT_ENABLED=true` 且 `AGENT_SHELL_ENABLED=true` 时实际服务 | `/data/logs/shellctl.log`, `/data/logs/shellctl.err` |
+| `dify-agent` | `127.0.0.1:5005` | Agent v2 backend；shell layer 开启时等待 shellctl ready | `/data/logs/dify-agent.log`, `/data/logs/dify-agent.err` |
 | `dify-api` | `0.0.0.0:5001` | Dify API server | `/data/logs/dify-api.log`, `/data/logs/dify-api.err` |
 | `dify-worker` | none | Celery worker | `/data/logs/dify-worker.log`, `/data/logs/dify-worker.err` |
 | `dify-beat` | none | Celery beat scheduler | `/data/logs/dify-beat.log`, `/data/logs/dify-beat.err` |

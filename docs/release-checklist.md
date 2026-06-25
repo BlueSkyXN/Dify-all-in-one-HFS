@@ -113,11 +113,12 @@ python3 -m pip download --only-binary=:all: --python-version 3.14 --implementati
 dify-agent import / uv pip check gate passed in Docker build? yes/no:
 Known upstream uv pip check exceptions only? yes/no:
 /_ops/health.agent_backend.status:
+/_ops/health.shellctl.status:
 Agent App or workflow Agent node smoke:
 Reason if skipped:
 ```
 
-`agent_backend.status=ok` 只能证明内部 `dify-agent` backend 可达；真实 Agent v2 发布验收需要再跑 Agent App 或 workflow Agent node，最好包含一次 plugin tool 调用。
+`agent_backend.status=ok` 和 `shellctl.status=ok` 只能证明内部 `dify-agent` backend 与 shell layer controller 可达；真实 Agent v2 / Skills 发布验收需要再跑 Agent App 或 workflow Agent node，最好包含一次 plugin tool 或 skill 引用。
 
 如果 NEXT Space 开启 `ADMIN_ENABLED=true` 但本轮不提供 `ADMIN_TOKEN`，可以用：
 

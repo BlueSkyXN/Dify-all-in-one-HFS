@@ -30,7 +30,7 @@
 | Plugin 存储 | `/data/plugin_daemon`，插件包、已安装插件和 assets 指向 `/persist`，工作目录默认在 `/tmp/dify-aio` | 插件和 runtime relaunch 所需包保留，scratch/cache 不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认开启 | 便于 demo/plugin 验证；公开或稳定演示环境可按需关闭以减少外部依赖 |
-| NEXT Agent Runtime | `dify-agent` backend 默认关闭，可在 NEXT Space 单独开启 | main 已把 Agent v2 / dify-agent 纳入主链路；本仓库先提供 HFS 可观测的基础 backend，不把它写成生产完成态 |
+| NEXT Agent Runtime | `dify-agent` backend 与 loopback `shellctl` shell layer 在 NEXT 默认开启 | main 已把 Agent v2 / dify-agent 纳入主链路；本仓库提供 HFS 可观测的基础 backend 和 shell layer，不把它写成完整 Agent/Skills 验收完成态 |
 | 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
 
 ## 目录结构
@@ -97,7 +97,7 @@ DIFY_API_IMAGE_REF
 DIFY_WEB_IMAGE_REF
 ```
 
-因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只在官方 API venv 上补齐并 build-gate `dify-agent` backend server extras，用于提前验证 Agent v2 runtime 方向。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
+因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只在官方 API venv 上补齐并 build-gate `dify-agent` backend server extras 与 `shellctl`，用于提前验证 Agent v2 runtime 方向。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend、shell layer 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
 
 ## 运行状态入口
 

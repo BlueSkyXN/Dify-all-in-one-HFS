@@ -47,6 +47,8 @@ DEFAULT_SERVICE_LOGS = {
     "postgres-backup.err": "postgres-backup.err",
     "plugin-daemon": "plugin-daemon.log",
     "plugin-daemon.err": "plugin-daemon.err",
+    "shellctl": "shellctl.log",
+    "shellctl.err": "shellctl.err",
     "sandbox-selfcheck": "sandbox-selfcheck.log",
     "sandbox-selfcheck.err": "sandbox-selfcheck.err",
     "dify-api": "dify-api.log",
@@ -107,6 +109,7 @@ SAFE_CONFIG_KEYS = [
     "AGENT_BACKEND_FAKE_SCENARIO",
     "AGENT_SHELL_ENABLED",
     "AGENT_DRIVE_MANIFEST_ENABLED",
+    "DIFY_AGENT_SHELLCTL_ENTRYPOINT",
     "DIFY_AGENT_REDIS_PREFIX",
     "DIFY_AGENT_PLUGIN_DAEMON_URL",
     "DIFY_AGENT_DIFY_API_BASE_URL",
@@ -765,30 +768,80 @@ def agent_backend_payload() -> dict[str, Any]:
     return payload
 
 
+def shellctl_enabled() -> bool:
+    agent_enabled = parse_bool(env("DIFY_AGENT_ENABLED", "false"), default=False)
+    shell_enabled = parse_bool(env("AGENT_SHELL_ENABLED", "false"), default=False)
+    return agent_enabled and shell_enabled
+
+
+def shellctl_endpoint_parts() -> tuple[str, str, int]:
+    endpoint = env("DIFY_AGENT_SHELLCTL_ENTRYPOINT", "http://127.0.0.1:5004")
+    parsed = urllib.parse.urlparse(endpoint)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 5004
+    return endpoint, host, port
+
+
+def shellctl_payload() -> dict[str, Any]:
+    endpoint, host, port = shellctl_endpoint_parts()
+    enabled = shellctl_enabled()
+    payload: dict[str, Any] = {
+        "enabled": enabled,
+        "endpoint": endpoint,
+        "host": host,
+        "port": port,
+    }
+    if not enabled:
+        payload.update({"ok": True, "status": "disabled"})
+        return payload
+
+    if host not in {"127.0.0.1", "localhost"}:
+        payload.update({"ok": False, "status": "invalid", "error": "shellctl endpoint must stay loopback"})
+        return payload
+
+    check = tcp_check("shellctl-tcp", host, port)
+    payload.update(
+        {
+            "ok": check.get("ok") is True,
+            "status": "ok" if check.get("ok") is True else "failed",
+            "duration_ms": check.get("duration_ms"),
+        }
+    )
+    if check.get("error"):
+        payload["error"] = check["error"]
+    return payload
+
+
 def enrich_health_with_agent_backend(payload: dict[str, Any]) -> None:
     agent_backend = agent_backend_payload()
     payload["agent_backend"] = agent_backend
+    shellctl = shellctl_payload()
+    payload["shellctl"] = shellctl
 
-    if not agent_backend.get("enabled"):
-        return
+    failures = []
+    if agent_backend.get("enabled") and agent_backend.get("ok") is not True:
+        failures.append(("agent backend", agent_backend))
+    if shellctl.get("enabled") and shellctl.get("ok") is not True:
+        failures.append(("shellctl", shellctl))
 
-    if agent_backend.get("ok") is True:
+    if not failures:
         return
 
     payload["ok"] = False
     payload["degraded"] = True
     warnings = list(payload.get("warnings") or [])
-    warnings.append(f"agent backend {agent_backend.get('status') or 'failed'}")
-    payload["warnings"] = warnings
     checks = list(payload.get("checks") or [])
-    checks.append(
-        {
-            "name": "agent-backend",
-            "ok": False,
-            "status": agent_backend.get("status"),
-            "error": agent_backend.get("error"),
-        }
-    )
+    for label, details in failures:
+        warnings.append(f"{label} {details.get('status') or 'failed'}")
+        checks.append(
+            {
+                "name": label.replace(" ", "-"),
+                "ok": False,
+                "status": details.get("status"),
+                "error": details.get("error"),
+            }
+        )
+    payload["warnings"] = warnings
     payload["checks"] = checks
 
 
@@ -808,6 +861,9 @@ def _health_checks_payload() -> dict[str, Any]:
                 partial(http_check, "dify-init", "http://127.0.0.1:5001/console/api/init"),
             ]
         )
+        if shellctl_enabled():
+            _, shellctl_host, shellctl_port = shellctl_endpoint_parts()
+            checks_to_run.append(partial(tcp_check, "shellctl-tcp", shellctl_host, shellctl_port))
     checks_to_run.extend(extra_http_checks())
     checks_to_run.extend(extra_tcp_checks())
     checks = collect_checks(checks_to_run)

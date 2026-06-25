@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if ! is_true "${DIFY_AGENT_ENABLED:-false}"; then
+  printf '[shellctl] DIFY_AGENT_ENABLED is false; keeping supervisor program idle.\n'
+  exec sleep infinity
+fi
+
+if ! is_true "${AGENT_SHELL_ENABLED:-false}"; then
+  printf '[shellctl] AGENT_SHELL_ENABLED is false; keeping supervisor program idle.\n'
+  exec sleep infinity
+fi
+
+exec /app/api/.venv/bin/shellctl serve --listen 127.0.0.1:5004

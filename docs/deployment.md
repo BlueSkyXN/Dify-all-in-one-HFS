@@ -151,7 +151,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://your-space.hf.space/_ops/errors
 ```
 
-NEXT Space 如果开启 `DIFY_AGENT_ENABLED=true`，还要检查 `/_ops/health` 里的 `agent_backend` 字段。`agent_backend.status=ok` 只说明内部 backend 进程可达；完整 Agent v2 验收仍需要在 Console 里跑真实 Agent App 或 workflow Agent node。
+NEXT Space 如果开启 `DIFY_AGENT_ENABLED=true`，还要检查 `/_ops/health` 里的 `agent_backend` 字段；如果同时开启 `AGENT_SHELL_ENABLED=true`，还要检查 `shellctl.status=ok` 且 `shellctl.enabled=true`。这些只说明内部 backend 和 shell layer 进程可达；完整 Agent v2 / Skills 验收仍需要在 Console 里跑真实 Agent App 或 workflow Agent node。
 
 浏览器：
 

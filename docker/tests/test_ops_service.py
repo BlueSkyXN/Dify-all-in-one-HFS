@@ -195,6 +195,68 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(payload["agent_backend"]["status"], "failed")
         self.assertEqual(payload["checks"][-1]["name"], "agent-backend")
 
+    def test_shellctl_disabled_is_non_degrading(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            return {"name": name, "ok": True, "duration_ms": 1}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["AGENT_SHELL_ENABLED"] = "false"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["shellctl"]["status"], "disabled")
+        self.assertNotIn("degraded", payload)
+
+    def test_shellctl_enabled_failure_fails_health(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            if name == "shellctl-tcp":
+                return {"name": name, "ok": False, "duration_ms": 1, "error": "connection refused"}
+            return {"name": name, "ok": True, "duration_ms": 1}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["AGENT_SHELL_ENABLED"] = "true"
+        os.environ["DIFY_AGENT_SHELLCTL_ENTRYPOINT"] = "http://127.0.0.1:5004"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["degraded"])
+        self.assertEqual(payload["shellctl"]["status"], "failed")
+        self.assertEqual(payload["checks"][-1]["name"], "shellctl")
+
+    def test_shellctl_rejects_non_loopback_endpoint(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            return {"name": name, "ok": True, "duration_ms": 1}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["AGENT_SHELL_ENABLED"] = "true"
+        os.environ["DIFY_AGENT_SHELLCTL_ENTRYPOINT"] = "http://shellctl.example:5004"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["shellctl"]["status"], "invalid")
+        self.assertIn("loopback", payload["shellctl"]["error"])
+
     def test_plugin_storage_paths_resolve_relative_cache_under_root(self):
         os.environ.update(
             {

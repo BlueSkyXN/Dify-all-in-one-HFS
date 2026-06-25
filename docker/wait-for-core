@@ -48,12 +48,30 @@ wait_plugin_daemon() {
   done
 }
 
+wait_shellctl() {
+  local endpoint=${DIFY_AGENT_SHELLCTL_ENTRYPOINT:-http://127.0.0.1:5004}
+  local host_port host port
+  host_port=${endpoint#http://}
+  host_port=${host_port#https://}
+  host_port=${host_port%%/*}
+  host=${host_port%:*}
+  port=${host_port##*:}
+  if [ "$host" = "$host_port" ] || [ -z "$host" ] || [ -z "$port" ]; then
+    host=127.0.0.1
+    port=5004
+  fi
+  until nc -z "$host" "$port" >/dev/null 2>&1; do
+    sleep 1
+  done
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     postgres) wait_postgres ;;
     redis) wait_redis ;;
     api) wait_api ;;
     plugin-daemon) wait_plugin_daemon ;;
+    shellctl) wait_shellctl ;;
     --) shift; break ;;
     *) break ;;
   esac

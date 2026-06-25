@@ -42,7 +42,7 @@
 ## 验证
 
 ```bash
-bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop
+bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/run-dify-agent docker/run-shellctl docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop
 python3 -m py_compile docker/ops_service.py docker/admin_service.py
 git diff --check -- docker
 ```

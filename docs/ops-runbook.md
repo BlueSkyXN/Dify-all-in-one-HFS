@@ -214,6 +214,7 @@ version.sandbox.requirements.package_count
 postgres            pg_isready
 redis               redis-cli ping
 plugin-daemon-tcp   TCP 127.0.0.1:5002
+shellctl-tcp        TCP 127.0.0.1:5004 when Agent shell layer is enabled
 sandbox-tcp         TCP 127.0.0.1:8194
 dify-api-health     HTTP 127.0.0.1:5001/health
 dify-web            HTTP 127.0.0.1:3000/apps
@@ -227,6 +228,7 @@ dify-init           HTTP 127.0.0.1:5001/console/api/init
 - Supervisor XML-RPC 进程状态
 - Dify / Space 版本摘要
 - 每个探针的耗时、HTTP 状态和短样本
+- NEXT Agent backend 与 shellctl 状态；shellctl 只在 `DIFY_AGENT_ENABLED=true` 且 `AGENT_SHELL_ENABLED=true` 时要求为 ok
 
 迁移到其他程序时，可以设置 `OPS_DEFAULT_CHECKS_ENABLED=false`，再用 `OPS_EXTRA_HTTP_CHECKS_JSON` 和 `OPS_EXTRA_TCP_CHECKS_JSON` 添加目标程序自己的只读探针。自定义 HTTP/TCP 探针最多执行 32 个；HTTP 探针可以用 `expected_status` 明确要求返回码。`/_ops` 不支持自定义 command 探针；需要执行命令的受控操作必须放入 `/_admin` 白名单 action。
 

@@ -196,6 +196,67 @@ PY
   exit 1
 }
 
+check_ops_shellctl() {
+  local label="ops-shellctl"
+  local path="/_ops/health"
+  local status
+  local attempt
+
+  if [ -z "$OPS_TOKEN" ]; then
+    printf 'SKIP %s: OPS_TOKEN is not set\n' "$label"
+    return
+  fi
+
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+      -H "X-Ops-Token: $OPS_TOKEN" \
+      "$BASE_URL$path" || true)
+    if [ "$status" = "200" ] && python3 - "$tmp_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = json.load(fh)
+
+shellctl = payload.get("shellctl") or {}
+if shellctl.get("enabled") is not True:
+    print("shellctl is not enabled", file=sys.stderr)
+    sys.exit(1)
+if shellctl.get("ok") is True and shellctl.get("status") == "ok":
+    sys.exit(0)
+
+print(
+    "shellctl is not ok: "
+    + json.dumps(
+        {
+            "enabled": shellctl.get("enabled"),
+            "ok": shellctl.get("ok"),
+            "status": shellctl.get("status"),
+            "endpoint": shellctl.get("endpoint"),
+            "error": shellctl.get("error"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    ),
+    file=sys.stderr,
+)
+sys.exit(1)
+PY
+    then
+      printf 'PASS %s: shellctl is enabled and reachable\n' "$label"
+      return
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected shellctl ok, got HTTP %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
+  printf 'FAIL %s: shellctl did not become ok\n' "$label" >&2
+  sed -n '1,160p' "$tmp_body" >&2 || true
+  exit 1
+}
+
 check_ops_cookie_migration() {
   local status
   if [ -z "$OPS_TOKEN" ]; then
@@ -367,6 +428,7 @@ else
 fi
 check_ops "ops-health" "/_ops/health"
 check_ops_sandbox_exec
+check_ops_shellctl
 check_ops "ops-system" "/_ops/system"
 check_ops_persistence
 check_ops "ops-metrics" "/_ops/metrics"

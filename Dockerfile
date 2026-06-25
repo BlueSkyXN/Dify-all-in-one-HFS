@@ -130,7 +130,7 @@ ENV TIKTOKEN_CACHE_DIR=/app/api/.tiktoken_cache
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ca-certificates curl gnupg lsb-release git \
-       openssl tini procps netcat-openbsd \
+       openssl tini procps netcat-openbsd tmux \
        nginx supervisor redis-server \
        libcap2-bin \
        libgmp-dev libmpfr-dev libmpc-dev \
@@ -189,6 +189,7 @@ RUN set -eu; \
       "shell-session-manager==2.2.1" \
       "uvicorn[standard]==0.46.0" \
     && /app/api/.venv/bin/python -c "import dify_agent.server.app" \
+    && /app/api/.venv/bin/shellctl --help >/dev/null \
     && if ! uv pip check --python /app/api/.venv/bin/python > /tmp/dify-agent-uv-pip-check.txt 2>&1; then \
          cat /tmp/dify-agent-uv-pip-check.txt; \
          unexpected="$(grep '^The package ' /tmp/dify-agent-uv-pip-check.txt \
@@ -230,6 +231,7 @@ COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
 COPY docker/run-dify-agent /usr/local/bin/run-dify-agent
+COPY docker/run-shellctl /usr/local/bin/run-shellctl
 COPY docker/sandbox-selfcheck /usr/local/bin/dify-sandbox-selfcheck
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service
@@ -249,6 +251,7 @@ RUN cp "$(readlink -f /usr/local/bin/python3)" /opt/dify/sandbox/python3-sandbox
       /usr/local/bin/with-plugin-env \
       /usr/local/bin/with-sandbox-env \
       /usr/local/bin/run-dify-agent \
+      /usr/local/bin/run-shellctl \
       /usr/local/bin/dify-sandbox-selfcheck \
       /usr/local/bin/postgres-backup-loop \
       /usr/local/bin/dify-ops-service \

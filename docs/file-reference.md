@@ -189,7 +189,7 @@ main
 
 职责：
 
-- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-agent、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
+- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、shellctl、dify-agent、dify-api、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
 - 定义 admin-service，默认由 `ADMIN_ENABLED=false` 返回 404。
 - 设置启动 priority、autorestart、日志路径。
 - 暴露 supervisor unix socket：`/data/run/supervisor.sock`。
@@ -270,8 +270,18 @@ NEXT Agent backend 启动脚本。
 职责：
 
 - `DIFY_AGENT_ENABLED=false` 时保持 supervisor program idle，不影响稳定 demo。
-- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon 和 Dify API health，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后启动 `uvicorn dify_agent.server.app:app`。
+- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后启动 `uvicorn dify_agent.server.app:app`。
 - 只监听内部 `DIFY_AGENT_HOST:DIFY_AGENT_PORT`，默认 `127.0.0.1:5005`。
+
+### `docker/run-shellctl`
+
+NEXT Agent shell layer 启动脚本。
+
+职责：
+
+- `DIFY_AGENT_ENABLED=false` 或 `AGENT_SHELL_ENABLED=false` 时保持 supervisor program idle。
+- 开启时执行 `shellctl serve --listen 127.0.0.1:5004`。
+- 只服务内部 loopback endpoint，不经 Nginx 暴露公网。
 
 ### `docker/with-plugin-env`
 
@@ -426,7 +436,7 @@ HFS 范式结构契约检查脚本。
 - 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
-- 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz` 和 `/_ops/health`。
+- 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/health` 和 shellctl 状态。
 
 ### `scripts/static-check.sh`
 

@@ -20,7 +20,12 @@ case "$startup_delay" in
   ''|*[!0-9]*) startup_delay=30 ;;
 esac
 
-exec /usr/local/bin/wait-for-core redis plugin-daemon api -- bash -c \
+wait_targets=(redis plugin-daemon api)
+if is_true "${AGENT_SHELL_ENABLED:-false}"; then
+  wait_targets+=(shellctl)
+fi
+
+exec /usr/local/bin/wait-for-core "${wait_targets[@]}" -- bash -c \
   'delay=$1; host=$2; port=$3
    if [ "$delay" -gt 0 ]; then
      printf "[dify-agent] core services are ready; delaying startup for %ss.\\n" "$delay"

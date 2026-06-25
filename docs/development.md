@@ -44,6 +44,8 @@ bash -n \
   docker/with-dify-env \
   docker/with-plugin-env \
   docker/with-sandbox-env \
+  docker/run-dify-agent \
+  docker/run-shellctl \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
@@ -269,6 +271,8 @@ bash -n \
   docker/with-dify-env \
   docker/with-plugin-env \
   docker/with-sandbox-env \
+  docker/run-dify-agent \
+  docker/run-shellctl \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
