@@ -143,12 +143,18 @@ OPENAPI_CORS_ALLOW_ORIGINS=
 
 `OPENAPI_ENABLED=true` 暴露的是整个 `/openapi/v1` user/workspace-scoped programmatic surface，不是只开放 `difyctl` 子集。`difyctl auth login` 使用 OAuth device flow，需要在 NEXT Console 的 `/device` 页面人工批准；如果要做无人值守 CI，需要另行设计 token 注入方式，且不能把 `dfoa_` / `dfoe_` token 写入 tracked docs、logs 或示例配置。
 
-## NEXT-only Agent Backend Variables
+## NEXT-only Agent v2 / Collaboration Variables
 
-稳定 Space 默认不要开启 Agent backend。NEXT Space 需要验证 Agent v2 / `dify-agent` runtime 时，先确保镜像 build 已通过 `import dify_agent.server.app` 和 `uv pip check` gate，再单独设置：
+稳定 Space 默认不要开启 Agent v2 / Collaboration / Agent backend。NEXT branch 和 NEXT Space 用来验证上游 main 的 Agent v2、Skills 和协作功能，所以本分支默认打开可见的 Agent v2 前端、Collaboration、同容器 `dify-agent` backend 和 Agent Drive manifest。Hugging Face Space Settings 里显式设置的变量仍会覆盖这些默认值。
 
 ```env
+ENABLE_AGENT_V2=true
+NEXT_PUBLIC_ENABLE_AGENT_V2=true
+ENABLE_COLLABORATION_MODE=true
+NEXT_PUBLIC_ENABLE_COLLABORATION_MODE=true
+NEXT_PUBLIC_SOCKET_URL=wss://<your-space-host>
 DIFY_AGENT_ENABLED=true
+AGENT_DRIVE_MANIFEST_ENABLED=true
 ```
 
 通常不要额外上传下面这些派生值；它们由 `with-dify-env` 在 `DIFY_AGENT_ENABLED=true` 时从同容器默认值和 generated secrets 派生：
@@ -166,16 +172,21 @@ DIFY_AGENT_DIFY_API_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DIFY_AGENT_ENABLED` | `false` | 是否启动本容器内 `dify-agent` FastAPI backend |
+| `ENABLE_AGENT_V2` | `true` | 打开上游 Web 的 Agent v2 route gate；设为 `false` 会让 `/roster` 等 Agent v2 页面隐藏 |
+| `NEXT_PUBLIC_ENABLE_AGENT_V2` | `${ENABLE_AGENT_V2}` | 浏览器侧 Agent v2 gate；NEXT 默认跟随 `ENABLE_AGENT_V2` |
+| `ENABLE_COLLABORATION_MODE` | `true` | 打开自托管协作模式，配合同容器 WebSocket worker 使用 |
+| `NEXT_PUBLIC_ENABLE_COLLABORATION_MODE` | `${ENABLE_COLLABORATION_MODE}` | 浏览器侧协作开关 |
+| `NEXT_PUBLIC_SOCKET_URL` | 从 `PUBLIC_URL` 派生 | 浏览器 WebSocket URL；`https://...` 派生为 `wss://...`，`http://...` 派生为 `ws://...` |
+| `DIFY_AGENT_ENABLED` | `true` | 是否启动本容器内 `dify-agent` FastAPI backend |
 | `DIFY_AGENT_HOST` | `127.0.0.1` | backend 监听地址；不要绑定公网 |
 | `DIFY_AGENT_PORT` | `5005` | backend 内部端口 |
 | `DIFY_AGENT_STARTUP_DELAY_SECONDS` | `30` | core API health 通过后再启动 backend 的延迟，降低 HFS cpu-basic 启动期资源竞争 |
 | `AGENT_BACKEND_USE_FAKE` | `false` | API 侧 fake backend 开关，仅用于局部开发/测试 |
 | `AGENT_SHELL_ENABLED` | `false` | shell layer 开关；公开 HFS demo 默认关闭 |
-| `AGENT_DRIVE_MANIFEST_ENABLED` | `false` | drive manifest 开关；公开 HFS demo 默认关闭 |
+| `AGENT_DRIVE_MANIFEST_ENABLED` | `true` | drive manifest 开关；让 Agent runtime 接收 Skills & Files drive manifest 声明 |
 | `DIFY_AGENT_REDIS_PREFIX` | `dify-agent-next` | Agent backend Redis key prefix |
 
-`/_ops/health` 会暴露 `agent_backend` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon 和 Dify API health，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
+`SERVER_WORKER_CLASS` 和 `API_WEBSOCKET_WORKER_CLASS` 默认使用 `geventwebsocket.gunicorn.workers.GeventWebSocketWorker`，Nginx 保留 `/socket.io/` WebSocket upgrade headers。`/_ops/health` 会暴露 `agent_backend` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon 和 Dify API health，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
 
 ## 推荐 Space Secrets
 

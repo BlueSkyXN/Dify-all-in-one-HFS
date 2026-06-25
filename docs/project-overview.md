@@ -70,13 +70,13 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:9f80c931d8fae98a155e9857539763e94b2c84999f47a09e8b26bae4c3536c21
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e5c8370f098d5c8e422701e725d52292fd06170c3943bf0a3e9b2f998c52b2a1
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:8907f84d776e8b59c6cc57ffa06da6cc6e34b52c0c4de614dcada0a2ce799c69
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:ece76df426066b31d7a5200ca2a9e236f94b1e5c4c27f78d03103e97e8be7375
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=main-1b81ac033fd52a522901e54bc83ca58a667f0214
+DIFY_VERSION=main-b33e8f0ddb1189427548b0e1206cedcdc17d9bb6
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
@@ -88,7 +88,7 @@ NEXT branch 默认值已 pin 到官方 main commit-tag image digest set、HFS �
 
 ## 与源码自建 main 的边界
 
-截至当前 NEXT pin 的上游 `main-1b81ac033fd52a522901e54bc83ca58a667f0214`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.3` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
+截至当前 NEXT pin 的上游 `main-b33e8f0ddb1189427548b0e1206cedcdc17d9bb6`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.3` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
 
 当前 HFS NEXT 没有把完整 `langgenius/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是官方 main commit image digest：
 
@@ -97,7 +97,7 @@ DIFY_API_IMAGE_REF
 DIFY_WEB_IMAGE_REF
 ```
 
-因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只在官方 API venv 上补齐并 build-gate `dify-agent` backend server extras，用于提前验证 Agent v2 runtime 方向；完整 Agent App / workflow Agent node 验收仍必须在开启 `DIFY_AGENT_ENABLED=true` 后单独执行。
+因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只在官方 API venv 上补齐并 build-gate `dify-agent` backend server extras，用于提前验证 Agent v2 runtime 方向。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
 
 ## 运行状态入口
 

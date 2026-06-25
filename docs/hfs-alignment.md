@@ -111,13 +111,13 @@ NEXT branch 默认值 pin 到当前可运行的 NEXT digest set：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:e5c8370f098d5c8e422701e725d52292fd06170c3943bf0a3e9b2f998c52b2a1
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:9f80c931d8fae98a155e9857539763e94b2c84999f47a09e8b26bae4c3536c21
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:cee05a3cbfd8308d2c7a053035a00fb0b32fedec924cb06c8e803bf51ebb871c
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:ece76df426066b31d7a5200ca2a9e236f94b1e5c4c27f78d03103e97e8be7375
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:8907f84d776e8b59c6cc57ffa06da6cc6e34b52c0c4de614dcada0a2ce799c69
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 UV_VERSION=0.11.21
-DIFY_VERSION=main-1b81ac033fd52a522901e54bc83ca58a667f0214
+DIFY_VERSION=main-b33e8f0ddb1189427548b0e1206cedcdc17d9bb6
 ```
 
 这个 pin set 对 Web/API 指向 Docker Hub 上已发布的 main commit-tag image digest；Sandbox 的 `/conf` 和 `/dependencies` 使用 HFS 执行自检已通过的 digest，Sandbox server binary 仍来自 source-pinned patch build。不要把上游 `docker/docker-compose.yaml` 中仍引用 `1.14.2` release image tag 的事实，误读为 main 源码没有进入 NEXT；直接 `docker compose up` upstream main 仍会跑 release 镜像，NEXT/HFS 则显式选择 commit digest。若上游 main 源码领先但 Docker Hub commit-tag 镜像尚未发布，NEXT 必须继续停在上一个可验证 digest set，或单独立项改成源码自建 API/Web。
