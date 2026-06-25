@@ -130,7 +130,7 @@ ENV TIKTOKEN_CACHE_DIR=/app/api/.tiktoken_cache
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ca-certificates curl gnupg lsb-release git \
-       openssl tini procps netcat-openbsd tmux \
+       openssl tini procps netcat-openbsd tmux util-linux \
        nginx supervisor redis-server \
        libcap2-bin \
        libgmp-dev libmpfr-dev libmpc-dev \
@@ -230,6 +230,7 @@ COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
+COPY docker/run-postgres /usr/local/bin/run-postgres
 COPY docker/run-dify-agent /usr/local/bin/run-dify-agent
 COPY docker/run-shellctl /usr/local/bin/run-shellctl
 COPY docker/sandbox-selfcheck /usr/local/bin/dify-sandbox-selfcheck
@@ -250,6 +251,7 @@ RUN cp "$(readlink -f /usr/local/bin/python3)" /opt/dify/sandbox/python3-sandbox
       /usr/local/bin/with-dify-env \
       /usr/local/bin/with-plugin-env \
       /usr/local/bin/with-sandbox-env \
+      /usr/local/bin/run-postgres \
       /usr/local/bin/run-dify-agent \
       /usr/local/bin/run-shellctl \
       /usr/local/bin/dify-sandbox-selfcheck \

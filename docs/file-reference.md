@@ -236,7 +236,7 @@ Nginx 路由和日志配置。
 - 监听 `ADMIN_HOST:ADMIN_PORT`，默认 `127.0.0.1:8082`。
 - `ADMIN_ENABLED=false` 时所有入口返回 404。
 - 使用 `ADMIN_TOKEN`、signed HttpOnly cookie、cookie session CSRF、登录失败 audit 和内存级限速保护管理入口。
-- 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks。
+- 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks、force postgres backup。
 - 可选提供 `/_admin/api/files/*` 文件管理；path 限制在 `ADMIN_FILES_ROOT` 内。
 - rename/delete 由 `ADMIN_FILES_DESTRUCTIVE_ENABLED` 单独 gate。
 - 写入 `ADMIN_AUDIT_LOG`，并通过 `/api/audit` 鉴权只读展示最近审计事件；不记录 token、secret 或文件内容。
@@ -249,8 +249,19 @@ bucket-lite PostgreSQL dump 备份循环。
 职责：
 
 - 在 bucket-lite 或显式开启备份时等待 PostgreSQL ready。
-- 周期执行 `pg_dumpall --no-role-passwords`。
-- 写入 timestamped dump，校验后更新 `${POSTGRES_BACKUP_DIR}/latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，并按 `POSTGRES_BACKUP_RETAIN_COUNT` 轮转。
+- 周期执行 `pg_dumpall --no-role-passwords`，也支持 `--once` 做部署或重启前的一次性备份。
+- 写入 timestamped dump，校验后更新 `${POSTGRES_BACKUP_DIR}/latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，并按 `POSTGRES_BACKUP_RETENTION_POLICY` / `POSTGRES_BACKUP_RETAIN_COUNT` 清理旧备份。
+- 用 `${POSTGRES_BACKUP_DIR}/.backup.lock` 串行化自动、手动和退出前备份；默认 `POSTGRES_BACKUP_COMPRESSION_LEVEL=1`，优先快速落盘。
+- `EXTERNAL_POSTGRES_ENABLED=true` 时默认 disabled，外部数据库备份交给托管 PostgreSQL。
+
+### `docker/run-postgres`
+
+Supervisor 的 PostgreSQL 启动包装器。
+
+职责：
+
+- 默认启动本地 `/data/postgres` PostgreSQL。
+- `EXTERNAL_POSTGRES_ENABLED=true` 时保持 idle，避免在同一容器内再启动本地 PostgreSQL。
 
 ### `docker/with-dify-env`
 
@@ -381,7 +392,7 @@ volume=dify-hf-demo-persist:/persist
 env-file=docker/dify.env.demo
 ```
 
-脚本会额外透传当前 shell 中已设置的 `POSTGRES_BACKUP_RETAIN_COUNT`、`OPS_TOKEN`、`ALLOW_DEMO_OPS_TOKEN`、`OPS_*` session/cache/cookie/timeout 变量和常用 `ADMIN_*` 开关，便于本地启动开启 admin 的临时 demo。
+脚本会额外透传当前 shell 中已设置的 `EXTERNAL_POSTGRES_*`、`DB_*`、`POSTGRES_BACKUP_*`、`OPS_TOKEN`、`ALLOW_DEMO_OPS_TOKEN`、`OPS_*` session/cache/cookie/timeout 变量和常用 `ADMIN_*` 开关，便于本地启动开启 admin 或外部 PostgreSQL 的临时 demo。
 
 ### `scripts/hf-space-smoke.sh`
 

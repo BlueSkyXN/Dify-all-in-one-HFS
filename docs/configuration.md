@@ -217,9 +217,11 @@ CODE_EXECUTION_API_KEY=<fixed-demo-or-random-secret>
 | `POSTGRES_BUCKET_FAILURE_MODE` | `fallback-to-runtime` | `/persist/postgres` 启动失败时切到 `${RUNTIME_ROOT}/postgres`；设为 `exit` 可强制失败并只保留诊断日志 |
 | `POSTGRES_BACKUP_ENABLED` | `auto` | bucket-lite 启用时自动启动 `pg_dumpall` 备份；可设 `true`/`false` |
 | `POSTGRES_BACKUP_DIR` | `${PERSIST_ROOT}/postgres-backups` | `latest.sql.gz` 和时间戳写入目录 |
-| `POSTGRES_BACKUP_INTERVAL_SECONDS` | `3600` | 周期备份间隔，最小有效值 60 秒 |
-| `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` | `60` | supervisor 启动后首次备份延迟；只影响第一次 `pg_dumpall` 前等待多久，后续周期由 `POSTGRES_BACKUP_INTERVAL_SECONDS` 控制 |
-| `POSTGRES_BACKUP_RETAIN_COUNT` | `5` | 保留最近多少份 timestamped dump，范围 `1..50` |
+| `POSTGRES_BACKUP_INTERVAL_SECONDS` | `60` | 周期备份间隔，最小有效值 60 秒 |
+| `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` | `15` | supervisor 启动后首次备份延迟；只影响第一次 `pg_dumpall` 前等待多久，后续周期由 `POSTGRES_BACKUP_INTERVAL_SECONDS` 控制 |
+| `POSTGRES_BACKUP_RETENTION_POLICY` | `tiered` | `tiered` 按近端密、远端稀保留恢复点；`count` 保留最近 N 份 |
+| `POSTGRES_BACKUP_RETAIN_COUNT` | `65` | timestamped dump 最大保留数；`tiered` 下作为上限，`count` 下作为最近 N 份，范围 `2..200` |
+| `POSTGRES_BACKUP_COMPRESSION_LEVEL` | `1` | `gzip` 压缩级别，范围 `1..9`；默认偏向快速落盘 |
 | `HF_HOME` | `${RUNTIME_ROOT}/hf-cache` | Hugging Face cache 根目录，默认不进 bucket |
 | `HF_HUB_CACHE` | `${HF_HOME}/hub` | Hugging Face Hub cache |
 
@@ -239,7 +241,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/` 会保留 timestamped `YYYYmmddTHHMMSSZ.sql.gz` dump，并更新普通文件 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在 dump 通过 `latest.sha256`、gzip 和非空校验后先恢复 dump；旧实例没有 `latest.sha256` 时会打印 warning 并只走 gzip/非空校验。
+`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/` 会保留 timestamped `YYYYmmddTHHMMSSZ.sql.gz` dump，并更新普通文件 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认 `tiered` 保留策略约等于：15 分钟内每分钟保留、2 小时内每 5 分钟保留、24 小时内每小时保留、7 天内每天保留，并受 `POSTGRES_BACKUP_RETAIN_COUNT` 上限约束；每次成功备份后才会清理旧备份。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在 dump 通过 `latest.sha256`、gzip 和非空校验后先恢复 dump；旧实例没有 `latest.sha256` 时会打印 warning 并只走 gzip/非空校验。
 
 如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
@@ -301,6 +303,20 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```text
 ^[A-Za-z_][A-Za-z0-9_]*$
 ```
+
+### External PostgreSQL
+
+bucket-lite 会优先尝试 `/persist/postgres` live PGDATA，并在失败时 fallback 到 `${RUNTIME_ROOT}/postgres` + dump restore。这个模式适合 demo 和 PoC，但不是强一致数据库持久化。如果要保留模型配置、Agent、Workflow 和运行记录，推荐使用外部 PostgreSQL：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `EXTERNAL_POSTGRES_ENABLED` | `false` | `true` 时入口脚本跳过本地 PostgreSQL init/start，Supervisor 的 `postgres` program 保持 idle |
+| `EXTERNAL_POSTGRES_WAIT_SECONDS` | `120` | 启动时等待外部 PostgreSQL ready 的最长秒数 |
+| `EXTERNAL_POSTGRES_REQUIRE_VECTOR` | `true` | `true` 时启动阶段确认 `DB_DATABASE` 和 `DB_PLUGIN_DATABASE` 可用 `pgvector` |
+
+外部 PostgreSQL 模式仍使用同一组 `DB_HOST`、`DB_PORT`、`DB_USERNAME`、`DB_PASSWORD`、`DB_SSL_MODE`、`DB_DATABASE` 和 `DB_PLUGIN_DATABASE`。启用前需要先创建两个 database，并授予 `DB_USERNAME` 访问权限；如果当前账号不能 `CREATE EXTENSION vector`，需要数据库管理员提前在两个 database 中创建 `vector` extension。
+
+外部 PostgreSQL 模式下，`postgres-backup` 默认 disabled，`/_admin/api/actions/force-postgres-backup` 也会返回备份 disabled。数据库备份应交给托管 PostgreSQL 自身的 snapshot/PITR 或运维流程。
 
 否则 entrypoint 会退出，避免 SQL identifier 注入和非法数据库名。
 
@@ -500,9 +516,10 @@ Browser login -> signed HttpOnly cookie
 POST /_admin/api/actions/restart-service
 POST /_admin/api/actions/reload-nginx
 POST /_admin/api/actions/run-health-checks
+POST /_admin/api/actions/force-postgres-backup
 ```
 
-`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`。Admin action 不接受任意 shell command、SQL 或文件路径。
+`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`；`force-postgres-backup` 固定调用 `/usr/local/bin/postgres-backup-loop --once`，用于部署或重启前把当前 PostgreSQL 状态写入 `${POSTGRES_BACKUP_DIR}`。Admin action 不接受任意 shell command、SQL 或文件路径。
 
 `GET /_admin/api/audit?limit=50` 返回最近的 `ADMIN_AUDIT_LOG` 事件，用于追踪 login/logout、白名单 action 和 file manager 写操作。`limit` 会限制在 `1..500`，缺失或非法时使用默认值 `100`。日志不存在时仍返回 200、`exists=false`、`returned=0` 和空 `events`。事件字段固定为 `time`、`action`、`ok`、`actor`、`target`、`details`；返回内容会对 `token`、`apiKey`、`authorization`、`cookie` 等敏感 detail key 做递归兜底脱敏。该接口仍需要 `ADMIN_TOKEN` 或已登录 session，但不增加新的写能力。
 

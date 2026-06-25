@@ -90,7 +90,9 @@ SAFE_CONFIG_KEYS = [
     "POSTGRES_BACKUP_DIR",
     "POSTGRES_BACKUP_INTERVAL_SECONDS",
     "POSTGRES_BACKUP_INITIAL_DELAY_SECONDS",
+    "POSTGRES_BACKUP_RETENTION_POLICY",
     "POSTGRES_BACKUP_RETAIN_COUNT",
+    "POSTGRES_BACKUP_COMPRESSION_LEVEL",
     "MARKETPLACE_ENABLED",
     "FORCE_VERIFYING_SIGNATURE",
     "SANDBOX_ENABLE_NETWORK",
@@ -643,7 +645,8 @@ def postgres_check() -> dict[str, Any]:
         "-U",
         env("DB_USERNAME", "dify"),
     ]
-    result = run_cmd(args, timeout=2.0)
+    extra_env = {"PGPASSWORD": env("DB_PASSWORD"), "PGSSLMODE": env("DB_SSL_MODE", "disable")}
+    result = run_cmd(args, timeout=2.0, extra_env=extra_env)
     return {"name": "postgres", **result}
 
 
@@ -1022,6 +1025,87 @@ def path_summary(path: Path) -> dict[str, Any]:
     except OSError as exc:
         payload["error"] = str(exc)
     return payload
+
+
+def postgres_backup_status() -> dict[str, Any]:
+    backup_dir = Path(env("POSTGRES_BACKUP_DIR", f"{env('PERSIST_ROOT', '/persist')}/postgres-backups"))
+    latest = backup_dir / "latest.sql.gz"
+    latest_err = backup_dir / "latest.err"
+    latest_created_at = read_small_text(backup_dir / "latest.created_at").strip()
+    persist_active = read_small_text(Path(env("PERSIST_ACTIVE_FILE", "/tmp/dify-aio/persist-active"))).strip()
+    external_postgres = parse_bool(env("EXTERNAL_POSTGRES_ENABLED", "false"))
+    backup_enabled = env("POSTGRES_BACKUP_ENABLED", "auto").strip().lower()
+    interval_seconds = parse_int(env("POSTGRES_BACKUP_INTERVAL_SECONDS", "60"), 60, minimum=60, maximum=86400)
+    allowed_age_seconds = max(interval_seconds * 3, 300)
+    postgres_path = Path("/data/postgres")
+    postgres_summary = path_summary(postgres_path)
+    runtime_root = env("RUNTIME_ROOT", "/tmp/dify-aio")
+    real_path = postgres_summary.get("real_path", "")
+    runtime_fallback = bool(real_path and real_path.startswith(runtime_root))
+    latest_summary = path_summary(latest)
+    latest_age_seconds: int | None = None
+    latest_size_bytes: int | None = None
+    try:
+        if latest.exists():
+            stat = latest.stat()
+            latest_age_seconds = max(int(time.time() - stat.st_mtime), 0)
+            latest_size_bytes = stat.st_size
+    except OSError as exc:
+        latest_summary["error"] = str(exc)
+
+    timestamped_backups: list[Path] = []
+    try:
+        timestamped_backups = sorted(backup_dir.glob("[0-9]*T[0-9]*Z.sql.gz"), reverse=True)
+    except OSError:
+        timestamped_backups = []
+
+    err_text = read_small_text(latest_err, max_bytes=8192).strip()
+    backup_forced_on = backup_enabled in {"1", "true", "yes", "on"}
+    backup_auto_active = backup_enabled == "auto" and persist_active == "bucket"
+    managed_by_app = not external_postgres and (backup_forced_on or backup_auto_active)
+    if external_postgres:
+        safe_to_restart = True
+        reason = "external-postgres-managed"
+    elif not managed_by_app:
+        safe_to_restart = True
+        reason = "postgres-backup-disabled"
+    elif not latest_summary.get("exists"):
+        safe_to_restart = False
+        reason = "missing-latest-backup"
+    elif err_text:
+        safe_to_restart = False
+        reason = "latest-backup-error-present"
+    elif latest_age_seconds is not None and latest_age_seconds > allowed_age_seconds:
+        safe_to_restart = False
+        reason = "latest-backup-stale"
+    else:
+        safe_to_restart = True
+        reason = "latest-backup-fresh"
+
+    return {
+        "backup_dir": str(backup_dir),
+        "enabled": backup_enabled,
+        "managed_by_app": managed_by_app,
+        "persist_active": persist_active,
+        "external_postgres": external_postgres,
+        "retention_policy": env("POSTGRES_BACKUP_RETENTION_POLICY", "tiered"),
+        "retain_count": parse_int(env("POSTGRES_BACKUP_RETAIN_COUNT", "65"), 65, minimum=2, maximum=200),
+        "compression_level": parse_int(env("POSTGRES_BACKUP_COMPRESSION_LEVEL", "1"), 1, minimum=1, maximum=9),
+        "interval_seconds": interval_seconds,
+        "allowed_age_seconds": allowed_age_seconds,
+        "runtime_fallback": runtime_fallback,
+        "postgres_path": postgres_summary,
+        "latest": latest_summary,
+        "latest_created_at": latest_created_at,
+        "latest_age_seconds": latest_age_seconds,
+        "latest_size_bytes": latest_size_bytes,
+        "latest_error": err_text,
+        "timestamped_count": len(timestamped_backups),
+        "newest_timestamped": timestamped_backups[0].name if timestamped_backups else "",
+        "oldest_timestamped": timestamped_backups[-1].name if timestamped_backups else "",
+        "safe_to_restart": safe_to_restart,
+        "safe_to_restart_reason": reason,
+    }
 
 
 def resolve_plugin_storage_path(root: Path, configured: str) -> Path:
@@ -1505,6 +1589,7 @@ def persistence_payload() -> dict[str, Any]:
     orphan_installed = sorted(installed_entries - expected_packages)
     runtime_state = redis_hash_scan_candidates("plugin_state")
     runtime_state_fields = runtime_state.get("fields", {}) if runtime_state.get("ok") else {}
+    postgres_backup = postgres_backup_status()
     runtime_identifiers = [
         {
             **runtime_state_summary(item["plugin_unique_identifier"], runtime_state_fields),
@@ -1553,6 +1638,7 @@ def persistence_payload() -> dict[str, Any]:
         "persist_active": persist_active,
         "plugin_storage_type": env("PLUGIN_STORAGE_TYPE", "local"),
         "paths": core_paths,
+        "postgres_backup": postgres_backup,
         "plugin_storage_layout_issues": layout_issues,
         "plugin_packages": packages,
         "plugin_installed": installed,
@@ -1580,6 +1666,7 @@ def persistence_payload() -> dict[str, Any]:
             "A missing package or installed file with an existing plugin DB/API reference means configuration can remain visible while local plugin runtime cannot be rebuilt.",
             "plugin_runtime_state summarizes Redis plugin_state plus plugin-daemon local-runtime log evidence; in single-container local mode the in-process runtime can be ready even when the Redis cluster hash is empty.",
             "plugin_storage_layout_issues flags bucket-lite layouts where plugin-daemon would see installed/package directories through a symlink root instead of the real /persist storage root.",
+            "postgres_backup.safe_to_restart is advisory and checks the app-managed dump freshness for internal PostgreSQL; it is not a write or restore action.",
         ],
     }
 

@@ -444,6 +444,62 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(summary["states"][0]["status"], "active")
         self.assertNotIn("logs", summary["states"][0])
 
+    def test_postgres_backup_status_reports_fresh_latest_backup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            backup_dir = Path(tmpdir)
+            active_file = backup_dir / "persist-active"
+            latest = backup_dir / "latest.sql.gz"
+            timestamped = backup_dir / "20260625T100000Z.sql.gz"
+            active_file.write_text("bucket\n", encoding="utf-8")
+            latest.write_bytes(b"backup")
+            timestamped.write_bytes(b"backup")
+            (backup_dir / "latest.created_at").write_text("20260625T100000Z\n", encoding="utf-8")
+            os.environ["POSTGRES_BACKUP_DIR"] = str(backup_dir)
+            os.environ["PERSIST_ACTIVE_FILE"] = str(active_file)
+            os.environ["POSTGRES_BACKUP_ENABLED"] = "auto"
+            os.environ["POSTGRES_BACKUP_INTERVAL_SECONDS"] = "60"
+            os.environ["POSTGRES_BACKUP_RETENTION_POLICY"] = "tiered"
+            os.environ["POSTGRES_BACKUP_RETAIN_COUNT"] = "65"
+            os.environ["POSTGRES_BACKUP_COMPRESSION_LEVEL"] = "1"
+
+            status = ops_service.postgres_backup_status()
+
+        self.assertTrue(status["managed_by_app"])
+        self.assertTrue(status["safe_to_restart"])
+        self.assertEqual(status["safe_to_restart_reason"], "latest-backup-fresh")
+        self.assertEqual(status["latest_created_at"], "20260625T100000Z")
+        self.assertEqual(status["timestamped_count"], 1)
+        self.assertEqual(status["retention_policy"], "tiered")
+        self.assertEqual(status["compression_level"], 1)
+
+    def test_postgres_backup_status_flags_latest_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            backup_dir = Path(tmpdir)
+            active_file = backup_dir / "persist-active"
+            active_file.write_text("bucket\n", encoding="utf-8")
+            (backup_dir / "latest.sql.gz").write_bytes(b"backup")
+            (backup_dir / "latest.err").write_text("pg_dumpall failed\n", encoding="utf-8")
+            os.environ["POSTGRES_BACKUP_DIR"] = str(backup_dir)
+            os.environ["PERSIST_ACTIVE_FILE"] = str(active_file)
+            os.environ["POSTGRES_BACKUP_ENABLED"] = "auto"
+
+            status = ops_service.postgres_backup_status()
+
+        self.assertFalse(status["safe_to_restart"])
+        self.assertEqual(status["safe_to_restart_reason"], "latest-backup-error-present")
+        self.assertEqual(status["latest_error"], "pg_dumpall failed")
+
+    def test_postgres_backup_status_auto_without_bucket_is_unmanaged(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["POSTGRES_BACKUP_DIR"] = tmpdir
+            os.environ["POSTGRES_BACKUP_ENABLED"] = "auto"
+
+            status = ops_service.postgres_backup_status()
+
+        self.assertFalse(status["managed_by_app"])
+        self.assertTrue(status["safe_to_restart"])
+        self.assertEqual(status["safe_to_restart_reason"], "postgres-backup-disabled")
+
     def test_persistence_payload_flags_missing_runtime_state(self):
         identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
         original_plugin_storage_paths = ops_service.plugin_storage_paths
@@ -695,6 +751,30 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertNotIn("-a", captured["args"])
         self.assertEqual(captured["extra_env"], {"REDISCLI_AUTH": "test-password"})
+
+    def test_postgres_check_uses_password_and_ssl_env(self):
+        captured = {}
+        original_run_cmd = ops_service.run_cmd
+
+        def fake_run_cmd(args, timeout=2.0, extra_env=None):
+            captured["args"] = args
+            captured["extra_env"] = extra_env
+            return {"ok": True, "returncode": 0, "stdout": "accepting connections", "stderr": "", "duration_ms": 1}
+
+        try:
+            os.environ["DB_HOST"] = "pg.example.internal"
+            os.environ["DB_PORT"] = "6543"
+            os.environ["DB_USERNAME"] = "dify_user"
+            os.environ["DB_PASSWORD"] = "test-db-password"
+            os.environ["DB_SSL_MODE"] = "require"
+            ops_service.run_cmd = fake_run_cmd
+            result = ops_service.postgres_check()
+        finally:
+            ops_service.run_cmd = original_run_cmd
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(captured["args"], ["pg_isready", "-h", "pg.example.internal", "-p", "6543", "-U", "dify_user"])
+        self.assertEqual(captured["extra_env"], {"PGPASSWORD": "test-db-password", "PGSSLMODE": "require"})
 
     def test_cached_payload_builds_once_under_concurrency(self):
         os.environ["OPS_CACHE_TTL_SECONDS"] = "60"

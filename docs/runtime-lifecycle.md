@@ -126,7 +126,9 @@ bucket-lite 模式下关键映射为：
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-PostgreSQL 会先尝试使用 `/persist/postgres`。由于 object-store backed mount 可能不保留空目录，entrypoint 会在启动已有 PGDATA 前补建 `pg_notify`、`pg_tblspc`、`pg_wal/archive_status` 等 PostgreSQL 必需目录。如果 bucket mount 仍不满足 live data directory 需要的权限、锁或同步语义，默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并继续把 dump 备份写到 `/persist/postgres-backups`。
+PostgreSQL 默认会先尝试使用 `/persist/postgres`。由于 object-store backed mount 可能不保留空目录，entrypoint 会在启动已有 PGDATA 前补建 `pg_notify`、`pg_tblspc`、`pg_wal/archive_status` 等 PostgreSQL 必需目录。如果 bucket mount 仍不满足 live data directory 需要的权限、锁或同步语义，默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并继续把 dump 备份写到 `/persist/postgres-backups`。
+
+`EXTERNAL_POSTGRES_ENABLED=true` 时，entrypoint 不初始化 `/data/postgres`，而是等待 `DB_HOST` 指向的外部 PostgreSQL，检查 `DB_DATABASE` 和 `DB_PLUGIN_DATABASE` 可连接，并在 `EXTERNAL_POSTGRES_REQUIRE_VECTOR=true` 时确认两个 database 可用 `vector` extension。
 
 如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
@@ -235,7 +237,7 @@ requirepass <REDIS_PASSWORD>
 90 dify-agent
 ```
 
-priority 控制启动顺序，但真正的依赖等待由 `wait-for-core` 执行。`shellctl` 只监听 `127.0.0.1:5004`，由 `run-shellctl` 按 `DIFY_AGENT_ENABLED` 和 `AGENT_SHELL_ENABLED` 控制；`run-dify-agent` 在 shell layer 开启时会等待 shellctl TCP 可达后再启动 Agent backend。
+priority 控制启动顺序，但真正的依赖等待由 `wait-for-core` 执行。`postgres` program 通过 `run-postgres` 启动本地 PostgreSQL；如果 `EXTERNAL_POSTGRES_ENABLED=true`，该 program 保持 idle，`wait-for-core postgres` 改为等待外部 `DB_HOST`。`shellctl` 只监听 `127.0.0.1:5004`，由 `run-shellctl` 按 `DIFY_AGENT_ENABLED` 和 `AGENT_SHELL_ENABLED` 控制；`run-dify-agent` 在 shell layer 开启时会等待 shellctl TCP 可达后再启动 Agent backend。
 
 ## Plugin Daemon Migration
 
@@ -297,6 +299,7 @@ curl -fsS http://127.0.0.1:7860/
 
 - bucket-lite 下 `/data/postgres`、`/data/config/generated.env`、`/data/dify/storage`、`/data/plugin_daemon/plugin`、`/data/plugin_daemon/assets`、`/data/plugin_daemon/plugin_packages` 会通过 `/persist` 保留。
 - `/data/redis`、`/data/logs`、`/data/run`、`/data/plugin_daemon/cwd` 和 Hugging Face cache 默认在 `/tmp/dify-aio`，重启后会重新生成。
-- `postgres-backup` 会定期写 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验 gzip 和非空后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，作为 live PostgreSQL data directory 的普通文件兜底备份。
+- `postgres-backup` 会定期写 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验 gzip 和非空后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，作为 live PostgreSQL data directory 的普通文件兜底备份；备份脚本使用锁避免自动、手动和退出前备份并发运行，默认 `gzip -1` 快速压缩，并在成功备份后按 tiered retention 清理旧 dump。`/_admin/api/actions/force-postgres-backup` 可触发同一脚本的一次性备份。
+- `postgres-backup` 收到 `TERM` / `INT` 时会 best-effort 尝试最后一次备份，Supervisor 会等待最多 120 秒；这不能替代正常 60 秒周期备份，也不能保证异常崩溃时一定完成。
 - `entrypoint.sh` 会跳过 `initdb`，继续更新 role 密码和确保数据库存在。
 - Dify API migration 和 Plugin Daemon migration 仍会执行，应当保持幂等。

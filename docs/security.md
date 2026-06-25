@@ -104,7 +104,7 @@ ADMIN_FILES_WRITE_ENABLED=false
 - `ADMIN_ENABLED=false` 作为默认值。
 - `ADMIN_TOKEN` 独立于 `OPS_TOKEN`。
 - `ADMIN_CSRF_KEY` 可以独立配置；未配置时 CSRF HMAC key 优先从 `SECRET_KEY` 派生，最后兼容回退到 `ADMIN_TOKEN`。
-- 只允许白名单 action，例如 restart service、reload nginx、run health checks。
+- 只允许白名单 action，例如 restart service、reload nginx、run health checks、force postgres backup。
 - 写 action 要求显式确认参数，例如 `confirm=true`。
 - Browser cookie session 写请求要求 CSRF header；CLI header token auth 显式跳过 CSRF，因为 header token 不会被浏览器自动携带。
 - 登录失败会写入 admin audit，并按 remote IP 与全局窗口做内存级限速。

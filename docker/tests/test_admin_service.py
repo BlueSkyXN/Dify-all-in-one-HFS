@@ -174,6 +174,39 @@ class AdminServicePureFunctionTests(unittest.TestCase):
             "127.0.0.1",
         )
 
+    def test_force_postgres_backup_requires_confirm(self):
+        with self.assertRaises(admin_service.AdminError):
+            admin_service.force_postgres_backup({}, admin_service.AuthContext(kind="token", csrf_token="1"))
+
+    def test_force_postgres_backup_runs_one_shot_script(self):
+        calls = []
+        audits = []
+        original_run_cmd = admin_service.run_cmd
+        original_audit_event = admin_service.audit_event
+
+        def fake_run_cmd(args, timeout=10.0):
+            calls.append((args, timeout))
+            return {"ok": True, "returncode": 0, "stdout": "done", "stderr": "", "duration_ms": 1}
+
+        def fake_audit_event(*args, **kwargs):
+            audits.append((args, kwargs))
+
+        try:
+            admin_service.run_cmd = fake_run_cmd
+            admin_service.audit_event = fake_audit_event
+            result = admin_service.force_postgres_backup(
+                {"confirm": True},
+                admin_service.AuthContext(kind="token", csrf_token="1"),
+            )
+        finally:
+            admin_service.run_cmd = original_run_cmd
+            admin_service.audit_event = original_audit_event
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["action"], "force-postgres-backup")
+        self.assertEqual(calls, [(["/usr/local/bin/postgres-backup-loop", "--once"], 300.0)])
+        self.assertEqual(audits[0][0][0], "force-postgres-backup")
+
 
 if __name__ == "__main__":
     unittest.main()

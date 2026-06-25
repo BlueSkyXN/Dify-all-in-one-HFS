@@ -99,6 +99,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/actions/restart-service
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
+/_admin/api/actions/force-postgres-backup
 /_admin/api/files/list
 /_admin/api/files/text
 /_admin/api/files/download
@@ -124,6 +125,12 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"service":"dify-api","confirm":true}' \
   https://your-space.hf.space/_admin/api/actions/restart-service
+
+curl -X POST \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirm":true}' \
+  https://your-space.hf.space/_admin/api/actions/force-postgres-backup
 
 ADMIN_EXPECTED_ENABLED=true \
 ADMIN_TOKEN=$ADMIN_TOKEN \
@@ -254,7 +261,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://your-space.hf.space/_ops/persistence
 ```
 
-重点看 `persist_active` 是否为 `bucket`、`paths.plugin_storage_root.path` 是否为真实 `/persist/plugin_daemon`、`paths.plugin_installed.is_symlink` 是否为 `false`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 和 `plugin_identifiers[].installed_exists` 是否都为 `true`。`missing_package_files`、`missing_installed_files`、`missing_runtime_states` 和 `plugin_storage_layout_issues` 都应为空。再看 `plugin_runtime_state.checked`、`plugin_runtime_state.identifiers[].state_count` 和 `plugin_runtime_state.identifiers[].log.ready`：Redis `plugin_state` 是 cluster routing 视图，单容器本机 runtime 已 ready 时，`state_count` 可能不是唯一证据。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。如果 package/installed 文件缺失，或日志没有 `local runtime ready`，再按下方 Plugin Runtime Not Found 的卸载重装路径修复。
+重点看 `persist_active` 是否为 `bucket`、`paths.plugin_storage_root.path` 是否为真实 `/persist/plugin_daemon`、`paths.plugin_installed.is_symlink` 是否为 `false`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 和 `plugin_identifiers[].installed_exists` 是否都为 `true`。`missing_package_files`、`missing_installed_files`、`missing_runtime_states` 和 `plugin_storage_layout_issues` 都应为空。再看 `plugin_runtime_state.checked`、`plugin_runtime_state.identifiers[].state_count` 和 `plugin_runtime_state.identifiers[].log.ready`：Redis `plugin_state` 是 cluster routing 视图，单容器本机 runtime 已 ready 时，`state_count` 可能不是唯一证据。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。`postgres_backup.safe_to_restart` 是重启前的只读建议值；如果为 `false`，先看 `postgres_backup.safe_to_restart_reason`、`latest_age_seconds` 和 `latest_error`，必要时通过 `/_admin/api/actions/force-postgres-backup` 生成一次最新 dump 再重启。如果 package/installed 文件缺失，或日志没有 `local runtime ready`，再按下方 Plugin Runtime Not Found 的卸载重装路径修复。
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 

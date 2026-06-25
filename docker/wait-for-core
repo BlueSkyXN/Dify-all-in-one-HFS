@@ -14,7 +14,8 @@ fi
 set +a
 
 wait_postgres() {
-  until pg_isready -h "${DB_HOST:-127.0.0.1}" -p "${DB_PORT:-5432}" -U "${DB_USERNAME:-dify}" >/dev/null 2>&1; do
+  until PGPASSWORD="${DB_PASSWORD:-}" PGSSLMODE="${DB_SSL_MODE:-disable}" \
+    pg_isready -h "${DB_HOST:-127.0.0.1}" -p "${DB_PORT:-5432}" -U "${DB_USERNAME:-dify}" >/dev/null 2>&1; do
     sleep 1
   done
 }

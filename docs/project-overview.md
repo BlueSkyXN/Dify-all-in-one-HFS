@@ -51,6 +51,7 @@
 |   |-- nginx.conf             # 外部路由和 access log
 |   |-- ops_service.py         # 只读运维诊断 HTTP 服务
 |   |-- admin_service.py       # 默认关闭的受控管理 HTTP 服务
+|   |-- run-postgres           # 本地/外部 PostgreSQL 模式包装器
 |   |-- postgres-backup-loop   # bucket-lite PostgreSQL dump 备份循环
 |   |-- with-dify-env          # Dify API/Web/Worker 环境包装器
 |   |-- with-plugin-env        # Plugin Daemon 环境包装器

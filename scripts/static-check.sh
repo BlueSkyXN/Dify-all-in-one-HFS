@@ -52,6 +52,7 @@ bash -n \
   docker/with-dify-env \
   docker/with-plugin-env \
   docker/with-sandbox-env \
+  docker/run-postgres \
   docker/run-dify-agent \
   docker/run-shellctl \
   docker/wait-for-core \
@@ -73,6 +74,7 @@ require_executable scripts/static-check.sh
 require_executable scripts/validate-hfs-contract.sh
 require_executable docker/run-dify-agent
 require_executable docker/run-shellctl
+require_executable docker/run-postgres
 require_executable docker/sandbox-selfcheck
 
 scripts/validate-hfs-contract.sh

@@ -139,6 +139,11 @@ is_true() {
   esac
 }
 
+external_postgres_enabled() {
+  source_runtime_env
+  is_true "${EXTERNAL_POSTGRES_ENABLED:-false}"
+}
+
 dir_has_entries() {
   [ -d "$1" ] && find "$1" -mindepth 1 -maxdepth 1 -print -quit | grep -q .
 }
@@ -815,6 +820,61 @@ init_postgres() {
     -c "CREATE EXTENSION IF NOT EXISTS vector;" || true
 }
 
+psql_external() {
+  local database=$1
+  shift
+  PGPASSWORD="${DB_PASSWORD:-}" PGSSLMODE="${DB_SSL_MODE:-disable}" \
+    psql -h "${DB_HOST:-127.0.0.1}" -p "${DB_PORT:-5432}" -U "${DB_USERNAME:-dify}" -d "$database" "$@"
+}
+
+wait_external_postgres() {
+  source_runtime_env
+  local timeout=${EXTERNAL_POSTGRES_WAIT_SECONDS:-120}
+  if ! [[ "$timeout" =~ ^[0-9]+$ ]] || [ "$timeout" -lt 1 ]; then
+    timeout=120
+  fi
+  local waited=0
+  until PGPASSWORD="${DB_PASSWORD:-}" PGSSLMODE="${DB_SSL_MODE:-disable}" \
+    pg_isready -h "${DB_HOST:-127.0.0.1}" -p "${DB_PORT:-5432}" -U "${DB_USERNAME:-dify}" >/dev/null 2>&1; do
+    if [ "$waited" -ge "$timeout" ]; then
+      log "External PostgreSQL did not become ready within ${timeout}s at ${DB_HOST}:${DB_PORT}."
+      exit 1
+    fi
+    waited=$((waited + 1))
+    sleep 1
+  done
+}
+
+prepare_external_postgres() {
+  source_runtime_env
+  validate_ident DB_DATABASE "$DB_DATABASE"
+  validate_ident DB_PLUGIN_DATABASE "$DB_PLUGIN_DATABASE"
+  log "EXTERNAL_POSTGRES_ENABLED=true; using PostgreSQL at ${DB_HOST}:${DB_PORT}."
+  wait_external_postgres
+
+  if ! psql_external "$DB_DATABASE" -tAc "SELECT 1" >/dev/null 2>&1; then
+    log "Cannot connect to external DB_DATABASE=${DB_DATABASE}. Create it first and grant access to ${DB_USERNAME}."
+    exit 1
+  fi
+  if ! psql_external "$DB_PLUGIN_DATABASE" -tAc "SELECT 1" >/dev/null 2>&1; then
+    log "Cannot connect to external DB_PLUGIN_DATABASE=${DB_PLUGIN_DATABASE}. Create it first and grant access to ${DB_USERNAME}."
+    exit 1
+  fi
+
+  if is_true "${EXTERNAL_POSTGRES_REQUIRE_VECTOR:-true}"; then
+    if ! psql_external "$DB_DATABASE" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;" >/data/logs/postgres-external-vector.log 2>&1; then
+      log "External DB_DATABASE=${DB_DATABASE} is missing usable pgvector extension. Last postgres-external-vector.log lines:"
+      tail -n 80 /data/logs/postgres-external-vector.log || true
+      exit 1
+    fi
+    if ! psql_external "$DB_PLUGIN_DATABASE" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;" >/data/logs/postgres-external-vector-plugin.log 2>&1; then
+      log "External DB_PLUGIN_DATABASE=${DB_PLUGIN_DATABASE} is missing usable pgvector extension. Last postgres-external-vector-plugin.log lines:"
+      tail -n 80 /data/logs/postgres-external-vector-plugin.log || true
+      exit 1
+    fi
+  fi
+}
+
 run_dify_migration() {
   source_runtime_env
   if [ "${MIGRATION_ENABLED:-true}" != "true" ]; then
@@ -836,11 +896,17 @@ main() {
   warn_demo_defaults
   render_redis_config
   render_sandbox_config
-  init_postgres
+  if external_postgres_enabled; then
+    prepare_external_postgres
+  else
+    init_postgres
+  fi
   start_temp_redis
   run_dify_migration
   stop_temp_redis
-  stop_temp_postgres
+  if ! external_postgres_enabled; then
+    stop_temp_postgres
+  fi
 
   log "Starting all services with supervisord."
   exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
