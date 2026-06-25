@@ -84,6 +84,9 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                 "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF": "langgenius/dify-web@sha256:web",
                 "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF": "langgenius/dify-plugin-daemon@sha256:plugin",
                 "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF": "langgenius/dify-sandbox@sha256:sandbox",
+                "DIFY_AIO_BUILD_DIFY_SOURCE_REPO": "https://github.com/BlueSkyXN/dify.git",
+                "DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF": "1d2cc1e",
+                "DIFY_AIO_BUILD_DIFY_AGENT_SOURCE_REF": "cf5735d",
                 "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF": "44cdbd5",
                 "SANDBOX_UID_POOL_MIN": "1000",
                 "SANDBOX_UID_POOL_MAX": "1001",
@@ -99,6 +102,9 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(build["dify_web_image_ref"], "langgenius/dify-web@sha256:web")
         self.assertEqual(build["plugin_daemon_image_ref"], "langgenius/dify-plugin-daemon@sha256:plugin")
         self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
+        self.assertEqual(build["dify_source_repo"], "https://github.com/BlueSkyXN/dify.git")
+        self.assertEqual(build["dify_source_main_ref"], "1d2cc1e")
+        self.assertEqual(build["dify_agent_source_ref"], "cf5735d")
         self.assertEqual(build["sandbox_source_ref"], "44cdbd5")
         self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
         self.assertEqual(sandbox["uid_pool_min"], "1000")

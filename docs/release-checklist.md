@@ -59,6 +59,9 @@ DIFY_API_IMAGE_REF:
 DIFY_WEB_IMAGE_REF:
 PLUGIN_DAEMON_IMAGE_REF:
 SANDBOX_IMAGE_REF:
+DIFY_SOURCE_REPO:
+DIFY_SOURCE_MAIN_REF:
+DIFY_AGENT_SOURCE_REF:
 DIFY_SANDBOX_SOURCE_REF:
 UV_VERSION:
 DIFY_VERSION metadata:
@@ -66,20 +69,21 @@ All image refs use digest? yes/no:
 Mutable defaults used? yes/no + reason:
 ```
 
-NEXT branch 默认值已经 pin 到 `image@sha256:...` digest ref，并为 patched Sandbox server binary 单独 pin `DIFY_SANDBOX_SOURCE_REF`。更新上游 main 或回到稳定版时，必须重新记录 Web/API/Plugin Daemon/Sandbox image 与 Sandbox source ref 的 co-pin set；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据。
+NEXT branch 默认值已经 pin 到 `image@sha256:...` digest ref，并为 maintained Dify fork main、Agent hotfix overlay 和 patched Sandbox server binary 分别 pin `DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。更新 maintained fork main、更新 fork hotfix 或回到稳定版时，必须重新记录 Web/API/Plugin Daemon/Sandbox image 与 source ref 的 co-pin set；`DIFY_VERSION` 只作为 metadata，不是 selected image content 或 Agent package content 的证据。
 
 `scripts/check-next-pins.py` 会实时检查：
 
 ```text
-langgenius/dify refs/heads/main
-langgenius/dify-api:main
-langgenius/dify-web:main
+BlueSkyXN/dify refs/heads/main
+BlueSkyXN/dify refs/heads/self/main-plus-agent-v2-history-fix-20260625
+langgenius/dify-api:<BlueSkyXN/dify-main-commit>
+langgenius/dify-web:<BlueSkyXN/dify-main-commit>
 langgenius/dify-plugin-daemon:latest-local
 langgenius/dify-sandbox:main
 langgenius/dify-sandbox refs/heads/main
 ```
 
-它只认 main-line / latest-local 这些当前部署基线，不把 Docker Hub 上更晚构建的 feature branch 或 PR tag 当成 NEXT 应追的 main。
+它只认 maintained fork main、明确的 Agent hotfix branch、main commit-tag image 和 latest-local 这些当前部署基线，不把 Docker Hub 上更晚构建的其他 feature branch 或 PR tag 当成 NEXT 应追的目标。
 
 `scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
 

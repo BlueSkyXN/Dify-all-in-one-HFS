@@ -57,6 +57,27 @@ dev_mutable_default_allowed = true
 release_requires_digest = true
 
 [[release_pins]]
+name = "DIFY_SOURCE_REPO"
+type = "source_repo"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+
+[[release_pins]]
+name = "DIFY_SOURCE_MAIN_REF"
+type = "source_revision"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+
+[[release_pins]]
+name = "DIFY_AGENT_SOURCE_REF"
+type = "source_revision"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+
+[[release_pins]]
 name = "DIFY_SANDBOX_SOURCE_REF"
 type = "source_revision"
 source = "Dockerfile ARG"

@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_DIFY_REMOTE = "https://github.com/langgenius/dify.git"
+DEFAULT_DIFY_REMOTE = "https://github.com/BlueSkyXN/dify.git"
+DEFAULT_DIFY_MAIN_REF = "refs/heads/main"
+DEFAULT_DIFY_AGENT_REF = "refs/heads/self/main-plus-agent-v2-history-fix-20260625"
 DEFAULT_SANDBOX_REMOTE = "https://github.com/langgenius/dify-sandbox.git"
 DOCKER_HUB_TAG_URL = "https://hub.docker.com/v2/repositories/{namespace}/{repo}/tags/{tag}"
 
@@ -80,10 +82,12 @@ def check_equal(name: str, actual: str, expected: str, checks: list[dict[str, An
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Check that NEXT Dockerfile pins match official upstream main-line digests.",
+        description="Check that NEXT Dockerfile pins match the maintained Dify fork and runtime image digests.",
     )
     parser.add_argument("--repo-root", default=Path(__file__).resolve().parents[1], type=Path)
     parser.add_argument("--dify-remote", default=DEFAULT_DIFY_REMOTE)
+    parser.add_argument("--dify-main-ref", default=DEFAULT_DIFY_MAIN_REF)
+    parser.add_argument("--dify-agent-ref", default=DEFAULT_DIFY_AGENT_REF)
     parser.add_argument("--sandbox-remote", default=DEFAULT_SANDBOX_REMOTE)
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable output")
     args = parser.parse_args()
@@ -95,13 +99,32 @@ def main() -> int:
     notes: list[str] = []
 
     try:
-        dify_main = git_remote_head(args.dify_remote, "refs/heads/main")
+        dify_main = git_remote_head(args.dify_remote, args.dify_main_ref)
+        dify_agent = git_remote_head(args.dify_remote, args.dify_agent_ref)
         sandbox_main = git_remote_head(args.sandbox_remote, "refs/heads/main")
 
         check_equal(
-            "DIFY_VERSION metadata tracks langgenius/dify main",
+            "DIFY_SOURCE_REPO tracks maintained Dify fork",
+            pins.get("DIFY_SOURCE_REPO", ""),
+            args.dify_remote,
+            checks,
+        )
+        check_equal(
+            "DIFY_SOURCE_MAIN_REF tracks maintained fork main",
+            pins.get("DIFY_SOURCE_MAIN_REF", ""),
+            dify_main,
+            checks,
+        )
+        check_equal(
+            "DIFY_AGENT_SOURCE_REF tracks maintained fork Agent hotfix",
+            pins.get("DIFY_AGENT_SOURCE_REF", ""),
+            dify_agent,
+            checks,
+        )
+        check_equal(
+            "DIFY_VERSION metadata tracks maintained fork main plus Agent hotfix",
             pins.get("DIFY_VERSION", ""),
-            f"main-{dify_main}",
+            f"BlueSkyXN-dify-main-{dify_main}-agent-{dify_agent}",
             checks,
         )
 
@@ -110,13 +133,11 @@ def main() -> int:
             ("DIFY_WEB_IMAGE_REF", "dify-web"),
         ]:
             pinned_digest = ref_digest(pins.get(image_arg, ""))
-            main_digest = docker_tag_digest("langgenius", repo, "main")
             commit_digest = docker_tag_digest("langgenius", repo, dify_main)
-            check_equal(f"{image_arg} matches langgenius/{repo}:main", pinned_digest, main_digest, checks)
             check_equal(
-                f"langgenius/{repo}:{dify_main} matches :main",
+                f"{image_arg} matches langgenius/{repo}:{dify_main}",
+                pinned_digest,
                 commit_digest,
-                main_digest,
                 checks,
             )
 

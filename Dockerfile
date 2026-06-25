@@ -15,12 +15,15 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:ece76df426066b31d7a5200ca2a9e236f94b1e5c4c27f78d03103e97e8be7375
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:8907f84d776e8b59c6cc57ffa06da6cc6e34b52c0c4de614dcada0a2ce799c69
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:1831a1c4032e65293a89dd9c18c1685bdf2ca6e004af96d8ce86267f2ccca98c
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:37fe468964eec696bd88ae91f133b073bd8ca3e00f64dee852e845f55caf3c5e
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+ARG DIFY_SOURCE_MAIN_REF=1d2cc1e475bb9b132bb95fbda1864f16947e9a53
+ARG DIFY_AGENT_SOURCE_REF=cf5735d0b796bcdfddfc924a02a4c4c10a052cab
 ARG DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-ARG DIFY_VERSION=main-b33e8f0ddb1189427548b0e1206cedcdc17d9bb6
+ARG DIFY_VERSION=BlueSkyXN-dify-main-1d2cc1e475bb9b132bb95fbda1864f16947e9a53-agent-cf5735d0b796bcdfddfc924a02a4c4c10a052cab
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
@@ -90,6 +93,9 @@ ARG DIFY_WEB_IMAGE_REF
 ARG DIFY_API_IMAGE_REF
 ARG PLUGIN_DAEMON_IMAGE_REF
 ARG SANDBOX_IMAGE_REF
+ARG DIFY_SOURCE_REPO
+ARG DIFY_SOURCE_MAIN_REF
+ARG DIFY_AGENT_SOURCE_REF
 ARG DIFY_SANDBOX_SOURCE_REF
 ARG DIFY_VERSION
 ARG UV_VERSION
@@ -103,6 +109,9 @@ ENV DIFY_AIO_BUILD_DIFY_API_IMAGE_REF=${DIFY_API_IMAGE_REF}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF=${DIFY_WEB_IMAGE_REF}
 ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF=${PLUGIN_DAEMON_IMAGE_REF}
 ENV DIFY_AIO_BUILD_SANDBOX_IMAGE_REF=${SANDBOX_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_SOURCE_REPO=${DIFY_SOURCE_REPO}
+ENV DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF=${DIFY_SOURCE_MAIN_REF}
+ENV DIFY_AIO_BUILD_DIFY_AGENT_SOURCE_REF=${DIFY_AGENT_SOURCE_REF}
 ENV DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF=${DIFY_SANDBOX_SOURCE_REF}
 ENV DIFY_AIO_BUILD_DIFY_API_IMAGE=${DIFY_API_IMAGE_REF}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE=${DIFY_WEB_IMAGE_REF}
@@ -174,11 +183,13 @@ ENV HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub
 # script shebangs inside .venv point there.
 COPY --from=api-image --chown=user:user /app/api /app/api
 
-# NEXT Agent v2 needs the local dify-agent FastAPI run server. The official API
-# image installs the client package, but the server extras are intentionally
-# optional upstream, so this all-in-one image pins and verifies them explicitly.
+# NEXT Agent v2 needs the local dify-agent FastAPI run server. API/Web assets
+# use the fork main commit image digest, then dify-agent is overlaid from the
+# maintained fork hotfix branch because Docker Hub has no image tag for it.
 RUN set -eu; \
-    uv pip install --python /app/api/.venv/bin/python --no-cache \
+    uv pip install --python /app/api/.venv/bin/python --no-cache --no-deps \
+      "dify-agent @ git+${DIFY_SOURCE_REPO}@${DIFY_AGENT_SOURCE_REF}#subdirectory=dify-agent" \
+    && uv pip install --python /app/api/.venv/bin/python --no-cache \
       "fastapi==0.136.0" \
       "graphon==0.5.3" \
       "jsonschema>=4.23.0,<5.0.0" \
@@ -189,6 +200,7 @@ RUN set -eu; \
       "shell-session-manager==2.2.1" \
       "uvicorn[standard]==0.46.0" \
     && /app/api/.venv/bin/python -c "import dify_agent.server.app" \
+    && /app/api/.venv/bin/python -c 'import inspect; from dify_agent.adapters.llm import model; assert "\"\".join(item.data for item in content)" in inspect.getsource(model._normalize_prompt_content)' \
     && /app/api/.venv/bin/shellctl --help >/dev/null \
     && if ! uv pip check --python /app/api/.venv/bin/python > /tmp/dify-agent-uv-pip-check.txt 2>&1; then \
          cat /tmp/dify-agent-uv-pip-check.txt; \

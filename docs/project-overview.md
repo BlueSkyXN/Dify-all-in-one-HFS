@@ -71,34 +71,38 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:8907f84d776e8b59c6cc57ffa06da6cc6e34b52c0c4de614dcada0a2ce799c69
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:ece76df426066b31d7a5200ca2a9e236f94b1e5c4c27f78d03103e97e8be7375
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:37fe468964eec696bd88ae91f133b073bd8ca3e00f64dee852e845f55caf3c5e
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:1831a1c4032e65293a89dd9c18c1685bdf2ca6e004af96d8ce86267f2ccca98c
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+DIFY_SOURCE_MAIN_REF=1d2cc1e475bb9b132bb95fbda1864f16947e9a53
+DIFY_AGENT_SOURCE_REF=cf5735d0b796bcdfddfc924a02a4c4c10a052cab
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=main-b33e8f0ddb1189427548b0e1206cedcdc17d9bb6
+DIFY_VERSION=BlueSkyXN-dify-main-1d2cc1e475bb9b132bb95fbda1864f16947e9a53-agent-cf5735d0b796bcdfddfc924a02a4c4c10a052cab
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-NEXT branch 默认值已 pin 到官方 main commit-tag image digest set、HFS 已验证的 Sandbox config/dependencies digest 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
+NEXT branch 默认值已 pin 到 `BlueSkyXN/dify` maintained fork main commit 对应的 API/Web image digest set、Agent hotfix source ref、HFS 已验证的 Sandbox config/dependencies digest 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
 
-注意：上游 `main/docker/docker-compose.yaml` 仍可能引用最新 release 镜像 tag，例如 `1.14.2`。这不代表 main 源码未变化，也不代表 `docker compose up` 会跑到 main 代码。NEXT/HFS 使用的是官方 Docker Hub 上按 main commit 发布的 `dify-api` / `dify-web` commit-tag 镜像 digest，再叠加本仓库的 all-in-one runtime glue。如果上游 main 源码已经前进但 Docker Hub 尚未发布对应 commit-tag 镜像，NEXT 只能记录差距或改走源码自建镜像，不能只改 metadata 声称已运行该 commit。
+注意：上游 `main/docker/docker-compose.yaml` 仍可能引用最新 release 镜像 tag，例如 `1.14.2`。这不代表 main 源码未变化，也不代表 `docker compose up` 会跑到 main 代码。NEXT/HFS 使用的是 Docker Hub 上按 source commit 发布的 `dify-api` / `dify-web` commit-tag 镜像 digest，再叠加本仓库的 all-in-one runtime glue 与 `dify-agent` hotfix overlay。如果目标源码已经前进但 Docker Hub 尚未发布对应 commit-tag 镜像，NEXT 只能记录差距、使用源码 overlay 覆盖小范围 Python package，或改走源码自建镜像，不能只改 metadata 声称已运行该 commit。
 
 ## 与源码自建 main 的边界
 
-截至当前 NEXT pin 的上游 `main-b33e8f0ddb1189427548b0e1206cedcdc17d9bb6`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.3` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
+截至当前 NEXT pin 的 `BlueSkyXN/dify` fork main `1d2cc1e475bb9b132bb95fbda1864f16947e9a53` 和 Agent hotfix `cf5735d0b796bcdfddfc924a02a4c4c10a052cab`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.3` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
 
-当前 HFS NEXT 没有把完整 `langgenius/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是官方 main commit image digest：
+当前 HFS NEXT 没有把完整 `BlueSkyXN/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是 fork main commit 对应的 API/Web image digest，加上从 hotfix commit 安装的 `dify-agent` package：
 
 ```text
 DIFY_API_IMAGE_REF
 DIFY_WEB_IMAGE_REF
+DIFY_AGENT_SOURCE_REF
 ```
 
-因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只在官方 API venv 上补齐并 build-gate `dify-agent` backend server extras 与 `shellctl`，用于提前验证 Agent v2 runtime 方向。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend、shell layer 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
+因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只在 API image venv 上覆盖安装 fork hotfix `dify-agent` package，并 build-gate backend server extras 与 `shellctl`，用于提前验证 Agent v2 runtime 方向。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend、shell layer 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
 
 ## 运行状态入口
 
