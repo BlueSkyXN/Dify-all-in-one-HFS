@@ -15,15 +15,15 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:1831a1c4032e65293a89dd9c18c1685bdf2ca6e004af96d8ce86267f2ccca98c
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:37fe468964eec696bd88ae91f133b073bd8ca3e00f64dee852e845f55caf3c5e
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:777b853e086722e8cf528301e3cea1b7e274508713de19f9585c7627db717fd6
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:8230ca7e631b6eb2130a627a2f5814b2418c61c27708b51aa5fc1fa942042ed5
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-ARG DIFY_SOURCE_MAIN_REF=1d2cc1e475bb9b132bb95fbda1864f16947e9a53
-ARG DIFY_AGENT_SOURCE_REF=cf5735d0b796bcdfddfc924a02a4c4c10a052cab
+ARG DIFY_SOURCE_MAIN_REF=e64afe735c977919171d412c16ba9dcd037ad987
+ARG DIFY_AGENT_SOURCE_REF=e64afe735c977919171d412c16ba9dcd037ad987
 ARG DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-ARG DIFY_VERSION=BlueSkyXN-dify-main-1d2cc1e475bb9b132bb95fbda1864f16947e9a53-agent-cf5735d0b796bcdfddfc924a02a4c4c10a052cab
+ARG DIFY_VERSION=BlueSkyXN-dify-main-e64afe735c977919171d412c16ba9dcd037ad987-agent-e64afe735c977919171d412c16ba9dcd037ad987
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
@@ -184,8 +184,8 @@ ENV HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub
 COPY --from=api-image --chown=user:user /app/api /app/api
 
 # NEXT Agent v2 needs the local dify-agent FastAPI run server. API/Web assets
-# use the fork main commit image digest, then dify-agent is overlaid from the
-# maintained fork hotfix branch because Docker Hub has no image tag for it.
+# use a digest-pinned Docker Hub main image, then dify-agent is overlaid from
+# the maintained fork main because fork merge commits have no image tag.
 RUN set -eu; \
     uv pip install --python /app/api/.venv/bin/python --no-cache --no-deps \
       "dify-agent @ git+${DIFY_SOURCE_REPO}@${DIFY_AGENT_SOURCE_REF}#subdirectory=dify-agent" \

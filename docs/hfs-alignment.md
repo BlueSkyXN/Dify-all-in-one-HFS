@@ -114,19 +114,19 @@ NEXT branch 默认值 pin 到当前可运行的 NEXT digest/source set：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:1831a1c4032e65293a89dd9c18c1685bdf2ca6e004af96d8ce86267f2ccca98c
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:37fe468964eec696bd88ae91f133b073bd8ca3e00f64dee852e845f55caf3c5e
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:777b853e086722e8cf528301e3cea1b7e274508713de19f9585c7627db717fd6
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:8230ca7e631b6eb2130a627a2f5814b2418c61c27708b51aa5fc1fa942042ed5
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=1d2cc1e475bb9b132bb95fbda1864f16947e9a53
-DIFY_AGENT_SOURCE_REF=cf5735d0b796bcdfddfc924a02a4c4c10a052cab
+DIFY_SOURCE_MAIN_REF=e64afe735c977919171d412c16ba9dcd037ad987
+DIFY_AGENT_SOURCE_REF=e64afe735c977919171d412c16ba9dcd037ad987
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 UV_VERSION=0.11.21
-DIFY_VERSION=BlueSkyXN-dify-main-1d2cc1e475bb9b132bb95fbda1864f16947e9a53-agent-cf5735d0b796bcdfddfc924a02a4c4c10a052cab
+DIFY_VERSION=BlueSkyXN-dify-main-e64afe735c977919171d412c16ba9dcd037ad987-agent-e64afe735c977919171d412c16ba9dcd037ad987
 ```
 
-这个 pin set 对 Web/API 指向 Docker Hub 上已发布的 maintained fork main commit-tag image digest；Agent backend package 从 maintained fork hotfix source ref 覆盖安装；Sandbox 的 `/conf` 和 `/dependencies` 使用 HFS 执行自检已通过的 digest，Sandbox server binary 仍来自 source-pinned patch build。不要把上游 `docker/docker-compose.yaml` 中仍引用 release image tag 的事实，误读为目标 main 源码没有进入 NEXT；直接 `docker compose up` upstream main 仍可能跑 release 镜像，NEXT/HFS 则显式选择 commit digest 和 Agent source overlay。若目标源码领先但 Docker Hub commit-tag 镜像尚未发布，NEXT 必须继续停在上一个可验证 digest set，使用小范围 package overlay，或单独立项改成源码自建 API/Web。
+这个 pin set 对 Web/API 指向 Docker Hub 当前 `main` digest；Agent backend package 从 maintained fork main source ref 覆盖安装；Sandbox 的 `/conf` 和 `/dependencies` 使用 HFS 执行自检已通过的 digest，Sandbox server binary 仍来自 source-pinned patch build。不要把上游 `docker/docker-compose.yaml` 中仍引用 release image tag 的事实，误读为目标 main 源码没有进入 NEXT；直接 `docker compose up` upstream main 仍可能跑 release 镜像，NEXT/HFS 则显式选择 digest-pinned Docker Hub main image 和 Agent source overlay。Docker Hub 当前没有 fork merge commit `e64afe735c977919171d412c16ba9dcd037ad987` 或 upstream commit `0035d90e36369aa20a3b83cc92ac42eeb7a1b4cf` 对应的 API/Web commit tag，所以 release note 必须区分 image digest 与 source ref。
 
 更新 NEXT 上游时必须记录并传入新的 digest ref：
 

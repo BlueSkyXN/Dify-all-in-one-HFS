@@ -12,7 +12,8 @@ from typing import Any
 
 DEFAULT_DIFY_REMOTE = "https://github.com/BlueSkyXN/dify.git"
 DEFAULT_DIFY_MAIN_REF = "refs/heads/main"
-DEFAULT_DIFY_AGENT_REF = "refs/heads/self/main-plus-agent-v2-history-fix-20260625"
+DEFAULT_DIFY_AGENT_REF = "refs/heads/main"
+DEFAULT_DIFY_IMAGE_TAG = "main"
 DEFAULT_SANDBOX_REMOTE = "https://github.com/langgenius/dify-sandbox.git"
 DOCKER_HUB_TAG_URL = "https://hub.docker.com/v2/repositories/{namespace}/{repo}/tags/{tag}"
 
@@ -88,6 +89,7 @@ def main() -> int:
     parser.add_argument("--dify-remote", default=DEFAULT_DIFY_REMOTE)
     parser.add_argument("--dify-main-ref", default=DEFAULT_DIFY_MAIN_REF)
     parser.add_argument("--dify-agent-ref", default=DEFAULT_DIFY_AGENT_REF)
+    parser.add_argument("--dify-image-tag", default=DEFAULT_DIFY_IMAGE_TAG)
     parser.add_argument("--sandbox-remote", default=DEFAULT_SANDBOX_REMOTE)
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable output")
     args = parser.parse_args()
@@ -116,13 +118,13 @@ def main() -> int:
             checks,
         )
         check_equal(
-            "DIFY_AGENT_SOURCE_REF tracks maintained fork Agent hotfix",
+            "DIFY_AGENT_SOURCE_REF tracks maintained fork Agent source",
             pins.get("DIFY_AGENT_SOURCE_REF", ""),
             dify_agent,
             checks,
         )
         check_equal(
-            "DIFY_VERSION metadata tracks maintained fork main plus Agent hotfix",
+            "DIFY_VERSION metadata tracks maintained fork main plus Agent source",
             pins.get("DIFY_VERSION", ""),
             f"BlueSkyXN-dify-main-{dify_main}-agent-{dify_agent}",
             checks,
@@ -133,13 +135,27 @@ def main() -> int:
             ("DIFY_WEB_IMAGE_REF", "dify-web"),
         ]:
             pinned_digest = ref_digest(pins.get(image_arg, ""))
-            commit_digest = docker_tag_digest("langgenius", repo, dify_main)
+            image_tag_digest = docker_tag_digest("langgenius", repo, args.dify_image_tag)
             check_equal(
-                f"{image_arg} matches langgenius/{repo}:{dify_main}",
+                f"{image_arg} matches langgenius/{repo}:{args.dify_image_tag}",
                 pinned_digest,
-                commit_digest,
+                image_tag_digest,
                 checks,
             )
+            try:
+                commit_digest = docker_tag_digest("langgenius", repo, dify_main)
+            except CheckError as exc:
+                notes.append(
+                    f"langgenius/{repo}:{dify_main} commit tag unavailable; "
+                    f"checked {args.dify_image_tag!r} digest instead ({exc})"
+                )
+            else:
+                check_equal(
+                    f"langgenius/{repo}:{dify_main} matches {args.dify_image_tag}",
+                    commit_digest,
+                    image_tag_digest,
+                    checks,
+                )
 
         plugin_digest = docker_tag_digest("langgenius", "dify-plugin-daemon", "latest-local")
         check_equal(
@@ -188,6 +204,8 @@ def main() -> int:
                     print(f"  expected: {check.get('expected')}")
                 if "error" in check:
                     print(f"  error:    {check.get('error')}")
+        for note in notes:
+            print(f"NOTE {note}")
 
     return 0 if ok else 1
 

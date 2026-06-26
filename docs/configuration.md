@@ -145,7 +145,7 @@ OPENAPI_CORS_ALLOW_ORIGINS=
 
 ## NEXT-only Agent v2 / Collaboration Variables
 
-稳定 Space 默认不要开启 Agent v2 / Collaboration / Agent backend。NEXT branch 和 NEXT Space 用来验证 maintained Dify fork main 加 Agent hotfix 的 Agent v2、Skills 和协作功能，所以本分支默认打开可见的 Agent v2 前端、Collaboration、同容器 `dify-agent` backend 和 Agent Drive manifest。Hugging Face Space Settings 里显式设置的变量仍会覆盖这些默认值。
+稳定 Space 默认不要开启 Agent v2 / Collaboration / Agent backend。NEXT branch 和 NEXT Space 用来验证 maintained Dify fork main 的 Agent v2、Skills 和协作功能，所以本分支默认打开可见的 Agent v2 前端、Collaboration、同容器 `dify-agent` backend 和 Agent Drive manifest。Hugging Face Space Settings 里显式设置的变量仍会覆盖这些默认值。
 
 ```env
 ENABLE_AGENT_V2=true

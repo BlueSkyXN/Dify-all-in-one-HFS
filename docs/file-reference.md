@@ -68,7 +68,7 @@ UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_MAIN_REF` 记录 API/Web digest 对应的 Dify fork main commit；`DIFY_AGENT_SOURCE_REF` 是 overlay 安装 `dify-agent` backend package 的 source pin；`DIFY_SANDBOX_SOURCE_REF` 是 NEXT patched Sandbox server binary 的 source pin。NEXT branch 默认值已 pin 到 maintained fork digest/source set；更新上游、更新 fork hotfix 或回到稳定版时必须作为一组 co-pin 修改。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源或 Agent package 来源。
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_MAIN_REF` 记录 maintained Dify fork main commit；`DIFY_AGENT_SOURCE_REF` 是 overlay 安装 `dify-agent` backend package 的 source pin；`DIFY_SANDBOX_SOURCE_REF` 是 NEXT patched Sandbox server binary 的 source pin。NEXT branch 默认值已 pin 到 Docker Hub main digest 和 maintained fork source set；更新上游、更新 fork main 或回到稳定版时必须作为一组 co-pin 修改。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源或 Agent package 来源。
 
 ### `.dockerignore`
 
