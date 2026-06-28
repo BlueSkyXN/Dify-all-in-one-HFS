@@ -310,6 +310,7 @@ Plugin Daemon 环境包装器。
   - `PLUGIN_DAEMON_KEY` -> `SERVER_KEY`
   - `PLUGIN_DIFY_INNER_API_URL` -> `DIFY_INNER_API_URL`
   - `PLUGIN_DIFY_INNER_API_KEY` -> `DIFY_INNER_API_KEY`
+  - `PLUGIN_MAX_REQUEST_TIMEOUT` -> `MAX_REQUEST_TIMEOUT`
 - 固定 `UV_CACHE_DIR` 到 `PLUGIN_UV_CACHE_DIR`，并在启动前创建/校验可写目录，避免插件 Python venv 初始化回落到不可写的 `/home/user/.cache/uv`。
 
 ### `docker/with-sandbox-env`

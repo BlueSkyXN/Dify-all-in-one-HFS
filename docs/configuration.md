@@ -414,6 +414,7 @@ Nginx 会把 `/openapi` 代理到内部 Dify API。`/openapi/v1/_health` 和 `/o
 | `PLUGIN_DEBUGGING_PORT` | `5003` | remote installing/debug port |
 | `PLUGIN_MAX_PACKAGE_SIZE` | `52428800` | 插件包最大大小 |
 | `PLUGIN_PYTHON_ENV_INIT_TIMEOUT` | `120` | 插件 Python 环境初始化 timeout |
+| `PLUGIN_MAX_REQUEST_TIMEOUT` | `300` | 插件 Python runtime 对外模型/API 请求 read timeout；`with-plugin-env` 会映射为 Dify Plugin SDK 使用的 `MAX_REQUEST_TIMEOUT` |
 | `PLUGIN_MAX_EXECUTION_TIMEOUT` | `600` | 插件执行 timeout |
 | `ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES` | `false` | 是否强制 LangGenius plugin signature |
 | `FORCE_VERIFYING_SIGNATURE` | `false` | 是否强制验证签名 |
