@@ -194,6 +194,7 @@ RUN set -eu; \
       "graphon==0.5.3" \
       "jsonschema>=4.23.0,<5.0.0" \
       "jwcrypto>=1.5.6,<2" \
+      "logfire[fastapi,httpx,redis]>=4.37.0,<5.0.0" \
       "pydantic-ai-slim>=1.85.1,<2.0.0" \
       "pydantic-settings>=2.12.0,<3.0.0" \
       "redis>=7.4.0,<8.0.0" \
