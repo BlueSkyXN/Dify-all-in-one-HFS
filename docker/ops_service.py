@@ -2185,6 +2185,84 @@ def summarize_api_token_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
     return summarized_rows
 
 
+def workflow_model_value_summary(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    provider = value.get("provider") or value.get("model_provider") or value.get("provider_name")
+    name = value.get("name") or value.get("model") or value.get("model_name") or value.get("model_id")
+    mode = value.get("mode")
+    if not provider and not name:
+        return None
+    summary: dict[str, Any] = {}
+    if provider:
+        summary["provider"] = str(provider)
+    if name:
+        summary["name"] = str(name)
+    if mode:
+        summary["mode"] = str(mode)
+    if value.get("completion_params") and isinstance(value["completion_params"], dict):
+        summary["completion_params"] = summarize_config_object(value["completion_params"], depth=2, leaf_limit=40)
+    return summary
+
+
+def workflow_graph_model_summary(raw: Any) -> dict[str, Any]:
+    if raw is None or raw == "":
+        return {"present": False}
+    text = str(raw)
+    summary: dict[str, Any] = {
+        "present": True,
+        "bytes": len(text.encode("utf-8", errors="replace")),
+        "sha256": text_sha256_short(text),
+    }
+    try:
+        graph = json.loads(text)
+    except json.JSONDecodeError:
+        summary.update({"json_parse_ok": False})
+        return summary
+    nodes = graph.get("nodes") if isinstance(graph, dict) else None
+    if not isinstance(nodes, list):
+        summary.update({"json_parse_ok": True, "node_count": 0, "model_bindings": []})
+        return summary
+
+    bindings: list[dict[str, Any]] = []
+    for node in nodes[:500]:
+        if not isinstance(node, dict):
+            continue
+        data = node.get("data") if isinstance(node.get("data"), dict) else {}
+        node_type = data.get("type") or node.get("type") or ""
+        model_summary = workflow_model_value_summary(data.get("model"))
+        if model_summary is None:
+            continue
+        bindings.append(
+            {
+                "node_id": str(node.get("id") or "")[:120],
+                "node_type": str(node_type)[:80],
+                "model": model_summary,
+            }
+        )
+
+    summary.update(
+        {
+            "json_parse_ok": True,
+            "node_count": len(nodes),
+            "model_binding_count": len(bindings),
+            "model_bindings": bindings[:100],
+            "truncated": len(nodes) > 500 or len(bindings) > 100,
+        }
+    )
+    return summary
+
+
+def summarize_workflow_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summarized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        summarized = dict(row)
+        raw_graph = summarized.pop("graph", None)
+        summarized["graph_summary"] = workflow_graph_model_summary(raw_graph)
+        summarized_rows.append(summarized)
+    return summarized_rows
+
+
 def provider_model_summary_payload(query: dict[str, list[str]] | None = None) -> dict[str, Any]:
     query = query or {}
     limit = parse_int(query.get("limit", ["200"])[0], 200, minimum=1, maximum=500)
@@ -2286,6 +2364,18 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
             limit {limit}
             """,
         ),
+        "workflow_model_bindings": psql_json_rows(
+            main_database,
+            f"""
+            select w.id as workflow_id, w.tenant_id, w.app_id, a.name as app_name, w.type, w.kind,
+                   w.version, w.graph, w.created_at::text as created_at, w.updated_at::text as updated_at
+            from workflows w
+            left join apps a on a.id = w.app_id
+            where w.graph is not null and w.graph <> ''
+            order by w.updated_at desc
+            limit {limit}
+            """,
+        ),
     }
 
     for key in ["provider_model_credentials", "provider_credentials", "load_balancing_model_configs"]:
@@ -2298,6 +2388,10 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
         )
     if sections["api_tokens"].get("ok"):
         sections["api_tokens"]["rows"] = summarize_api_token_rows(sections["api_tokens"].get("rows", []))
+    if sections["workflow_model_bindings"].get("ok"):
+        sections["workflow_model_bindings"]["rows"] = summarize_workflow_rows(
+            sections["workflow_model_bindings"].get("rows", [])
+        )
 
     section_status = {
         name: {
@@ -2318,6 +2412,7 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
             "This endpoint runs fixed read-only SQL against known Dify model/provider tables.",
             "encrypted_config raw values are never returned; only hashes, key structure, secret presence booleans, URL host/path hashes, and allowlisted non-secret fields are summarized.",
             "api_tokens.token raw values are never returned; only prefix, length and sha256 are summarized for local key drift checks.",
+            "workflow graph raw values are never returned; only node model provider/name/mode and safe completion parameter summaries are returned.",
             "URL path values are not returned because gateway paths can contain tenant, account, or routing identifiers.",
         ],
     }

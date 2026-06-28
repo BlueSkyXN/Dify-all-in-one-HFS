@@ -271,7 +271,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
   "https://your-space.hf.space/_ops/provider-models?limit=200&recent_limit=50"
 ```
 
-该端点只运行固定 SQL，覆盖 `tenant_default_models`、`provider_models`、`provider_model_settings`、`provider_model_credentials`、`provider_credentials`、`load_balancing_model_configs`、`apps` / `app_model_configs`、近期 conversation 的模型绑定和 app service `api_tokens` 摘要。`encrypted_config` 原文不会返回；响应只包含 hash、key 结构、secret presence boolean、URL host/path hash，以及 `model`、`mode`、`timeout`、`max_tokens` 等 allowlist 字段。`api_tokens.token` 原文也不会返回，只提供 prefix、length 和 sha256，用于核对本地 app key 是否已经和 live Dify 漂移。URL path 不原文返回，因为 Cloudflare Gateway 等路径可能包含 account、tenant 或 routing 标识。
+该端点只运行固定 SQL，覆盖 `tenant_default_models`、`provider_models`、`provider_model_settings`、`provider_model_credentials`、`provider_credentials`、`load_balancing_model_configs`、`apps` / `app_model_configs`、近期 conversation 的模型绑定、app service `api_tokens` 摘要，以及 workflow graph 中的模型绑定摘要。`encrypted_config` 原文不会返回；响应只包含 hash、key 结构、secret presence boolean、URL host/path hash，以及 `model`、`mode`、`timeout`、`max_tokens` 等 allowlist 字段。`api_tokens.token` 原文也不会返回，只提供 prefix、length 和 sha256，用于核对本地 app key 是否已经和 live Dify 漂移。workflow graph 原文、prompt、变量和 secret 不返回，只提取 LLM-like node 的 provider/name/mode 与安全参数摘要。URL path 不原文返回，因为 Cloudflare Gateway 等路径可能包含 account、tenant 或 routing 标识。
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
