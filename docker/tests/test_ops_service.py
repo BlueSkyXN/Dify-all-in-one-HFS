@@ -561,6 +561,21 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             working_root = Path(tmpdir) / "plugin_daemon" / "cwd"
             plugin_cwd = working_root / "runtime-1"
             plugin_cwd.mkdir(parents=True)
+            site_packages = plugin_cwd / ".venv" / "lib" / "python3.12" / "site-packages"
+            sdk_llm = site_packages / "dify_plugin" / "interfaces" / "model" / "openai_compatible"
+            sdk_llm.mkdir(parents=True)
+            dist_info = site_packages / "dify_plugin-0.7.4.dist-info"
+            dist_info.mkdir(parents=True)
+            (dist_info / "METADATA").write_text("Name: dify-plugin\nVersion: 0.7.4\n", encoding="utf-8")
+            (sdk_llm / "llm.py").write_text(
+                "requests.post(endpoint_url, timeout=(10, _plugin_config.MAX_REQUEST_TIMEOUT))\n",
+                encoding="utf-8",
+            )
+            (plugin_cwd / "main.py").write_text("Plugin(DifyPluginEnv())\n", encoding="utf-8")
+            plugin_llm = plugin_cwd / "models" / "llm"
+            plugin_llm.mkdir(parents=True)
+            (plugin_llm / "llm.py").write_text("return super()._invoke(*args)\n", encoding="utf-8")
+            (plugin_cwd / ".env").write_text("MAX_REQUEST_TIMEOUT=300\nOPS_TOKEN=secret-token\n", encoding="utf-8")
 
             matched = proc_root / "123"
             matched.mkdir()
@@ -589,7 +604,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             os.environ["PLUGIN_WORKING_PATH"] = str(working_root)
             os.environ["PLUGIN_STORAGE_LOCAL_ROOT"] = str(Path(tmpdir) / "plugin_daemon")
 
-            result = ops_service.plugin_runtime_process_scan(proc_root=proc_root)
+            result = ops_service.plugin_runtime_process_scan(proc_root=proc_root, inspect_runtime=True)
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["match_count"], 1)
@@ -602,6 +617,13 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertNotIn("cmdline", match)
         self.assertNotIn("cwd", match)
         self.assertIn("cwd_under_plugin_working_path", match["match_reasons"])
+        inspection = match["runtime_inspection"]
+        self.assertTrue(inspection["ok"])
+        self.assertEqual(inspection["dify_plugin_versions"][0]["version"], "0.7.4")
+        self.assertEqual(inspection["env_file"]["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertNotIn("OPS_TOKEN", inspection["env_file"]["safe_values"])
+        self.assertTrue(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["uses_plugin_config_max_request_timeout"])
+        self.assertFalse(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["has_hardcoded_timeout_10_10"])
 
     def test_cached_payload_builds_once_under_concurrency(self):
         os.environ["OPS_CACHE_TTL_SECONDS"] = "60"
