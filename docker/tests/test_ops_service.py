@@ -873,6 +873,106 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertTrue(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["uses_plugin_config_max_request_timeout"])
         self.assertFalse(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["has_hardcoded_timeout_10_10"])
 
+    def test_encrypted_config_summary_masks_secrets_and_summarizes_gateway_url(self):
+        raw = json.dumps(
+            {
+                "api_key": "sk-test-secret",
+                "endpoint_url": "https://gateway.ai.cloudflare.com/v1/account-id/gateway/openai/chat/completions?debug=true",
+                "mode": "chat",
+                "read_timeout": 10,
+                "nested": {"authorization": "Bearer secret"},
+            }
+        )
+
+        summary = ops_service.encrypted_config_summary(raw)
+
+        self.assertTrue(summary["present"])
+        self.assertTrue(summary["json_parse_ok"])
+        config = summary["json"]
+        self.assertTrue(config["secret_presence"]["api_key"])
+        self.assertTrue(config["secret_presence"]["nested.authorization"])
+        self.assertNotIn("sk-test-secret", json.dumps(summary))
+        self.assertEqual(config["safe_values"]["mode"], "chat")
+        self.assertEqual(config["safe_values"]["read_timeout"], 10)
+        url = config["safe_values"]["endpoint_url"]["url"]
+        self.assertEqual(url["host"], "gateway.ai.cloudflare.com")
+        self.assertTrue(url["known_host"]["cloudflare_ai_gateway"])
+        self.assertTrue(url["path_markers"]["contains_chat"])
+        self.assertNotIn("account-id", json.dumps(summary))
+
+    def test_provider_model_summary_payload_sanitizes_config_sections(self):
+        original_psql_json_rows = ops_service.psql_json_rows
+        calls = []
+
+        def fake_psql_json_rows(database, sql, timeout=5.0):
+            calls.append(sql)
+            if "from provider_model_credentials" in sql:
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "id": "cred-1",
+                            "tenant_id": "tenant-1",
+                            "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                            "model_name": "gpt-test",
+                            "model_type": "llm",
+                            "credential_name": "API_KEY1",
+                            "encrypted_config": json.dumps(
+                                {
+                                    "api_key": "secret-key",
+                                    "endpoint_url": "https://gateway.ai.cloudflare.com/v1/account/gateway/openai",
+                                    "read_timeout": 10,
+                                }
+                            ),
+                        }
+                    ],
+                }
+            if "from app_model_configs" in sql:
+                return {"ok": True, "count": 0, "rows": []}
+            if "from apps a" in sql:
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "app_id": "app-1",
+                            "tenant_id": "tenant-1",
+                            "app_name": "Smoke app",
+                            "app_config_model": json.dumps(
+                                {
+                                    "provider": "langgenius/openai_api_compatible/openai_api_compatible",
+                                    "name": "gpt-test",
+                                    "api_key": "should-not-leak",
+                                }
+                            ),
+                        }
+                    ],
+                }
+            return {"ok": True, "count": 0, "rows": []}
+
+        try:
+            ops_service.psql_json_rows = fake_psql_json_rows
+            payload = ops_service.provider_model_summary_payload({"limit": ["20"], "recent_limit": ["5"]})
+        finally:
+            ops_service.psql_json_rows = original_psql_json_rows
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["limit"], 20)
+        self.assertEqual(payload["recent_limit"], 5)
+        provider_credential = payload["sections"]["provider_model_credentials"]["rows"][0]
+        self.assertNotIn("encrypted_config", provider_credential)
+        config = provider_credential["encrypted_config_summary"]["json"]
+        self.assertTrue(config["secret_presence"]["api_key"])
+        self.assertEqual(config["safe_values"]["read_timeout"], 10)
+        self.assertEqual(config["safe_values"]["endpoint_url"]["url"]["host"], "gateway.ai.cloudflare.com")
+        app_binding = payload["sections"]["app_model_bindings"]["rows"][0]
+        self.assertNotIn("app_config_model", app_binding)
+        self.assertTrue(app_binding["app_config_model_summary"]["json"]["secret_presence"]["api_key"])
+        self.assertNotIn("secret-key", json.dumps(payload))
+        self.assertNotIn("should-not-leak", json.dumps(payload))
+        self.assertTrue(any("provider_model_credentials" in sql for sql in calls))
+
     def test_cached_payload_builds_once_under_concurrency(self):
         os.environ["OPS_CACHE_TTL_SECONDS"] = "60"
         calls = 0

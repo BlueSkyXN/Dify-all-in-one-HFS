@@ -180,6 +180,55 @@ SECRET_KEYS = [
     "ADMIN_CSRF_KEY",
 ]
 
+CONFIG_SECRET_KEY_HINTS = (
+    "api_key",
+    "apikey",
+    "secret",
+    "token",
+    "password",
+    "authorization",
+    "private_key",
+    "access_key",
+    "refresh_token",
+)
+
+CONFIG_SAFE_STRING_KEYS = {
+    "api_version",
+    "context_size",
+    "endpoint_type",
+    "mode",
+    "model",
+    "model_name",
+    "organization",
+    "provider",
+    "region",
+    "response_format",
+    "schema",
+}
+
+CONFIG_SAFE_VALUE_KEY_HINTS = (
+    "timeout",
+    "max_tokens",
+    "context",
+    "temperature",
+    "top_p",
+    "top_k",
+    "frequency_penalty",
+    "presence_penalty",
+    "retries",
+    "retry",
+    "streaming",
+)
+
+CONFIG_URL_KEY_HINTS = (
+    "api_base",
+    "base_url",
+    "endpoint",
+    "endpoint_url",
+    "server_url",
+    "url",
+)
+
 PROCESS_ENV_ALLOWED_SERVICES = {
     "plugin-daemon",
     "dify-api",
@@ -408,6 +457,10 @@ def file_sha256(path: Path, max_bytes: int = 1_000_000) -> str | None:
             return digest.hexdigest()
     except OSError:
         return None
+
+
+def text_sha256_short(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:16]
 
 
 def read_small_text(path: Path, max_bytes: int = 4096) -> str:
@@ -1928,6 +1981,312 @@ def psql_rows(database: str, columns: list[str], sql: str) -> dict[str, Any]:
     }
 
 
+def psql_json_rows(database: str, sql: str, timeout: float = 5.0) -> dict[str, Any]:
+    if not database:
+        return {"ok": False, "error": "database name is empty", "rows": []}
+    wrapped_sql = f"select coalesce(json_agg(row_to_json(q)), '[]'::json)::text from ({sql}) q"
+    args = [
+        "psql",
+        "-h",
+        env("DB_HOST", "127.0.0.1"),
+        "-p",
+        env("DB_PORT", "5432"),
+        "-U",
+        env("DB_USERNAME", "dify"),
+        "-d",
+        database,
+        "-Atc",
+        wrapped_sql,
+    ]
+    extra_env = {"PGPASSWORD": env("DB_PASSWORD")} if env("DB_PASSWORD") else None
+    result = run_cmd(args, timeout=timeout, extra_env=extra_env, output_limit=200_000)
+    if not result["ok"]:
+        return {
+            "ok": False,
+            "error": result["stderr"] or result["stdout"],
+            "returncode": result["returncode"],
+            "duration_ms": result["duration_ms"],
+            "rows": [],
+        }
+
+    raw = result["stdout"].strip() or "[]"
+    try:
+        rows = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "error": f"failed to parse psql json output: {exc}",
+            "duration_ms": result["duration_ms"],
+            "rows": [],
+        }
+    return {
+        "ok": isinstance(rows, list),
+        "duration_ms": result["duration_ms"],
+        "count": len(rows) if isinstance(rows, list) else 0,
+        "rows": rows if isinstance(rows, list) else [],
+    }
+
+
+def config_secret_like_key(key: str) -> bool:
+    normalized = key.replace("-", "_").lower()
+    return any(hint in normalized for hint in CONFIG_SECRET_KEY_HINTS)
+
+
+def config_safe_value_key(key: str) -> bool:
+    normalized = key.replace("-", "_").lower()
+    if normalized in CONFIG_SAFE_STRING_KEYS:
+        return True
+    return any(hint in normalized for hint in CONFIG_SAFE_VALUE_KEY_HINTS)
+
+
+def config_url_like_key(key: str) -> bool:
+    normalized = key.replace("-", "_").lower()
+    return any(hint in normalized for hint in CONFIG_URL_KEY_HINTS)
+
+
+def url_value_summary(value: str) -> dict[str, Any]:
+    parsed = urllib.parse.urlparse(value)
+    path_segments = [segment for segment in parsed.path.split("/") if segment]
+    query_keys = sorted(urllib.parse.parse_qs(parsed.query, keep_blank_values=True).keys())
+    return {
+        "scheme": parsed.scheme,
+        "host": parsed.hostname or "",
+        "port": parsed.port,
+        "path_segment_count": len(path_segments),
+        "path_sha256": text_sha256_short(parsed.path) if parsed.path and parsed.path != "/" else "",
+        "has_query": bool(parsed.query),
+        "query_keys": query_keys[:20],
+        "known_host": {
+            "cloudflare_ai_gateway": (parsed.hostname or "").lower() == "gateway.ai.cloudflare.com",
+        },
+        "path_markers": {
+            "contains_openai": "openai" in parsed.path.lower(),
+            "contains_chat": "chat" in parsed.path.lower(),
+            "contains_completions": "completions" in parsed.path.lower(),
+        },
+    }
+
+
+def safe_config_value(key: str, value: Any) -> Any:
+    if isinstance(value, bool | int | float) or value is None:
+        return value
+    if isinstance(value, str):
+        if config_url_like_key(key) or value.startswith(("http://", "https://")):
+            if value.startswith(("http://", "https://")):
+                return {"url": url_value_summary(value)}
+            return {"kind": "non-url-string", "length": len(value), "sha256": text_sha256_short(value)}
+        if config_safe_value_key(key):
+            return value if len(value) <= 120 else value[:120] + "...<truncated>"
+        return {"kind": "string", "length": len(value), "sha256": text_sha256_short(value)}
+    if isinstance(value, list):
+        return {"kind": "list", "length": len(value)}
+    if isinstance(value, dict):
+        return {"kind": "object", "key_count": len(value)}
+    return {"kind": type(value).__name__}
+
+
+def summarize_config_object(value: Any, depth: int = 4, leaf_limit: int = 160) -> dict[str, Any]:
+    safe_values: dict[str, Any] = {}
+    secret_presence: dict[str, bool] = {}
+    value_shapes: dict[str, Any] = {}
+    top_level_keys = sorted(value.keys())[:200] if isinstance(value, dict) else []
+
+    def visit(node: Any, path: list[str], remaining_depth: int) -> None:
+        if len(safe_values) + len(value_shapes) >= leaf_limit:
+            return
+        if remaining_depth < 0:
+            return
+        if isinstance(node, dict):
+            for child_key, child_value in sorted(node.items(), key=lambda item: str(item[0])):
+                if not isinstance(child_key, str):
+                    child_key = str(child_key)
+                visit(child_value, [*path, child_key], remaining_depth - 1)
+            return
+        if isinstance(node, list):
+            value_shapes[".".join(path) or "$"] = {"kind": "list", "length": len(node)}
+            for index, child_value in enumerate(node[:5]):
+                visit(child_value, [*path, str(index)], remaining_depth - 1)
+            return
+
+        leaf_key = path[-1] if path else ""
+        dotted = ".".join(path) or "$"
+        if config_secret_like_key(leaf_key):
+            secret_presence[dotted] = bool(node)
+            return
+        if config_url_like_key(leaf_key) or config_safe_value_key(leaf_key) or (
+            isinstance(node, str) and node.startswith(("http://", "https://"))
+        ):
+            safe_values[dotted] = safe_config_value(leaf_key, node)
+            return
+        if isinstance(node, str):
+            value_shapes[dotted] = {"kind": "string", "length": len(node), "sha256": text_sha256_short(node)}
+            return
+        value_shapes[dotted] = safe_config_value(leaf_key, node)
+
+    visit(value, [], depth)
+    return {
+        "top_level_keys": top_level_keys,
+        "safe_values": safe_values,
+        "secret_presence": secret_presence,
+        "value_shapes": value_shapes,
+        "truncated": len(safe_values) + len(value_shapes) >= leaf_limit,
+    }
+
+
+def encrypted_config_summary(raw: Any) -> dict[str, Any]:
+    if raw is None or raw == "":
+        return {"present": False}
+    text = str(raw)
+    summary: dict[str, Any] = {
+        "present": True,
+        "bytes": len(text.encode("utf-8", errors="replace")),
+        "sha256": text_sha256_short(text),
+    }
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError:
+        summary.update({"json_parse_ok": False, "value_shape": {"kind": "string", "length": len(text)}})
+        return summary
+    summary["json_parse_ok"] = True
+    summary["json"] = summarize_config_object(loaded)
+    return summary
+
+
+def summarize_rows_with_config(rows: list[dict[str, Any]], config_columns: tuple[str, ...]) -> list[dict[str, Any]]:
+    summarized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        summarized = dict(row)
+        for column in config_columns:
+            raw = summarized.pop(column, None)
+            summarized[f"{column}_summary"] = encrypted_config_summary(raw)
+        summarized_rows.append(summarized)
+    return summarized_rows
+
+
+def provider_model_summary_payload(query: dict[str, list[str]] | None = None) -> dict[str, Any]:
+    query = query or {}
+    limit = parse_int(query.get("limit", ["200"])[0], 200, minimum=1, maximum=500)
+    recent_limit = parse_int(query.get("recent_limit", ["50"])[0], 50, minimum=1, maximum=200)
+    main_database = env("DB_DATABASE", "dify")
+
+    sections = {
+        "tenant_default_models": psql_json_rows(
+            main_database,
+            f"""
+            select tenant_id, provider_name, model_name, model_type, created_at::text as created_at, updated_at::text as updated_at
+            from tenant_default_models
+            order by updated_at desc
+            limit {limit}
+            """,
+        ),
+        "provider_models": psql_json_rows(
+            main_database,
+            f"""
+            select id, tenant_id, provider_name, model_name, model_type, credential_id, is_valid,
+                   created_at::text as created_at, updated_at::text as updated_at
+            from provider_models
+            order by updated_at desc
+            limit {limit}
+            """,
+        ),
+        "provider_model_settings": psql_json_rows(
+            main_database,
+            f"""
+            select id, tenant_id, provider_name, model_name, model_type, enabled, load_balancing_enabled,
+                   created_at::text as created_at, updated_at::text as updated_at
+            from provider_model_settings
+            order by updated_at desc
+            limit {limit}
+            """,
+        ),
+        "provider_model_credentials": psql_json_rows(
+            main_database,
+            f"""
+            select id, tenant_id, provider_name, model_name, model_type, credential_name, encrypted_config,
+                   created_at::text as created_at, updated_at::text as updated_at
+            from provider_model_credentials
+            order by updated_at desc
+            limit {limit}
+            """,
+        ),
+        "provider_credentials": psql_json_rows(
+            main_database,
+            f"""
+            select id, tenant_id, provider_name, credential_name, visibility, encrypted_config,
+                   created_at::text as created_at, updated_at::text as updated_at
+            from provider_credentials
+            order by updated_at desc
+            limit {limit}
+            """,
+        ),
+        "load_balancing_model_configs": psql_json_rows(
+            main_database,
+            f"""
+            select id, tenant_id, provider_name, model_name, model_type, name, credential_id,
+                   credential_source_type, enabled, encrypted_config,
+                   created_at::text as created_at, updated_at::text as updated_at
+            from load_balancing_model_configs
+            order by updated_at desc
+            limit {limit}
+            """,
+        ),
+        "app_model_bindings": psql_json_rows(
+            main_database,
+            f"""
+            select a.id as app_id, a.tenant_id, a.name as app_name, a.mode, a.status, a.enable_api,
+                   a.app_model_config_id, a.workflow_id, amc.provider as app_config_provider,
+                   amc.model_id as app_config_model_id, amc.model::text as app_config_model,
+                   a.created_at::text as created_at, a.updated_at::text as updated_at
+            from apps a
+            left join app_model_configs amc on amc.id = a.app_model_config_id
+            order by a.updated_at desc
+            limit {limit}
+            """,
+        ),
+        "recent_conversation_model_bindings": psql_json_rows(
+            main_database,
+            f"""
+            select app_id, mode, model_provider, model_id, invoke_from,
+                   created_at::text as created_at, updated_at::text as updated_at
+            from conversations
+            order by created_at desc
+            limit {recent_limit}
+            """,
+        ),
+    }
+
+    for key in ["provider_model_credentials", "provider_credentials", "load_balancing_model_configs"]:
+        if sections[key].get("ok"):
+            sections[key]["rows"] = summarize_rows_with_config(sections[key].get("rows", []), ("encrypted_config",))
+    if sections["app_model_bindings"].get("ok"):
+        sections["app_model_bindings"]["rows"] = summarize_rows_with_config(
+            sections["app_model_bindings"].get("rows", []),
+            ("app_config_model",),
+        )
+
+    section_status = {
+        name: {
+            "ok": payload.get("ok"),
+            "count": payload.get("count", len(payload.get("rows", []))),
+            "error": payload.get("error", ""),
+        }
+        for name, payload in sections.items()
+    }
+    return {
+        "ok": all(payload.get("ok") for payload in sections.values()),
+        "main_database": main_database,
+        "limit": limit,
+        "recent_limit": recent_limit,
+        "section_status": section_status,
+        "sections": sections,
+        "notes": [
+            "This endpoint runs fixed read-only SQL against known Dify model/provider tables.",
+            "encrypted_config raw values are never returned; only hashes, key structure, secret presence booleans, URL host/path hashes, and allowlisted non-secret fields are summarized.",
+            "URL path values are not returned because gateway paths can contain tenant, account, or routing identifiers.",
+        ],
+    }
+
+
 def plugin_db_payload() -> dict[str, Any]:
     plugin_database = env("DB_PLUGIN_DATABASE", "dify_plugin")
     main_database = env("DB_DATABASE", "dify")
@@ -3059,6 +3418,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": True, "system": system_payload()})
         elif path == "/persistence":
             payload = persistence_payload()
+            self.send_json(payload, status=200 if payload["ok"] else 503)
+        elif path == "/provider-models":
+            payload = provider_model_summary_payload(query)
             self.send_json(payload, status=200 if payload["ok"] else 503)
         elif path == "/config":
             self.send_json({"ok": True, "config": config_payload()})

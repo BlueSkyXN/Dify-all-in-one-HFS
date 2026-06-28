@@ -62,6 +62,7 @@ nginx:7860
 /_ops/status
 /_ops/system
 /_ops/persistence
+/_ops/provider-models
 /_ops/config
 /_ops/version
 /_ops/errors
@@ -262,6 +263,15 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 ```
 
 重点看 `persist_active` 是否为 `bucket`、`paths.plugin_storage_root.path` 是否为真实 `/persist/plugin_daemon`、`paths.plugin_installed.is_symlink` 是否为 `false`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 和 `plugin_identifiers[].installed_exists` 是否都为 `true`。`missing_package_files`、`missing_installed_files`、`missing_runtime_states` 和 `plugin_storage_layout_issues` 都应为空。再看 `plugin_runtime_state.checked`、`plugin_runtime_state.identifiers[].state_count` 和 `plugin_runtime_state.identifiers[].log.ready`：Redis `plugin_state` 是 cluster routing 视图，单容器本机 runtime 已 ready 时，`state_count` 可能不是唯一证据。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。`postgres_backup.safe_to_restart` 是重启前的只读建议值；如果为 `false`，先看 `postgres_backup.safe_to_restart_reason`、`latest_age_seconds` 和 `latest_error`，必要时通过 `/_admin/api/actions/force-postgres-backup` 生成一次最新 dump 再重启。如果 package/installed 文件缺失，或日志没有 `local runtime ready`，再按下方 Plugin Runtime Not Found 的卸载重装路径修复。
+
+`/_ops/provider-models` 返回只读模型/provider 绑定摘要，用于排查“页面已有模型配置但真实 LLM 调用失败”的情况：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" \
+  "https://your-space.hf.space/_ops/provider-models?limit=200&recent_limit=50"
+```
+
+该端点只运行固定 SQL，覆盖 `tenant_default_models`、`provider_models`、`provider_model_settings`、`provider_model_credentials`、`provider_credentials`、`load_balancing_model_configs`、`apps` / `app_model_configs` 和近期 conversation 的模型绑定。`encrypted_config` 原文不会返回；响应只包含 hash、key 结构、secret presence boolean、URL host/path hash，以及 `model`、`mode`、`timeout`、`max_tokens` 等 allowlist 字段。URL path 不原文返回，因为 Cloudflare Gateway 等路径可能包含 account、tenant 或 routing 标识。
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
