@@ -993,6 +993,20 @@ def parse_environ_bytes(data: bytes) -> dict[str, str]:
     return values
 
 
+def parse_dotenv_safe_values(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key not in PROCESS_ENV_SAFE_KEYS:
+            continue
+        values[key] = value.strip().strip("'").strip('"')
+    return values
+
+
 def process_env_safe_summary(values: dict[str, str]) -> dict[str, Any]:
     return {
         "safe_values": {key: values[key] for key in PROCESS_ENV_SAFE_KEYS if key in values},
@@ -1121,6 +1135,104 @@ def path_is_under(path: str, root: str) -> bool:
         return False
 
 
+def file_sha256_short(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()[:16]
+
+
+def read_text_limited(path: Path, max_bytes: int = 512 * 1024) -> tuple[str, bool]:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return "", False
+    truncated = len(data) > max_bytes
+    return data[:max_bytes].decode("utf-8", errors="replace"), truncated
+
+
+def timeout_marker_summary(text: str) -> dict[str, bool]:
+    return {
+        "uses_plugin_config_max_request_timeout": "_plugin_config.MAX_REQUEST_TIMEOUT" in text,
+        "has_hardcoded_timeout_10_300": "timeout=(10, 300)" in text or "timeout = (10, 300)" in text,
+        "has_hardcoded_timeout_10_10": "timeout=(10, 10)" in text or "timeout = (10, 10)" in text,
+        "mentions_max_request_timeout": "MAX_REQUEST_TIMEOUT" in text,
+        "mentions_requests_post": "requests.post" in text,
+    }
+
+
+def dist_info_metadata(dist_info: Path) -> dict[str, str]:
+    metadata_path = dist_info / "METADATA"
+    text, _ = read_text_limited(metadata_path, max_bytes=128 * 1024)
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if line.startswith("Name:"):
+            values["name"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Version:"):
+            values["version"] = line.split(":", 1)[1].strip()
+        if "name" in values and "version" in values:
+            break
+    values["metadata_sha256"] = file_sha256_short(metadata_path)
+    return values
+
+
+def runtime_file_summary(path: Path) -> dict[str, Any]:
+    text, truncated = read_text_limited(path)
+    exists = bool(text) or path.exists()
+    return {
+        "exists": exists,
+        "sha256": file_sha256_short(path) if exists else "",
+        "truncated": truncated,
+        "timeout_markers": timeout_marker_summary(text),
+    }
+
+
+def plugin_runtime_file_inspection(cwd: str) -> dict[str, Any]:
+    if not cwd:
+        return {"ok": False, "error": "runtime cwd unavailable"}
+    root = Path(cwd).resolve(strict=False)
+    site_packages: list[Path] = []
+    try:
+        site_packages = sorted((root / ".venv" / "lib").glob("python*/site-packages"))
+    except OSError:
+        site_packages = []
+
+    dify_plugin_versions: list[dict[str, str]] = []
+    sdk_llm_summaries: list[dict[str, Any]] = []
+    for site_package in site_packages[:5]:
+        for dist_info in sorted(site_package.glob("dify_plugin-*.dist-info"))[:10]:
+            dify_plugin_versions.append(dist_info_metadata(dist_info))
+        sdk_llm = site_package / "dify_plugin" / "interfaces" / "model" / "openai_compatible" / "llm.py"
+        if sdk_llm.exists():
+            sdk_llm_summaries.append(runtime_file_summary(sdk_llm))
+
+    env_file_text, env_file_truncated = read_text_limited(root / ".env", max_bytes=128 * 1024)
+    env_file_safe_values = parse_dotenv_safe_values(env_file_text)
+
+    return {
+        "ok": True,
+        "site_packages_count": len(site_packages),
+        "dify_plugin_versions": dify_plugin_versions[:10],
+        "env_file": {
+            "exists": (root / ".env").exists(),
+            "truncated": env_file_truncated,
+            "safe_values": env_file_safe_values,
+            "safe_key_presence": {key: key in env_file_safe_values for key in PROCESS_ENV_SAFE_KEYS},
+        },
+        "main_py": runtime_file_summary(root / "main.py"),
+        "plugin_llm_py": runtime_file_summary(root / "models" / "llm" / "llm.py"),
+        "sdk_openai_compatible_llm": sdk_llm_summaries[:5],
+        "notes": [
+            "Only hashes, package metadata and fixed timeout markers are returned.",
+            "Raw runtime paths, file contents and secret values are not returned.",
+        ],
+    }
+
+
 def plugin_runtime_match_reasons(
     *,
     comm: str,
@@ -1152,7 +1264,7 @@ def plugin_runtime_match_reasons(
     return []
 
 
-def plugin_runtime_process_scan(proc_root: Path = Path("/proc"), limit: int = 20) -> dict[str, Any]:
+def plugin_runtime_process_scan(proc_root: Path = Path("/proc"), limit: int = 20, inspect_runtime: bool = False) -> dict[str, Any]:
     plugin_working_path = env("PLUGIN_WORKING_PATH", "/data/plugin_daemon/cwd")
     plugin_storage_root = env("PLUGIN_STORAGE_LOCAL_ROOT", "/data/plugin_daemon")
     matches: list[dict[str, Any]] = []
@@ -1181,18 +1293,19 @@ def plugin_runtime_process_scan(proc_root: Path = Path("/proc"), limit: int = 20
             continue
 
         ppid = parse_int(read_pid_status_value(pid, "PPid", proc_root), 0, minimum=0)
-        matches.append(
-            {
-                "ok": True,
-                "pid": pid,
-                "ppid": ppid,
-                "comm": comm,
-                "match_reasons": reasons,
-                "cwd_under_plugin_working_path": "cwd_under_plugin_working_path" in reasons,
-                "cwd_under_plugin_storage_root": "cwd_under_plugin_storage_root" in reasons,
-                **process_env_safe_summary(values),
-            }
-        )
+        match = {
+            "ok": True,
+            "pid": pid,
+            "ppid": ppid,
+            "comm": comm,
+            "match_reasons": reasons,
+            "cwd_under_plugin_working_path": "cwd_under_plugin_working_path" in reasons,
+            "cwd_under_plugin_storage_root": "cwd_under_plugin_storage_root" in reasons,
+            **process_env_safe_summary(values),
+        }
+        if inspect_runtime:
+            match["runtime_inspection"] = plugin_runtime_file_inspection(cwd)
+        matches.append(match)
         if len(matches) >= limit:
             break
 
@@ -1204,7 +1317,7 @@ def plugin_runtime_process_scan(proc_root: Path = Path("/proc"), limit: int = 20
         "truncated": len(matches) >= limit,
         "notes": [
             "This scan only reports Python plugin runtime processes whose cwd and env match fixed Dify plugin runtime patterns.",
-            "Raw cmdline, cwd and secret values are not returned.",
+            "Raw cmdline, cwd, file contents and secret values are not returned.",
         ],
     }
 
@@ -1267,7 +1380,8 @@ def process_env_payload(query: dict[str, list[str]]) -> dict[str, Any]:
     }
     if include_runtime_scan and service == "plugin-daemon":
         limit = parse_int(query.get("runtime_scan_limit", ["20"])[0], 20, minimum=1)
-        payload["runtime_scan"] = plugin_runtime_process_scan(limit=min(limit, 100))
+        inspect_runtime = parse_bool(query.get("runtime_inspect", ["false"])[0], default=False)
+        payload["runtime_scan"] = plugin_runtime_process_scan(limit=min(limit, 100), inspect_runtime=inspect_runtime)
     return payload
 
 
