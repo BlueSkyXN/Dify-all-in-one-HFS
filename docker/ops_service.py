@@ -133,6 +133,7 @@ SAFE_CONFIG_KEYS = [
     "PLUGIN_DAEMON_URL",
     "PLUGIN_MAX_REQUEST_TIMEOUT",
     "PLUGIN_UV_CACHE_DIR",
+    "MAX_REQUEST_TIMEOUT",
     "CODE_EXECUTION_ENDPOINT",
     "OPS_PORT",
     "OPS_CACHE_TTL_SECONDS",
@@ -177,6 +178,32 @@ SECRET_KEYS = [
     "OPS_TOKEN",
     "ADMIN_TOKEN",
     "ADMIN_CSRF_KEY",
+]
+
+PROCESS_ENV_ALLOWED_SERVICES = {
+    "plugin-daemon",
+    "dify-api",
+    "dify-worker",
+    "dify-beat",
+    "sandbox",
+    "ops-service",
+    "admin-service",
+}
+
+PROCESS_ENV_SAFE_KEYS = [
+    "INSTALL_METHOD",
+    "MAX_REQUEST_TIMEOUT",
+    "PLUGIN_MAX_REQUEST_TIMEOUT",
+    "PLUGIN_MAX_EXECUTION_TIMEOUT",
+    "PLUGIN_PYTHON_ENV_INIT_TIMEOUT",
+    "PLUGIN_STORAGE_LOCAL_ROOT",
+    "PLUGIN_WORKING_PATH",
+    "PLUGIN_INSTALLED_PATH",
+    "PLUGIN_PACKAGE_CACHE_PATH",
+    "PLUGIN_IGNORE_UV_LOCK",
+    "PYTHON_ENV_INIT_TIMEOUT",
+    "UV_CACHE_DIR",
+    "VIRTUAL_ENV",
 ]
 
 ERROR_PATTERNS = [
@@ -948,6 +975,136 @@ def config_payload() -> dict[str, Any]:
             "http": [check.get("name") for check in load_json_list("OPS_EXTRA_HTTP_CHECKS_JSON") if isinstance(check, dict)],
             "tcp": [check.get("name") for check in load_json_list("OPS_EXTRA_TCP_CHECKS_JSON") if isinstance(check, dict)],
         },
+    }
+
+
+def parse_environ_bytes(data: bytes) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for item in data.split(b"\0"):
+        if not item or b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        if not key:
+            continue
+        values[key.decode("utf-8", errors="replace")] = value.decode("utf-8", errors="replace")
+    return values
+
+
+def process_env_safe_summary(values: dict[str, str]) -> dict[str, Any]:
+    return {
+        "safe_values": {key: values[key] for key in PROCESS_ENV_SAFE_KEYS if key in values},
+        "safe_key_presence": {key: key in values for key in PROCESS_ENV_SAFE_KEYS},
+        "secret_presence": {key: bool(values.get(key)) for key in SECRET_KEYS},
+    }
+
+
+def read_pid_environ(pid: int) -> dict[str, Any]:
+    if pid <= 0:
+        return {"ok": False, "error": "process is not running"}
+    path = Path("/proc") / str(pid) / "environ"
+    try:
+        values = parse_environ_bytes(path.read_bytes())
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "pid": pid, **process_env_safe_summary(values)}
+
+
+def read_pid_comm(pid: int) -> str:
+    if pid <= 0:
+        return ""
+    try:
+        return (Path("/proc") / str(pid) / "comm").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def child_pids(pid: int, proc_root: Path = Path("/proc")) -> list[int]:
+    if pid <= 0:
+        return []
+    children_path = proc_root / str(pid) / "task" / str(pid) / "children"
+    try:
+        raw = children_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return []
+    children: list[int] = []
+    for item in raw.split():
+        try:
+            child = int(item)
+        except ValueError:
+            continue
+        if child > 0:
+            children.append(child)
+    return children
+
+
+def descendant_pids(pid: int, limit: int = 20, proc_root: Path = Path("/proc")) -> list[int]:
+    seen: set[int] = set()
+    queue = child_pids(pid, proc_root)
+    descendants: list[int] = []
+    while queue and len(descendants) < limit:
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        descendants.append(current)
+        queue.extend(child_pids(current, proc_root))
+    return descendants
+
+
+def supervisor_process_infos() -> tuple[list[dict[str, Any]], str | None]:
+    try:
+        proxy = xmlrpc.client.ServerProxy(
+            "http://localhost/RPC2",
+            transport=UnixSocketTransport(SUPERVISOR_SOCKET, timeout=3.0),
+            allow_none=True,
+        )
+        return list(proxy.supervisor.getAllProcessInfo()), None
+    except Exception as exc:
+        return [], str(exc)
+
+
+def process_env_payload(query: dict[str, list[str]]) -> dict[str, Any]:
+    service = query.get("service", ["plugin-daemon"])[0]
+    if service not in PROCESS_ENV_ALLOWED_SERVICES:
+        return {"ok": False, "error": "unknown service", "allowed_services": sorted(PROCESS_ENV_ALLOWED_SERVICES)}
+
+    info, error = supervisor_process_infos()
+    if error:
+        return {"ok": False, "service": service, "error": error}
+
+    program = None
+    for item in info:
+        name = str(item.get("name", ""))
+        group = str(item.get("group", ""))
+        full_name = f"{group}:{name}" if group and group != name else name
+        if service in {name, full_name}:
+            program = item
+            break
+    if program is None:
+        return {"ok": False, "service": service, "error": "service not found"}
+
+    pid = parse_int(str(program.get("pid", "0")), 0, minimum=0)
+    process = read_pid_environ(pid)
+    process["comm"] = read_pid_comm(pid)
+    include_children = parse_bool(query.get("children", ["true"])[0], default=True)
+    children: list[dict[str, Any]] = []
+    if include_children:
+        for child in descendant_pids(pid):
+            child_summary = read_pid_environ(child)
+            child_summary["comm"] = read_pid_comm(child)
+            children.append(child_summary)
+
+    return {
+        "ok": bool(process.get("ok")),
+        "service": service,
+        "state": str(program.get("statename", "")),
+        "pid": pid,
+        "process": process,
+        "children": children,
+        "notes": [
+            "Only fixed safe keys are returned from /proc/<pid>/environ.",
+            "Secret values are never returned; secret_presence only reports whether a secret-like key is set.",
+        ],
     }
 
 
@@ -2628,6 +2785,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(payload, status=200 if payload["ok"] else 503)
         elif path == "/config":
             self.send_json({"ok": True, "config": config_payload()})
+        elif path == "/process-env":
+            payload = process_env_payload(query)
+            self.send_json(payload, status=200 if payload["ok"] else 404)
         elif path == "/version":
             self.send_json({"ok": True, "version": version_payload()})
         elif path == "/metrics":

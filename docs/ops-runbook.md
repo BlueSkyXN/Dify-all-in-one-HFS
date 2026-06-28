@@ -265,6 +265,8 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
+`/_ops/process-env?service=plugin-daemon` 用于排查 Supervisor 进程和 plugin runtime 子进程是否继承了关键安全配置。它只接受固定 service 白名单，只读取 `/proc/<pid>/environ` 中的固定 safe keys，并且只返回 secret presence boolean，不返回 secret 原文。排查插件请求超时时，重点看 `process.safe_values.MAX_REQUEST_TIMEOUT` 和 `children[].safe_values.MAX_REQUEST_TIMEOUT` 是否符合 `PLUGIN_MAX_REQUEST_TIMEOUT`。
+
 ## 日志入口
 
 可查看的日志服务白名单由 `docker/ops_service.py` 中的 `SERVICE_LOGS` 控制。
