@@ -717,6 +717,42 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                         }
                     ],
                 }
+            if "from workflows" in sql:
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "workflow_id": "workflow-1",
+                            "tenant_id": "tenant-1",
+                            "app_id": "app-1",
+                            "app_name": "Smoke app",
+                            "type": "chat",
+                            "kind": "standard",
+                            "version": "draft",
+                            "graph": json.dumps(
+                                {
+                                    "nodes": [
+                                        {
+                                            "id": "llm-node",
+                                            "data": {
+                                                "type": "llm",
+                                                "prompt_template": "do not leak this prompt",
+                                                "api_key": "workflow-secret",
+                                                "model": {
+                                                    "provider": "langgenius/openai_api_compatible/openai_api_compatible",
+                                                    "name": "gpt-test",
+                                                    "mode": "chat",
+                                                    "completion_params": {"temperature": 0.2, "secret_note": "hidden"},
+                                                },
+                                            },
+                                        }
+                                    ]
+                                }
+                            ),
+                        }
+                    ],
+                }
             return {"ok": True, "count": 0, "rows": []}
 
         try:
@@ -741,9 +777,20 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertNotIn("token", api_token)
         self.assertEqual(api_token["token_summary"]["prefix"], "app-")
         self.assertEqual(api_token["token_summary"]["length"], len("app-live-secret-token"))
+        workflow = payload["sections"]["workflow_model_bindings"]["rows"][0]
+        self.assertNotIn("graph", workflow)
+        graph_summary = workflow["graph_summary"]
+        self.assertEqual(graph_summary["model_binding_count"], 1)
+        self.assertEqual(graph_summary["model_bindings"][0]["model"]["name"], "gpt-test")
+        self.assertEqual(
+            graph_summary["model_bindings"][0]["model"]["provider"],
+            "langgenius/openai_api_compatible/openai_api_compatible",
+        )
         self.assertNotIn("secret-key", json.dumps(payload))
         self.assertNotIn("should-not-leak", json.dumps(payload))
         self.assertNotIn("app-live-secret-token", json.dumps(payload))
+        self.assertNotIn("workflow-secret", json.dumps(payload))
+        self.assertNotIn("do not leak this prompt", json.dumps(payload))
         self.assertTrue(any("provider_model_credentials" in sql for sql in calls))
 
     def test_cached_payload_builds_once_under_concurrency(self):
