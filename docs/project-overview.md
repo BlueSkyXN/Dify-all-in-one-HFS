@@ -71,16 +71,16 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:8230ca7e631b6eb2130a627a2f5814b2418c61c27708b51aa5fc1fa942042ed5
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:777b853e086722e8cf528301e3cea1b7e274508713de19f9585c7627db717fd6
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:d4be5a72cf33b29de4b7d00c30f1ca8ab929bb35948ecdcbb3e18bfb6f6d6857
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a9da248482d446889b4b153a44766eaf9b34934a29b3406307b4dba7085d62c7
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=e64afe735c977919171d412c16ba9dcd037ad987
-DIFY_AGENT_SOURCE_REF=e64afe735c977919171d412c16ba9dcd037ad987
+DIFY_SOURCE_MAIN_REF=d5ecd503008d2ce21e93ff07d864dcb82307f93a
+DIFY_AGENT_SOURCE_REF=d5ecd503008d2ce21e93ff07d864dcb82307f93a
 DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=BlueSkyXN-dify-main-e64afe735c977919171d412c16ba9dcd037ad987-agent-e64afe735c977919171d412c16ba9dcd037ad987
+DIFY_VERSION=BlueSkyXN-dify-main-d5ecd503008d2ce21e93ff07d864dcb82307f93a-agent-d5ecd503008d2ce21e93ff07d864dcb82307f93a
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
@@ -88,11 +88,11 @@ Node.js: 22.x
 
 NEXT branch 默认值已 pin 到 Docker Hub 当前 `langgenius/dify-api:main` / `langgenius/dify-web:main` digest set、`BlueSkyXN/dify` maintained fork main source ref、HFS 已验证的 Sandbox config/dependencies digest 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
 
-注意：上游 `main/docker/docker-compose.yaml` 仍可能引用最新 release 镜像 tag，例如 `1.14.2`。这不代表 main 源码未变化，也不代表 `docker compose up` 会跑到 main 代码。NEXT/HFS 使用的是 Docker Hub 当前 `main` digest，再叠加本仓库的 all-in-one runtime glue 与从 maintained fork main 安装的 `dify-agent` overlay。Docker Hub 当前没有 fork merge commit `e64afe735c977919171d412c16ba9dcd037ad987` 或 upstream commit `0035d90e36369aa20a3b83cc92ac42eeb7a1b4cf` 对应的 API/Web commit tag，所以不能只改 metadata 声称 API/Web 镜像由这些 commit tag 选择。
+注意：上游 `main/docker/docker-compose.yaml` 仍可能引用最新 release 镜像 tag，例如 `1.14.2`。这不代表 main 源码未变化，也不代表 `docker compose up` 会跑到 main 代码。NEXT/HFS 使用的是 Docker Hub 当前 `main` digest，再叠加本仓库的 all-in-one runtime glue 与从 maintained fork main 安装的 `dify-agent` overlay。Docker Hub 当前没有 fork merge commit `d5ecd503008d2ce21e93ff07d864dcb82307f93a` 或 upstream commit `0035d90e36369aa20a3b83cc92ac42eeb7a1b4cf` 对应的 API/Web commit tag，所以不能只改 metadata 声称 API/Web 镜像由这些 commit tag 选择。
 
 ## 与源码自建 main 的边界
 
-截至当前 NEXT pin 的 `BlueSkyXN/dify` fork main `e64afe735c977919171d412c16ba9dcd037ad987`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.3` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
+截至当前 NEXT pin 的 `BlueSkyXN/dify` fork main `d5ecd503008d2ce21e93ff07d864dcb82307f93a`，Dify 主仓已经明显不同于 `v1.14.2` 发布边界：`api/pyproject.toml` 把 `dify-agent` 放进生产依赖，`graphon==0.5.3` 进入 API 主依赖，前端工作区使用 `pnpm@11.6.0`、`vinext`、`vite-plus`、`packages/*` 与 `sdks/*`。这些是“源码自建 main”路线的 P0 输入。
 
 当前 HFS NEXT 没有把完整 `BlueSkyXN/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是 digest-pinned API/Web `main` image，加上从 maintained fork main 安装的 `dify-agent` package：
 
