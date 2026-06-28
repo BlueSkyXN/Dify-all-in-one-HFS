@@ -206,6 +206,9 @@ PROCESS_ENV_SAFE_KEYS = [
     "VIRTUAL_ENV",
 ]
 
+PLUGIN_RUNTIME_COMMAND_HINTS = ("python", "main")
+PLUGIN_RUNTIME_COMM_NAMES = {"python", "python3", "python3.12"}
+
 ERROR_PATTERNS = [
     "Permission denied",
     "failed to initialize python dependencies sandbox",
@@ -1018,6 +1021,46 @@ def read_pid_comm(pid: int) -> str:
         return ""
 
 
+def read_pid_comm_from_root(pid: int, proc_root: Path = Path("/proc")) -> str:
+    if pid <= 0:
+        return ""
+    try:
+        return (proc_root / str(pid) / "comm").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def read_pid_cmdline_from_root(pid: int, proc_root: Path = Path("/proc")) -> list[str]:
+    if pid <= 0:
+        return []
+    try:
+        raw = (proc_root / str(pid) / "cmdline").read_bytes()
+    except OSError:
+        return []
+    return [item.decode("utf-8", errors="replace") for item in raw.split(b"\0") if item]
+
+
+def read_pid_status_value(pid: int, key: str, proc_root: Path = Path("/proc")) -> str:
+    if pid <= 0:
+        return ""
+    try:
+        for line in (proc_root / str(pid) / "status").read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith(f"{key}:"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        return ""
+    return ""
+
+
+def pid_cwd_target(pid: int, proc_root: Path = Path("/proc")) -> str:
+    if pid <= 0:
+        return ""
+    try:
+        return os.readlink(proc_root / str(pid) / "cwd")
+    except OSError:
+        return ""
+
+
 def child_pids(pid: int, proc_root: Path = Path("/proc")) -> list[int]:
     if pid <= 0:
         return []
@@ -1037,6 +1080,22 @@ def child_pids(pid: int, proc_root: Path = Path("/proc")) -> list[int]:
     return children
 
 
+def proc_pids(proc_root: Path = Path("/proc")) -> list[int]:
+    pids: list[int] = []
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            pids.append(int(entry.name))
+        except ValueError:
+            continue
+    return sorted(pids)
+
+
 def descendant_pids(pid: int, limit: int = 20, proc_root: Path = Path("/proc")) -> list[int]:
     seen: set[int] = set()
     queue = child_pids(pid, proc_root)
@@ -1049,6 +1108,105 @@ def descendant_pids(pid: int, limit: int = 20, proc_root: Path = Path("/proc")) 
         descendants.append(current)
         queue.extend(child_pids(current, proc_root))
     return descendants
+
+
+def path_is_under(path: str, root: str) -> bool:
+    if not path or not root:
+        return False
+    try:
+        candidate = Path(path).resolve(strict=False)
+        base = Path(root).resolve(strict=False)
+        return candidate == base or base in candidate.parents
+    except OSError:
+        return False
+
+
+def plugin_runtime_match_reasons(
+    *,
+    comm: str,
+    cmdline: list[str],
+    cwd: str,
+    values: dict[str, str],
+    plugin_working_path: str,
+    plugin_storage_root: str,
+) -> list[str]:
+    reasons: list[str] = []
+    if comm in PLUGIN_RUNTIME_COMM_NAMES:
+        reasons.append("python_comm")
+    if values.get("INSTALL_METHOD") == "local":
+        reasons.append("install_method_local")
+    if path_is_under(cwd, plugin_working_path):
+        reasons.append("cwd_under_plugin_working_path")
+    if path_is_under(cwd, plugin_storage_root):
+        reasons.append("cwd_under_plugin_storage_root")
+    cmdline_text = " ".join(cmdline)
+    if all(hint in cmdline_text for hint in PLUGIN_RUNTIME_COMMAND_HINTS):
+        reasons.append("python_module_main_cmd")
+    if values.get("VIRTUAL_ENV") and path_is_under(values["VIRTUAL_ENV"], cwd):
+        reasons.append("venv_under_cwd")
+
+    strong_path_match = "cwd_under_plugin_working_path" in reasons or "cwd_under_plugin_storage_root" in reasons
+    strong_env_match = "install_method_local" in reasons and ("python_comm" in reasons or "python_module_main_cmd" in reasons)
+    if strong_path_match and strong_env_match:
+        return reasons
+    return []
+
+
+def plugin_runtime_process_scan(proc_root: Path = Path("/proc"), limit: int = 20) -> dict[str, Any]:
+    plugin_working_path = env("PLUGIN_WORKING_PATH", "/data/plugin_daemon/cwd")
+    plugin_storage_root = env("PLUGIN_STORAGE_LOCAL_ROOT", "/data/plugin_daemon")
+    matches: list[dict[str, Any]] = []
+    scanned = 0
+
+    for pid in proc_pids(proc_root):
+        scanned += 1
+        env_path = proc_root / str(pid) / "environ"
+        try:
+            values = parse_environ_bytes(env_path.read_bytes())
+        except OSError:
+            continue
+
+        comm = read_pid_comm_from_root(pid, proc_root)
+        cmdline = read_pid_cmdline_from_root(pid, proc_root)
+        cwd = pid_cwd_target(pid, proc_root)
+        reasons = plugin_runtime_match_reasons(
+            comm=comm,
+            cmdline=cmdline,
+            cwd=cwd,
+            values=values,
+            plugin_working_path=plugin_working_path,
+            plugin_storage_root=plugin_storage_root,
+        )
+        if not reasons:
+            continue
+
+        ppid = parse_int(read_pid_status_value(pid, "PPid", proc_root), 0, minimum=0)
+        matches.append(
+            {
+                "ok": True,
+                "pid": pid,
+                "ppid": ppid,
+                "comm": comm,
+                "match_reasons": reasons,
+                "cwd_under_plugin_working_path": "cwd_under_plugin_working_path" in reasons,
+                "cwd_under_plugin_storage_root": "cwd_under_plugin_storage_root" in reasons,
+                **process_env_safe_summary(values),
+            }
+        )
+        if len(matches) >= limit:
+            break
+
+    return {
+        "ok": True,
+        "scanned_processes": scanned,
+        "matches": matches,
+        "match_count": len(matches),
+        "truncated": len(matches) >= limit,
+        "notes": [
+            "This scan only reports Python plugin runtime processes whose cwd and env match fixed Dify plugin runtime patterns.",
+            "Raw cmdline, cwd and secret values are not returned.",
+        ],
+    }
 
 
 def supervisor_process_infos() -> tuple[list[dict[str, Any]], str | None]:
@@ -1093,8 +1251,9 @@ def process_env_payload(query: dict[str, list[str]]) -> dict[str, Any]:
             child_summary = read_pid_environ(child)
             child_summary["comm"] = read_pid_comm(child)
             children.append(child_summary)
+    include_runtime_scan = parse_bool(query.get("runtime_scan", ["false"])[0], default=False)
 
-    return {
+    payload = {
         "ok": bool(process.get("ok")),
         "service": service,
         "state": str(program.get("statename", "")),
@@ -1106,6 +1265,10 @@ def process_env_payload(query: dict[str, list[str]]) -> dict[str, Any]:
             "Secret values are never returned; secret_presence only reports whether a secret-like key is set.",
         ],
     }
+    if include_runtime_scan and service == "plugin-daemon":
+        limit = parse_int(query.get("runtime_scan_limit", ["20"])[0], 20, minimum=1)
+        payload["runtime_scan"] = plugin_runtime_process_scan(limit=min(limit, 100))
+    return payload
 
 
 def bytes_from_kib(value: str) -> int:
