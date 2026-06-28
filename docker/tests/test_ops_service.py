@@ -554,6 +554,55 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
             self.assertEqual(ops_service.child_pids(123, Path(tmpdir)), [456, 789])
 
+    def test_plugin_runtime_process_scan_filters_and_masks_values(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc_root = Path(tmpdir) / "proc"
+            proc_root.mkdir()
+            working_root = Path(tmpdir) / "plugin_daemon" / "cwd"
+            plugin_cwd = working_root / "runtime-1"
+            plugin_cwd.mkdir(parents=True)
+
+            matched = proc_root / "123"
+            matched.mkdir()
+            (matched / "comm").write_text("python3\n", encoding="utf-8")
+            (matched / "cmdline").write_bytes(b"/usr/bin/python3\0-m\0main\0")
+            (matched / "environ").write_bytes(
+                (
+                    f"INSTALL_METHOD=local\0"
+                    f"MAX_REQUEST_TIMEOUT=300\0"
+                    f"PLUGIN_WORKING_PATH={working_root}\0"
+                    f"VIRTUAL_ENV={plugin_cwd / '.venv'}\0"
+                    f"OPS_TOKEN=secret-token\0"
+                ).encode()
+            )
+            (matched / "status").write_text("Name:\tpython3\nPPid:\t45\n", encoding="utf-8")
+            os.symlink(plugin_cwd, matched / "cwd")
+
+            ignored = proc_root / "456"
+            ignored.mkdir()
+            (ignored / "comm").write_text("python3\n", encoding="utf-8")
+            (ignored / "cmdline").write_bytes(b"/usr/bin/python3\0-m\0main\0")
+            (ignored / "environ").write_bytes(b"INSTALL_METHOD=local\0MAX_REQUEST_TIMEOUT=300\0")
+            (ignored / "status").write_text("Name:\tpython3\nPPid:\t1\n", encoding="utf-8")
+            os.symlink(Path(tmpdir) / "not-plugin", ignored / "cwd")
+
+            os.environ["PLUGIN_WORKING_PATH"] = str(working_root)
+            os.environ["PLUGIN_STORAGE_LOCAL_ROOT"] = str(Path(tmpdir) / "plugin_daemon")
+
+            result = ops_service.plugin_runtime_process_scan(proc_root=proc_root)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["match_count"], 1)
+        match = result["matches"][0]
+        self.assertEqual(match["pid"], 123)
+        self.assertEqual(match["ppid"], 45)
+        self.assertEqual(match["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertNotIn("OPS_TOKEN", match["safe_values"])
+        self.assertTrue(match["secret_presence"]["OPS_TOKEN"])
+        self.assertNotIn("cmdline", match)
+        self.assertNotIn("cwd", match)
+        self.assertIn("cwd_under_plugin_working_path", match["match_reasons"])
+
     def test_cached_payload_builds_once_under_concurrency(self):
         os.environ["OPS_CACHE_TTL_SECONDS"] = "60"
         calls = 0
