@@ -237,6 +237,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_ops/health           综合健康、内部端口、API/Web 探针
 /_ops/status           Supervisor XML-RPC 进程状态
 /_ops/system           CPU、memory、disk、/data、uptime、process count
+/_ops/persistence      持久化、插件包和 runtime state 摘要
+/_ops/provider-models  模型/provider 绑定和 credential 配置安全摘要
 /_ops/config           非敏感配置摘要与密钥存在性
 /_ops/version          运行版本与 Space 元数据
 /_ops/errors           按 service 分组的近期错误摘要
