@@ -2263,6 +2263,158 @@ def summarize_workflow_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return summarized_rows
 
 
+def truthy_config_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+    return bool(value)
+
+
+def app_api_readiness_section(sections: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    required_sections = (
+        "app_model_bindings",
+        "api_tokens",
+        "workflow_model_bindings",
+        "provider_models",
+        "recent_conversation_model_bindings",
+    )
+    failed = [
+        {"section": name, "error": sections.get(name, {}).get("error", "")}
+        for name in required_sections
+        if not sections.get(name, {}).get("ok")
+    ]
+    if failed:
+        return {
+            "ok": False,
+            "count": 0,
+            "rows": [],
+            "error": "required source section failed",
+            "failed_sections": failed,
+        }
+
+    token_counts: dict[str, int] = {}
+    for token in sections["api_tokens"].get("rows", []):
+        app_id = str(token.get("app_id") or "")
+        if app_id:
+            token_counts[app_id] = token_counts.get(app_id, 0) + 1
+
+    conversations_by_app: dict[str, list[dict[str, Any]]] = {}
+    for conversation in sections["recent_conversation_model_bindings"].get("rows", []):
+        app_id = str(conversation.get("app_id") or "")
+        if app_id:
+            conversations_by_app.setdefault(app_id, []).append(conversation)
+
+    provider_models: dict[tuple[str, str], dict[str, Any]] = {}
+    for provider_model in sections["provider_models"].get("rows", []):
+        provider = str(provider_model.get("provider_name") or "")
+        name = str(provider_model.get("model_name") or "")
+        if provider and name:
+            provider_models[(provider, name)] = provider_model
+
+    workflows_by_app: dict[str, list[dict[str, Any]]] = {}
+    for workflow in sections["workflow_model_bindings"].get("rows", []):
+        app_id = str(workflow.get("app_id") or "")
+        if app_id:
+            workflows_by_app.setdefault(app_id, []).append(workflow)
+
+    rows: list[dict[str, Any]] = []
+    for app in sections["app_model_bindings"].get("rows", []):
+        app_id = str(app.get("app_id") or "")
+        enable_api = truthy_config_value(app.get("enable_api"))
+        token_count = token_counts.get(app_id, 0)
+        app_workflows = workflows_by_app.get(app_id, [])
+        issue_codes: list[str] = []
+        provider_statuses: list[dict[str, Any]] = []
+        unique_bindings: dict[tuple[str, str, str], dict[str, Any]] = {}
+        workflow_model_binding_count = 0
+
+        if app.get("status") and str(app.get("status")) != "normal":
+            issue_codes.append("app_not_normal")
+        if not enable_api:
+            issue_codes.append("service_api_disabled")
+        elif token_count == 0:
+            issue_codes.append("app_api_token_missing")
+
+        for workflow in app_workflows:
+            graph_summary = workflow.get("graph_summary") if isinstance(workflow.get("graph_summary"), dict) else {}
+            bindings = graph_summary.get("model_bindings") if isinstance(graph_summary.get("model_bindings"), list) else []
+            workflow_model_binding_count += len(bindings)
+            for binding in bindings:
+                model = binding.get("model") if isinstance(binding.get("model"), dict) else {}
+                provider = str(model.get("provider") or "")
+                name = str(model.get("name") or "")
+                mode = str(model.get("mode") or "")
+                if not provider and not name:
+                    continue
+                key = (provider, name, mode)
+                summary = unique_bindings.setdefault(
+                    key,
+                    {
+                        "provider": provider,
+                        "name": name,
+                        "mode": mode,
+                        "node_types": [],
+                        "workflow_count": 0,
+                    },
+                )
+                node_type = str(binding.get("node_type") or "")
+                if node_type and node_type not in summary["node_types"]:
+                    summary["node_types"].append(node_type)
+                summary["workflow_count"] += 1
+
+                provider_model = provider_models.get((provider, name))
+                if provider and name and provider_model is None:
+                    if "provider_model_missing" not in issue_codes:
+                        issue_codes.append("provider_model_missing")
+                    provider_statuses.append({"provider": provider, "name": name, "status": "missing"})
+                elif provider_model is not None and not truthy_config_value(provider_model.get("is_valid")):
+                    if "provider_model_invalid" not in issue_codes:
+                        issue_codes.append("provider_model_invalid")
+                    provider_statuses.append({"provider": provider, "name": name, "status": "invalid"})
+                elif provider_model is not None:
+                    provider_statuses.append({"provider": provider, "name": name, "status": "valid"})
+
+        if app_workflows and workflow_model_binding_count == 0:
+            issue_codes.append("workflow_model_binding_missing")
+        if not app_workflows and app.get("mode") in {"advanced-chat", "workflow"}:
+            issue_codes.append("workflow_missing")
+
+        app_conversations = conversations_by_app.get(app_id, [])
+        rows.append(
+            {
+                "app_id": app_id,
+                "tenant_id": app.get("tenant_id"),
+                "app_name": app.get("app_name"),
+                "mode": app.get("mode"),
+                "status": app.get("status"),
+                "enable_api": enable_api,
+                "api_token_count": token_count,
+                "ready_for_service_api_auth": enable_api and token_count > 0,
+                "workflow_id": app.get("workflow_id"),
+                "workflow_count": len(app_workflows),
+                "workflow_model_binding_count": workflow_model_binding_count,
+                "ready_for_llm_dispatch": workflow_model_binding_count > 0
+                and not any(code in issue_codes for code in ("provider_model_missing", "provider_model_invalid")),
+                "model_bindings": sorted(
+                    unique_bindings.values(),
+                    key=lambda item: (item.get("provider") or "", item.get("name") or "", item.get("mode") or ""),
+                )[:50],
+                "provider_model_statuses": sorted(
+                    provider_statuses,
+                    key=lambda item: (item.get("provider") or "", item.get("name") or "", item.get("status") or ""),
+                )[:50],
+                "recent_conversation_count": len(app_conversations),
+                "latest_conversation_created_at": app_conversations[0].get("created_at") if app_conversations else None,
+                "issue_codes": issue_codes,
+            }
+        )
+
+    return {"ok": True, "count": len(rows), "rows": rows}
+
+
 def provider_model_summary_payload(query: dict[str, list[str]] | None = None) -> dict[str, Any]:
     query = query or {}
     limit = parse_int(query.get("limit", ["200"])[0], 200, minimum=1, maximum=500)
@@ -2392,6 +2544,7 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
         sections["workflow_model_bindings"]["rows"] = summarize_workflow_rows(
             sections["workflow_model_bindings"].get("rows", [])
         )
+    sections["app_api_readiness"] = app_api_readiness_section(sections)
 
     section_status = {
         name: {
@@ -2413,6 +2566,7 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
             "encrypted_config raw values are never returned; only hashes, key structure, secret presence booleans, URL host/path hashes, and allowlisted non-secret fields are summarized.",
             "api_tokens.token raw values are never returned; only prefix, length and sha256 are summarized for local key drift checks.",
             "workflow graph raw values are never returned; only node model provider/name/mode and safe completion parameter summaries are returned.",
+            "app_api_readiness is derived from the fixed read-only sections and flags enabled apps with missing service API tokens or unresolvable workflow model bindings.",
             "URL path values are not returned because gateway paths can contain tenant, account, or routing identifiers.",
         ],
     }
