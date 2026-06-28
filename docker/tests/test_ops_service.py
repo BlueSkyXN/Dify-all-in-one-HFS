@@ -702,6 +702,21 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                         }
                     ],
                 }
+            if "from api_tokens" in sql:
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "id": "token-1",
+                            "tenant_id": "tenant-1",
+                            "app_id": "app-1",
+                            "type": "app",
+                            "token": "app-live-secret-token",
+                            "last_used_at": None,
+                        }
+                    ],
+                }
             return {"ok": True, "count": 0, "rows": []}
 
         try:
@@ -722,8 +737,13 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         app_binding = payload["sections"]["app_model_bindings"]["rows"][0]
         self.assertNotIn("app_config_model", app_binding)
         self.assertTrue(app_binding["app_config_model_summary"]["json"]["secret_presence"]["api_key"])
+        api_token = payload["sections"]["api_tokens"]["rows"][0]
+        self.assertNotIn("token", api_token)
+        self.assertEqual(api_token["token_summary"]["prefix"], "app-")
+        self.assertEqual(api_token["token_summary"]["length"], len("app-live-secret-token"))
         self.assertNotIn("secret-key", json.dumps(payload))
         self.assertNotIn("should-not-leak", json.dumps(payload))
+        self.assertNotIn("app-live-secret-token", json.dumps(payload))
         self.assertTrue(any("provider_model_credentials" in sql for sql in calls))
 
     def test_cached_payload_builds_once_under_concurrency(self):

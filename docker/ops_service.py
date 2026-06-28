@@ -1854,6 +1854,28 @@ def summarize_rows_with_config(rows: list[dict[str, Any]], config_columns: tuple
     return summarized_rows
 
 
+def token_value_summary(raw: Any) -> dict[str, Any]:
+    if raw is None or raw == "":
+        return {"present": False}
+    text = str(raw)
+    return {
+        "present": True,
+        "prefix": text[:4],
+        "length": len(text),
+        "sha256": text_sha256_short(text),
+    }
+
+
+def summarize_api_token_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summarized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        summarized = dict(row)
+        raw_token = summarized.pop("token", None)
+        summarized["token_summary"] = token_value_summary(raw_token)
+        summarized_rows.append(summarized)
+    return summarized_rows
+
+
 def provider_model_summary_payload(query: dict[str, list[str]] | None = None) -> dict[str, Any]:
     query = query or {}
     limit = parse_int(query.get("limit", ["200"])[0], 200, minimum=1, maximum=500)
@@ -1944,6 +1966,17 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
             limit {recent_limit}
             """,
         ),
+        "api_tokens": psql_json_rows(
+            main_database,
+            f"""
+            select id, tenant_id, app_id, type, token, last_used_at::text as last_used_at,
+                   created_at::text as created_at
+            from api_tokens
+            where type = 'app'
+            order by created_at desc
+            limit {limit}
+            """,
+        ),
     }
 
     for key in ["provider_model_credentials", "provider_credentials", "load_balancing_model_configs"]:
@@ -1954,6 +1987,8 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
             sections["app_model_bindings"].get("rows", []),
             ("app_config_model",),
         )
+    if sections["api_tokens"].get("ok"):
+        sections["api_tokens"]["rows"] = summarize_api_token_rows(sections["api_tokens"].get("rows", []))
 
     section_status = {
         name: {
@@ -1973,6 +2008,7 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
         "notes": [
             "This endpoint runs fixed read-only SQL against known Dify model/provider tables.",
             "encrypted_config raw values are never returned; only hashes, key structure, secret presence booleans, URL host/path hashes, and allowlisted non-secret fields are summarized.",
+            "api_tokens.token raw values are never returned; only prefix, length and sha256 are summarized for local key drift checks.",
             "URL path values are not returned because gateway paths can contain tenant, account, or routing identifiers.",
         ],
     }
