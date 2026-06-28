@@ -534,6 +534,26 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertNotIn("-a", captured["args"])
         self.assertEqual(captured["extra_env"], {"REDISCLI_AUTH": "test-password"})
 
+    def test_process_env_summary_returns_only_safe_values(self):
+        values = ops_service.parse_environ_bytes(
+            b"MAX_REQUEST_TIMEOUT=300\0OPS_TOKEN=secret-token\0PLUGIN_WORKING_PATH=/data/plugin_daemon/cwd\0"
+        )
+
+        summary = ops_service.process_env_safe_summary(values)
+
+        self.assertEqual(summary["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertEqual(summary["safe_values"]["PLUGIN_WORKING_PATH"], "/data/plugin_daemon/cwd")
+        self.assertNotIn("OPS_TOKEN", summary["safe_values"])
+        self.assertTrue(summary["secret_presence"]["OPS_TOKEN"])
+
+    def test_child_pids_reads_proc_children_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            children_path = Path(tmpdir) / "123" / "task" / "123"
+            children_path.mkdir(parents=True)
+            (children_path / "children").write_text("456 789\n", encoding="utf-8")
+
+            self.assertEqual(ops_service.child_pids(123, Path(tmpdir)), [456, 789])
+
     def test_cached_payload_builds_once_under_concurrency(self):
         os.environ["OPS_CACHE_TTL_SECONDS"] = "60"
         calls = 0
