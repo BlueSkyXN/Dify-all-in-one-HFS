@@ -659,6 +659,22 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
         def fake_psql_json_rows(database, sql, timeout=5.0):
             calls.append(sql)
+            if "from provider_models" in sql:
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "id": "provider-model-1",
+                            "tenant_id": "tenant-1",
+                            "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                            "model_name": "gpt-test",
+                            "model_type": "llm",
+                            "credential_id": "cred-1",
+                            "is_valid": True,
+                        }
+                    ],
+                }
             if "from provider_model_credentials" in sql:
                 return {
                     "ok": True,
@@ -692,6 +708,10 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                             "app_id": "app-1",
                             "tenant_id": "tenant-1",
                             "app_name": "Smoke app",
+                            "mode": "advanced-chat",
+                            "status": "normal",
+                            "enable_api": True,
+                            "workflow_id": "workflow-1",
                             "app_config_model": json.dumps(
                                 {
                                     "provider": "langgenius/openai_api_compatible/openai_api_compatible",
@@ -786,12 +806,80 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             graph_summary["model_bindings"][0]["model"]["provider"],
             "langgenius/openai_api_compatible/openai_api_compatible",
         )
+        readiness = payload["sections"]["app_api_readiness"]["rows"][0]
+        self.assertEqual(readiness["app_id"], "app-1")
+        self.assertEqual(readiness["api_token_count"], 1)
+        self.assertTrue(readiness["ready_for_service_api_auth"])
+        self.assertTrue(readiness["ready_for_llm_dispatch"])
+        self.assertEqual(readiness["issue_codes"], [])
+        self.assertEqual(readiness["model_bindings"][0]["name"], "gpt-test")
         self.assertNotIn("secret-key", json.dumps(payload))
         self.assertNotIn("should-not-leak", json.dumps(payload))
         self.assertNotIn("app-live-secret-token", json.dumps(payload))
         self.assertNotIn("workflow-secret", json.dumps(payload))
         self.assertNotIn("do not leak this prompt", json.dumps(payload))
         self.assertTrue(any("provider_model_credentials" in sql for sql in calls))
+
+    def test_app_api_readiness_flags_enabled_app_without_token(self):
+        sections = {
+            "app_model_bindings": {
+                "ok": True,
+                "rows": [
+                    {
+                        "app_id": "app-1",
+                        "tenant_id": "tenant-1",
+                        "app_name": "Smoke app",
+                        "mode": "advanced-chat",
+                        "status": "normal",
+                        "enable_api": True,
+                        "workflow_id": "workflow-1",
+                    }
+                ],
+            },
+            "api_tokens": {"ok": True, "rows": []},
+            "workflow_model_bindings": {
+                "ok": True,
+                "rows": [
+                    {
+                        "workflow_id": "workflow-1",
+                        "app_id": "app-1",
+                        "graph_summary": {
+                            "model_bindings": [
+                                {
+                                    "node_id": "llm-node",
+                                    "node_type": "llm",
+                                    "model": {
+                                        "provider": "langgenius/openai_api_compatible/openai_api_compatible",
+                                        "name": "gpt-test",
+                                        "mode": "chat",
+                                    },
+                                }
+                            ]
+                        },
+                    }
+                ],
+            },
+            "provider_models": {
+                "ok": True,
+                "rows": [
+                    {
+                        "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                        "model_name": "gpt-test",
+                        "is_valid": True,
+                    }
+                ],
+            },
+            "recent_conversation_model_bindings": {"ok": True, "rows": []},
+        }
+
+        payload = ops_service.app_api_readiness_section(sections)
+
+        self.assertTrue(payload["ok"])
+        row = payload["rows"][0]
+        self.assertEqual(row["api_token_count"], 0)
+        self.assertFalse(row["ready_for_service_api_auth"])
+        self.assertTrue(row["ready_for_llm_dispatch"])
+        self.assertEqual(row["issue_codes"], ["app_api_token_missing"])
 
     def test_cached_payload_builds_once_under_concurrency(self):
         os.environ["OPS_CACHE_TTL_SECONDS"] = "60"
