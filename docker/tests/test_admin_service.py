@@ -174,6 +174,111 @@ class AdminServicePureFunctionTests(unittest.TestCase):
             "127.0.0.1",
         )
 
+    def test_ensure_app_api_token_requires_confirm(self):
+        with self.assertRaises(admin_service.AdminError) as ctx:
+            admin_service.ensure_app_api_token(
+                {"app_id": "d3e5efe9-0897-4659-ad70-8fe97459cd2e"},
+                admin_service.AuthContext(kind="token", csrf_token="1"),
+            )
+
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_ensure_app_api_token_inserts_requested_token_without_echoing_raw_token(self):
+        original_psql_json_rows = admin_service.psql_json_rows
+        original_run_psql = admin_service.run_psql
+        captured = {}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ADMIN_AUDIT_LOG"] = str(Path(tmpdir) / "admin-audit.jsonl")
+
+            def fake_psql_json_rows(sql, timeout=10.0):
+                captured["select_sql"] = sql
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "app_id": "d3e5efe9-0897-4659-ad70-8fe97459cd2e",
+                            "tenant_id": "3cb20998-caac-4467-8ca5-7c7caacb31ab",
+                            "app_name": "Test",
+                            "enable_api": True,
+                            "api_token_count": 0,
+                            "token_exists": False,
+                        }
+                    ],
+                }
+
+            def fake_run_psql(sql, timeout=10.0, output_limit=200_000):
+                captured["insert_sql"] = sql
+                return {"ok": True, "returncode": 0, "stdout": "", "stderr": "", "duration_ms": 1}
+
+            try:
+                admin_service.psql_json_rows = fake_psql_json_rows
+                admin_service.run_psql = fake_run_psql
+                response = admin_service.ensure_app_api_token(
+                    {
+                        "confirm": True,
+                        "app_id": "d3e5efe9-0897-4659-ad70-8fe97459cd2e",
+                        "token": "app-testToken1234567890",
+                    },
+                    admin_service.AuthContext(kind="token", csrf_token="1"),
+                )
+            finally:
+                admin_service.psql_json_rows = original_psql_json_rows
+                admin_service.run_psql = original_run_psql
+
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["created"])
+        self.assertNotIn("token", response)
+        self.assertEqual(response["api_token_count_after"], 1)
+        self.assertEqual(response["token_summary"]["prefix"], "app-")
+        self.assertIn("api_tokens", captured["insert_sql"])
+
+    def test_ensure_app_api_token_returns_generated_token_once(self):
+        original_psql_json_rows = admin_service.psql_json_rows
+        original_run_psql = admin_service.run_psql
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ADMIN_AUDIT_LOG"] = str(Path(tmpdir) / "admin-audit.jsonl")
+
+            def fake_psql_json_rows(sql, timeout=10.0):
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "app_id": "d3e5efe9-0897-4659-ad70-8fe97459cd2e",
+                            "tenant_id": "3cb20998-caac-4467-8ca5-7c7caacb31ab",
+                            "app_name": "Test",
+                            "enable_api": True,
+                            "api_token_count": 0,
+                            "token_exists": False,
+                        }
+                    ],
+                }
+
+            try:
+                admin_service.psql_json_rows = fake_psql_json_rows
+                admin_service.run_psql = lambda sql, timeout=10.0, output_limit=200_000: {
+                    "ok": True,
+                    "returncode": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "duration_ms": 1,
+                }
+                response = admin_service.ensure_app_api_token(
+                    {"confirm": True, "app_id": "d3e5efe9-0897-4659-ad70-8fe97459cd2e"},
+                    admin_service.AuthContext(kind="token", csrf_token="1"),
+                )
+            finally:
+                admin_service.psql_json_rows = original_psql_json_rows
+                admin_service.run_psql = original_run_psql
+
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["created"])
+        self.assertRegex(response["token"], r"^app-[A-Za-z0-9]{24}$")
+        self.assertEqual(response["token_summary"]["length"], len(response["token"]))
+
 
 if __name__ == "__main__":
     unittest.main()

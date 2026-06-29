@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from http.cookies import SimpleCookie
@@ -259,7 +260,7 @@ def parse_session(cookie_value: str) -> AuthContext | None:
     return AuthContext(kind="cookie", csrf_token=csrf_for(expires_at, nonce), expires_at=expires_at, nonce=nonce)
 
 
-def run_cmd(args: list[str], timeout: float = 10.0) -> dict[str, Any]:
+def run_cmd(args: list[str], timeout: float = 10.0, input_text: str | None = None) -> dict[str, Any]:
     started = time.time()
     try:
         completed = subprocess.run(
@@ -267,6 +268,7 @@ def run_cmd(args: list[str], timeout: float = 10.0) -> dict[str, Any]:
             check=False,
             capture_output=True,
             text=True,
+            input=input_text,
             timeout=timeout,
         )
         return {
@@ -367,6 +369,13 @@ def actions_payload() -> dict[str, Any]:
                 "method": "POST",
                 "path": "/_admin/api/actions/run-health-checks",
                 "requires_confirm": True,
+            },
+            {
+                "id": "ensure-app-api-token",
+                "method": "POST",
+                "path": "/_admin/api/actions/ensure-app-api-token",
+                "requires_confirm": True,
+                "description": "Create a Dify app service API token when the selected app has none or when a known token must be restored.",
             },
         ],
     }
@@ -543,6 +552,185 @@ def run_health_checks(payload: dict[str, Any], auth: AuthContext) -> dict[str, A
     result = run_cmd(["/usr/local/bin/dify-demo-healthcheck"], timeout=45.0)
     response = {"ok": result["ok"], "action_id": action_id, "action": "run-health-checks", "result": result}
     audit_event("run-health-checks", result["ok"], auth.kind, "healthcheck", {"action_id": action_id})
+    return response
+
+
+def sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def psql_args(database: str | None = None) -> tuple[list[str], dict[str, str] | None]:
+    args = [
+        "psql",
+        "-h",
+        env("DB_HOST", "127.0.0.1"),
+        "-p",
+        env("DB_PORT", "5432"),
+        "-U",
+        env("DB_USERNAME", "dify"),
+        "-d",
+        database or env("DB_DATABASE", "dify"),
+        "-At",
+        "-v",
+        "ON_ERROR_STOP=1",
+    ]
+    extra_env = {"PGPASSWORD": env("DB_PASSWORD")} if env("DB_PASSWORD") else None
+    return args, extra_env
+
+
+def run_psql(sql: str, timeout: float = 10.0, output_limit: int = 200_000) -> dict[str, Any]:
+    args, extra_env = psql_args()
+    started = time.time()
+    try:
+        completed = subprocess.run(
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+            input=sql,
+            timeout=timeout,
+            env={**os.environ, **(extra_env or {})},
+        )
+        return {
+            "ok": completed.returncode == 0,
+            "returncode": completed.returncode,
+            "stdout": truncate_text(completed.stdout.strip(), output_limit),
+            "stderr": truncate_text(completed.stderr.strip(), output_limit),
+            "duration_ms": round((time.time() - started) * 1000),
+        }
+    except FileNotFoundError as exc:
+        return {"ok": False, "returncode": 127, "stdout": "", "stderr": str(exc), "duration_ms": round((time.time() - started) * 1000)}
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": truncate_text((exc.stdout or "").strip(), output_limit),
+            "stderr": f"timeout after {timeout}s",
+            "duration_ms": round((time.time() - started) * 1000),
+        }
+
+
+def psql_json_rows(sql: str, timeout: float = 10.0) -> dict[str, Any]:
+    wrapped_sql = f"select coalesce(json_agg(row_to_json(q)), '[]'::json)::text from ({sql}) q;"
+    result = run_psql(wrapped_sql, timeout=timeout)
+    if not result["ok"]:
+        return {"ok": False, "error": result["stderr"] or result["stdout"], "rows": [], "count": 0}
+    raw = result["stdout"].strip() or "[]"
+    try:
+        rows = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "error": f"failed to parse psql json output: {exc}", "rows": [], "count": 0}
+    return {"ok": isinstance(rows, list), "rows": rows if isinstance(rows, list) else [], "count": len(rows) if isinstance(rows, list) else 0}
+
+
+def generated_app_token() -> str:
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    return "app-" + "".join(secrets.choice(alphabet) for _ in range(24))
+
+
+def validate_app_id(raw: Any) -> str:
+    value = str(raw or "").strip()
+    try:
+        return str(uuid.UUID(value))
+    except ValueError as exc:
+        raise AdminError(400, "app_id must be a UUID") from exc
+
+
+def validate_app_token(raw: Any) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        raise AdminError(400, "token must be non-empty")
+    if len(value) > 255:
+        raise AdminError(400, "token is too long")
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+    if not value.startswith("app-") or any(char not in allowed for char in value):
+        raise AdminError(400, "token must start with app- and contain only letters, digits, '_' or '-'")
+    return value
+
+
+def token_summary(value: str) -> dict[str, Any]:
+    return {
+        "prefix": value[:4],
+        "length": len(value),
+        "sha256": hashlib.sha256(value.encode("utf-8")).hexdigest()[:16],
+    }
+
+
+def ensure_app_api_token(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]:
+    if not confirmed(payload):
+        raise AdminError(400, "confirm=true is required")
+    app_id = validate_app_id(payload.get("app_id"))
+    provided_token = payload.get("token")
+    token_was_provided = isinstance(provided_token, str) and bool(provided_token.strip())
+    token = validate_app_token(provided_token) if token_was_provided else generated_app_token()
+    token_id = str(uuid.uuid4())
+    action_id = new_action_id("ensure-app-api-token")
+    app_rows = psql_json_rows(
+        f"""
+        select a.id::text as app_id, a.tenant_id::text as tenant_id, a.name as app_name, a.enable_api,
+               (select count(*) from api_tokens t where t.app_id = a.id and t.type = 'app')::int as api_token_count,
+               exists(select 1 from api_tokens t where t.app_id = a.id and t.type = 'app' and t.token = {sql_literal(token)}) as token_exists
+        from apps a
+        where a.id = {sql_literal(app_id)}
+        limit 1
+        """,
+        timeout=10.0,
+    )
+    if not app_rows.get("ok"):
+        audit_event("ensure-app-api-token", False, auth.kind, app_id, {"action_id": action_id, "error": app_rows.get("error", "query failed")})
+        raise AdminError(500, "unable to read app token state", detail=app_rows.get("error", ""))
+    if not app_rows["rows"]:
+        audit_event("ensure-app-api-token", False, auth.kind, app_id, {"action_id": action_id, "error": "app not found"})
+        raise AdminError(404, "app not found")
+
+    app = app_rows["rows"][0]
+    before_count = int(app.get("api_token_count") or 0)
+    created = False
+    if not app.get("token_exists"):
+        insert_result = run_psql(
+            f"""
+            insert into api_tokens (id, app_id, tenant_id, type, token, created_at)
+            values ({sql_literal(token_id)}, {sql_literal(app_id)}, {sql_literal(str(app.get("tenant_id") or ""))}, 'app', {sql_literal(token)}, current_timestamp);
+            """,
+            timeout=10.0,
+        )
+        if not insert_result["ok"]:
+            audit_event(
+                "ensure-app-api-token",
+                False,
+                auth.kind,
+                app_id,
+                {"action_id": action_id, "token": token_summary(token), "error": insert_result["stderr"] or insert_result["stdout"]},
+            )
+            raise AdminError(500, "unable to insert app API token", detail=insert_result["stderr"] or insert_result["stdout"])
+        created = True
+
+    response: dict[str, Any] = {
+        "ok": True,
+        "action_id": action_id,
+        "action": "ensure-app-api-token",
+        "app_id": app_id,
+        "app_name": app.get("app_name"),
+        "created": created,
+        "api_token_count_before": before_count,
+        "api_token_count_after": before_count + (1 if created else 0),
+        "token_summary": token_summary(token),
+    }
+    if created and not token_was_provided:
+        response["token"] = token
+    audit_event(
+        "ensure-app-api-token",
+        True,
+        auth.kind,
+        app_id,
+        {
+            "action_id": action_id,
+            "created": created,
+            "api_token_count_before": before_count,
+            "api_token_count_after": response["api_token_count_after"],
+            "token": token_summary(token),
+        },
+    )
     return response
 
 
@@ -1630,6 +1818,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(reload_nginx(payload, auth))
             elif path == "/api/actions/run-health-checks":
                 self.send_json(run_health_checks(payload, auth))
+            elif path == "/api/actions/ensure-app-api-token":
+                self.send_json(ensure_app_api_token(payload, auth))
             elif path == "/api/files/mkdir":
                 self.send_json(mkdir_payload(payload, auth))
             else:
