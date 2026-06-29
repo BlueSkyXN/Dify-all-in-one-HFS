@@ -101,6 +101,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
 /_admin/api/actions/force-postgres-backup
+/_admin/api/actions/ensure-app-api-token
 /_admin/api/files/list
 /_admin/api/files/text
 /_admin/api/files/download
@@ -111,6 +112,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 ```
 
 登录和登出是浏览器 dashboard 使用的 session 接口，`/_admin/api/audit` 只读返回最近的 admin 审计事件；日志不存在时返回 200、`exists=false` 和空 `events`，但它不是完整合规审计系统。`files/text` 同时支持读取和写入，写入需要 `ADMIN_FILES_WRITE_ENABLED=true`。
+
+`ensure-app-api-token` 用于修复 live Dify app 已启用 API 但 `api_tokens` 缺失的场景。它只写指定 app 的 `api_tokens` 行，不提供任意 SQL，也不属于 `/_ops` 只读面。请求必须包含 `app_id` 和 `confirm=true`；可选传入已有 `app-...` token 来恢复外部系统正在使用的 key。若不传 token，服务会生成新 token 并只在创建响应中返回一次。审计日志只记录 token prefix、长度和 hash，不记录 token 原文。
 
 CLI 示例：
 
@@ -132,6 +135,12 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"confirm":true}' \
   https://your-space.hf.space/_admin/api/actions/force-postgres-backup
+
+curl -X POST \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"app_id":"<app-id>","confirm":true}' \
+  https://your-space.hf.space/_admin/api/actions/ensure-app-api-token
 
 ADMIN_EXPECTED_ENABLED=true \
 ADMIN_TOKEN=$ADMIN_TOKEN \
