@@ -253,7 +253,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 NEXT/HFS 镜像的 Sandbox server binary 使用 `DIFY_SANDBOX_SOURCE_REF` 指向的 upstream source 加一处 HFS UID/GID 兼容 patch 构建；`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`。`/_ops/version` 会同时展示 image ref、source ref 和当前 `SANDBOX_UID_POOL_*` / `SANDBOX_RUN_GID` 配置。
 
-`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 包括 restart service、reload nginx、run health checks 和 force postgres backup；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
+`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 包括 restart service、reload nginx、run health checks、force postgres backup、ensure app API token、restore plugin installed package from cache，以及 dry-run-first provider model `read_timeout` patch；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
 
 Nginx access log 使用 JSON 格式写到 Nginx stdout；当前 `supervisord` 会把 Nginx stdout 收进 `/data/logs/nginx.log`，可通过 `/_ops/logs?service=nginx` 查看。字段包含 `time`、`request_id`、`remote_addr`、`method`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status`、`upstream_response_time` 和 `host`，便于区分 Web/API/Plugin/Ops 的上游问题。
 

@@ -390,6 +390,13 @@ def actions_payload() -> dict[str, Any]:
                 "requires_confirm": True,
                 "description": "Restore plugin installed package files from the local package cache for plugin identifiers already registered in the plugin database.",
             },
+            {
+                "id": "set-provider-model-read-timeout",
+                "method": "POST",
+                "path": "/_admin/api/actions/set-provider-model-read-timeout",
+                "requires_confirm": True,
+                "description": "Patch a Dify provider model credential JSON config with a non-secret read_timeout value. Dry-run by default.",
+            },
         ],
     }
 
@@ -943,6 +950,181 @@ def ensure_plugin_installed_from_cache(payload: dict[str, Any], auth: AuthContex
     )
     if not ok:
         raise AdminError(500, "unable to restore every selected plugin installed package", **response)
+    return response
+
+
+def validate_provider_model_filter(raw: Any, field: str) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        raise AdminError(400, f"{field} must be non-empty")
+    if "\x00" in value or len(value) > 255:
+        raise AdminError(400, f"{field} is invalid")
+    return value
+
+
+def validate_provider_read_timeout(raw: Any) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise AdminError(400, "read_timeout must be an integer") from None
+    if value < 1 or value > 3600:
+        raise AdminError(400, "read_timeout must be between 1 and 3600 seconds")
+    return value
+
+
+def provider_timeout_dry_run(raw: Any) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return True
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(raw)
+
+
+def provider_model_timeout_rows(provider_name: str, model_name: str, model_type: str) -> dict[str, Any]:
+    return psql_json_rows(
+        f"""
+        select id::text as id, provider_name, model_name, model_type, credential_name,
+               nullif(encrypted_config::jsonb ->> 'read_timeout', '')::int as read_timeout
+        from provider_model_credentials
+        where provider_name = {sql_literal(provider_name)}
+          and model_name = {sql_literal(model_name)}
+          and model_type = {sql_literal(model_type)}
+        order by updated_at desc
+        """,
+        timeout=10.0,
+    )
+
+
+def set_provider_model_read_timeout(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]:
+    if not confirmed(payload):
+        raise AdminError(400, "confirm=true is required")
+    provider_name = validate_provider_model_filter(payload.get("provider_name"), "provider_name")
+    model_name = validate_provider_model_filter(payload.get("model_name"), "model_name")
+    model_type = validate_provider_model_filter(payload.get("model_type") or "llm", "model_type")
+    read_timeout = validate_provider_read_timeout(payload.get("read_timeout", 300))
+    dry_run = provider_timeout_dry_run(payload.get("dry_run", True))
+    action_id = new_action_id("set-provider-model-read-timeout")
+    target = f"{provider_name}/{model_type}/{model_name}"
+
+    before = provider_model_timeout_rows(provider_name, model_name, model_type)
+    if not before.get("ok"):
+        audit_event(
+            "set-provider-model-read-timeout",
+            False,
+            auth.kind,
+            target,
+            {"action_id": action_id, "dry_run": dry_run, "read_timeout": read_timeout, "error": before.get("error", "query failed")},
+        )
+        raise AdminError(500, "unable to read provider model credentials", detail=before.get("error", ""))
+    if not before.get("rows"):
+        audit_event(
+            "set-provider-model-read-timeout",
+            False,
+            auth.kind,
+            target,
+            {"action_id": action_id, "dry_run": dry_run, "read_timeout": read_timeout, "error": "credential not found"},
+        )
+        raise AdminError(404, "provider model credential not found")
+
+    changed = 0
+    update_result: dict[str, Any] | None = None
+    if not dry_run:
+        update_result = run_psql(
+            f"""
+            update provider_model_credentials
+            set encrypted_config = jsonb_set(
+                    coalesce(encrypted_config::jsonb, '{{}}'::jsonb),
+                    '{{read_timeout}}',
+                    to_jsonb({read_timeout}::int),
+                    true
+                )::text,
+                updated_at = current_timestamp
+            where provider_name = {sql_literal(provider_name)}
+              and model_name = {sql_literal(model_name)}
+              and model_type = {sql_literal(model_type)};
+            """,
+            timeout=10.0,
+        )
+        if not update_result.get("ok"):
+            audit_event(
+                "set-provider-model-read-timeout",
+                False,
+                auth.kind,
+                target,
+                {
+                    "action_id": action_id,
+                    "dry_run": dry_run,
+                    "read_timeout": read_timeout,
+                    "matched_count": len(before.get("rows", [])),
+                    "error": update_result.get("stderr") or update_result.get("stdout"),
+                },
+            )
+            raise AdminError(500, "unable to update provider model credential", detail=update_result.get("stderr") or update_result.get("stdout"))
+        changed = len(before.get("rows", []))
+
+    after = before if dry_run else provider_model_timeout_rows(provider_name, model_name, model_type)
+    if not after.get("ok"):
+        audit_event(
+            "set-provider-model-read-timeout",
+            False,
+            auth.kind,
+            target,
+            {"action_id": action_id, "dry_run": dry_run, "read_timeout": read_timeout, "error": after.get("error", "query failed")},
+        )
+        raise AdminError(500, "unable to read provider model credentials after update", detail=after.get("error", ""))
+
+    before_rows = [
+        {
+            "id": row.get("id"),
+            "provider_name": row.get("provider_name"),
+            "model_name": row.get("model_name"),
+            "model_type": row.get("model_type"),
+            "credential_name": row.get("credential_name"),
+            "read_timeout": row.get("read_timeout"),
+        }
+        for row in before.get("rows", [])
+    ]
+    after_rows = [
+        {
+            "id": row.get("id"),
+            "provider_name": row.get("provider_name"),
+            "model_name": row.get("model_name"),
+            "model_type": row.get("model_type"),
+            "credential_name": row.get("credential_name"),
+            "read_timeout": row.get("read_timeout"),
+        }
+        for row in after.get("rows", [])
+    ]
+    response = {
+        "ok": True,
+        "action_id": action_id,
+        "action": "set-provider-model-read-timeout",
+        "dry_run": dry_run,
+        "provider_name": provider_name,
+        "model_name": model_name,
+        "model_type": model_type,
+        "read_timeout": read_timeout,
+        "matched_count": len(before_rows),
+        "changed_count": changed,
+        "before": before_rows,
+        "after": after_rows,
+        "update_returncode": update_result.get("returncode") if update_result else None,
+    }
+    audit_event(
+        "set-provider-model-read-timeout",
+        True,
+        auth.kind,
+        target,
+        {
+            "action_id": action_id,
+            "dry_run": dry_run,
+            "read_timeout": read_timeout,
+            "matched_count": len(before_rows),
+            "changed_count": changed,
+        },
+    )
     return response
 
 
@@ -2040,6 +2222,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(ensure_app_api_token(payload, auth))
             elif path == "/api/actions/ensure-plugin-installed-from-cache":
                 self.send_json(ensure_plugin_installed_from_cache(payload, auth))
+            elif path == "/api/actions/set-provider-model-read-timeout":
+                self.send_json(set_provider_model_read_timeout(payload, auth))
             elif path == "/api/files/mkdir":
                 self.send_json(mkdir_payload(payload, auth))
             else:
