@@ -408,9 +408,13 @@ Browser login -> signed HttpOnly cookie
 POST /_admin/api/actions/restart-service
 POST /_admin/api/actions/reload-nginx
 POST /_admin/api/actions/run-health-checks
+POST /_admin/api/actions/force-postgres-backup
+POST /_admin/api/actions/ensure-app-api-token
+POST /_admin/api/actions/ensure-plugin-installed-from-cache
+POST /_admin/api/actions/set-provider-model-read-timeout
 ```
 
-`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`。Admin action 不接受任意 shell command、SQL 或文件路径。
+`restart-service` 只允许白名单 Supervisor service；`reload-nginx` 会先执行 Nginx 配置测试；`run-health-checks` 复用已有 `/usr/local/bin/dify-demo-healthcheck`；`force-postgres-backup` 固定调用 `/usr/local/bin/postgres-backup-loop --once`，用于部署或重启前把当前 PostgreSQL 状态写入 `${POSTGRES_BACKUP_DIR}`；`ensure-app-api-token` 只补指定 app 的 service token；`ensure-plugin-installed-from-cache` 只从已登记 package cache 恢复 installed package；`set-provider-model-read-timeout` 只给匹配的 provider model credential JSON 补非 secret `read_timeout`，且默认 dry-run。Admin action 不接受任意 shell command、任意 SQL 或任意文件路径。
 
 `GET /_admin/api/audit?limit=50` 返回最近的 `ADMIN_AUDIT_LOG` 事件，用于追踪 login/logout、白名单 action 和 file manager 写操作。`limit` 会限制在 `1..500`，缺失或非法时使用默认值 `100`。日志不存在时仍返回 200、`exists=false`、`returned=0` 和空 `events`。事件字段固定为 `time`、`action`、`ok`、`actor`、`target`、`details`；返回内容会对 `token`、`apiKey`、`authorization`、`cookie` 等敏感 detail key 做递归兜底脱敏。该接口仍需要 `ADMIN_TOKEN` 或已登录 session，但不增加新的写能力。
 

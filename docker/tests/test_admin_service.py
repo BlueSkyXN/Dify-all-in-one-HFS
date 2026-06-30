@@ -289,6 +289,124 @@ class AdminServicePureFunctionTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status, 400)
 
+    def test_set_provider_model_read_timeout_requires_confirm(self):
+        with self.assertRaises(admin_service.AdminError) as ctx:
+            admin_service.set_provider_model_read_timeout(
+                {
+                    "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                    "model_name": "qwen3.5-35b-a3b",
+                    "model_type": "llm",
+                    "read_timeout": 300,
+                },
+                admin_service.AuthContext(kind="token", csrf_token="1"),
+            )
+
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_set_provider_model_read_timeout_dry_run_does_not_update(self):
+        original_psql_json_rows = admin_service.psql_json_rows
+        original_run_psql = admin_service.run_psql
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ADMIN_AUDIT_LOG"] = str(Path(tmpdir) / "admin-audit.jsonl")
+
+            def fake_psql_json_rows(sql, timeout=10.0, database=None):
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "id": "cred-1",
+                            "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                            "model_name": "qwen3.5-35b-a3b",
+                            "model_type": "llm",
+                            "credential_name": "API KEY 1",
+                            "read_timeout": 10,
+                        }
+                    ],
+                }
+
+            try:
+                admin_service.psql_json_rows = fake_psql_json_rows
+                admin_service.run_psql = lambda *args, **kwargs: self.fail("dry-run must not update provider credentials")
+                response = admin_service.set_provider_model_read_timeout(
+                    {
+                        "confirm": True,
+                        "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                        "model_name": "qwen3.5-35b-a3b",
+                        "model_type": "llm",
+                        "read_timeout": 300,
+                    },
+                    admin_service.AuthContext(kind="token", csrf_token="1"),
+                )
+            finally:
+                admin_service.psql_json_rows = original_psql_json_rows
+                admin_service.run_psql = original_run_psql
+
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["dry_run"])
+        self.assertEqual(response["matched_count"], 1)
+        self.assertEqual(response["changed_count"], 0)
+        self.assertEqual(response["before"][0]["read_timeout"], 10)
+        self.assertEqual(response["after"][0]["read_timeout"], 10)
+        self.assertNotIn("encrypted_config", json.dumps(response))
+
+    def test_set_provider_model_read_timeout_updates_json_config(self):
+        original_psql_json_rows = admin_service.psql_json_rows
+        original_run_psql = admin_service.run_psql
+        calls = {"reads": 0, "update_sql": ""}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ADMIN_AUDIT_LOG"] = str(Path(tmpdir) / "admin-audit.jsonl")
+
+            def fake_psql_json_rows(sql, timeout=10.0, database=None):
+                calls["reads"] += 1
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [
+                        {
+                            "id": "cred-1",
+                            "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                            "model_name": "qwen3.5-35b-a3b",
+                            "model_type": "llm",
+                            "credential_name": "API KEY 1",
+                            "read_timeout": 10 if calls["reads"] == 1 else 300,
+                        }
+                    ],
+                }
+
+            def fake_run_psql(sql, timeout=10.0, output_limit=200_000, database=None):
+                calls["update_sql"] = sql
+                return {"ok": True, "returncode": 0, "stdout": "", "stderr": "", "duration_ms": 1}
+
+            try:
+                admin_service.psql_json_rows = fake_psql_json_rows
+                admin_service.run_psql = fake_run_psql
+                response = admin_service.set_provider_model_read_timeout(
+                    {
+                        "confirm": True,
+                        "dry_run": False,
+                        "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                        "model_name": "qwen3.5-35b-a3b",
+                        "model_type": "llm",
+                        "read_timeout": 300,
+                    },
+                    admin_service.AuthContext(kind="token", csrf_token="1"),
+                )
+            finally:
+                admin_service.psql_json_rows = original_psql_json_rows
+                admin_service.run_psql = original_run_psql
+
+        self.assertTrue(response["ok"])
+        self.assertFalse(response["dry_run"])
+        self.assertEqual(response["changed_count"], 1)
+        self.assertEqual(response["before"][0]["read_timeout"], 10)
+        self.assertEqual(response["after"][0]["read_timeout"], 300)
+        self.assertIn("jsonb_set", calls["update_sql"])
+        self.assertIn("'qwen3.5-35b-a3b'", calls["update_sql"])
+        self.assertNotIn("encrypted_config", json.dumps(response))
+
     def test_ensure_plugin_installed_from_cache_copies_registered_package_and_restarts(self):
         original_plugin_db_identifiers = admin_service.plugin_db_identifiers
         original_run_cmd = admin_service.run_cmd

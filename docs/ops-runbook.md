@@ -100,6 +100,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
 /_admin/api/actions/ensure-app-api-token
+/_admin/api/actions/ensure-plugin-installed-from-cache
+/_admin/api/actions/set-provider-model-read-timeout
 /_admin/api/files/list
 /_admin/api/files/text
 /_admin/api/files/download
@@ -114,6 +116,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 `ensure-app-api-token` 用于修复 live Dify app 已启用 API 但 `api_tokens` 缺失的场景。它只写指定 app 的 `api_tokens` 行，不提供任意 SQL，也不属于 `/_ops` 只读面。请求必须包含 `app_id` 和 `confirm=true`；可选传入已有 `app-...` token 来恢复外部系统正在使用的 key。若不传 token，服务会生成新 token 并只在创建响应中返回一次。审计日志只记录 token prefix、长度和 hash，不记录 token 原文。
 
 `ensure-plugin-installed-from-cache` 用于修复 plugin 数据库仍登记插件、`PLUGIN_PACKAGE_CACHE_PATH` 中也有包，但 `PLUGIN_INSTALLED_PATH` 缺失导致 local runtime 无法重建的场景。它只处理 plugin 数据库中已经存在的 `plugin_unique_identifier`，只从 package cache 复制到 installed bucket，不提供任意路径、任意 SQL 或删除能力。请求必须包含 `confirm=true`；可选传入 `plugin_unique_identifier` 限定单个插件；默认会在复制后重启 `plugin-daemon`。
+
+`set-provider-model-read-timeout` 用于修复模型 provider credential 缺少 `read_timeout`、插件默认 10 秒 read timeout 导致 Cloudflare AI Gateway 或兼容 OpenAI 网关慢响应失败的场景。它只写 `provider_model_credentials.encrypted_config` JSON 顶层 `read_timeout`，不返回 credential JSON 或 secret 原文；请求必须包含 `confirm=true`、`provider_name`、`model_name`、`model_type` 和目标 `read_timeout`。`dry_run` 默认 `true`，先确认匹配行和当前 timeout，再显式传 `dry_run=false` 执行写入。
 
 CLI 示例：
 
@@ -135,6 +139,12 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"app_id":"<app-id>","confirm":true}' \
   https://your-space.hf.space/_admin/api/actions/ensure-app-api-token
+
+curl -X POST \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirm":true,"dry_run":true,"provider_name":"langgenius/openai_api_compatible/openai_api_compatible","model_name":"qwen3.5-35b-a3b","model_type":"llm","read_timeout":300}' \
+  https://your-space.hf.space/_admin/api/actions/set-provider-model-read-timeout
 
 ADMIN_EXPECTED_ENABLED=true \
 ADMIN_TOKEN=$ADMIN_TOKEN \
@@ -520,6 +530,18 @@ no plugin states found in redis hashed_plugin_id=<hash>
 8. 再看 `/_ops/persistence`、`/_ops/provider-models`、`/_ops/errors` 和 `plugin-daemon` 日志确认没有新的 runtime 初始化错误。
 
 如果卸载再安装后模型配置和 key 仍可见，这是正常现象：OpenAI API compatible 这类自定义模型的模型配置可能保留在 Dify 主库中，插件卸载主要修复的是插件安装元数据、local package、installed bucket 和 runtime 注册状态。不要优先手动修改模型表。
+
+如果 `/_ops/provider-models` 显示 provider credential 的 `endpoint_url` 指向 Cloudflare AI Gateway 或兼容 OpenAI 网关，但 `safe_values.read_timeout` 缺失，且真实 app API 报错包含 `Read timed out. (read timeout=10)`，先对 `set-provider-model-read-timeout` 做 dry-run。dry-run 匹配正确后，再用 `dry_run=false` 写入，例如：
+
+```bash
+curl -X POST \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirm":true,"dry_run":false,"provider_name":"langgenius/openai_api_compatible/openai_api_compatible","model_name":"qwen3.5-35b-a3b","model_type":"llm","read_timeout":300}' \
+  https://your-space.hf.space/_admin/api/actions/set-provider-model-read-timeout
+```
+
+执行后重新读取 `/_ops/provider-models`，确认对应 credential 的 `safe_values.read_timeout` 已出现，再用 app API 或下游 smoke 复测。这个 action 不是任意 SQL 通道；如果 provider、model 或 model_type 不匹配，会返回 404，不会创建新 credential。
 
 不要通过后台简单复制 package bucket 到 installed bucket 来修复。那会绕开 Plugin Daemon 的安装任务、数据库状态更新、依赖初始化和 `LaunchLocalPlugin` 等流程，只能制造“文件看起来在，但 runtime 仍没注册”的假恢复。
 
