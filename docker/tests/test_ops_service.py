@@ -655,6 +655,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
     def test_provider_model_summary_payload_sanitizes_config_sections(self):
         original_psql_json_rows = ops_service.psql_json_rows
+        original_plugin_runtime_readiness_section = ops_service.plugin_runtime_readiness_section
         calls = []
 
         def fake_psql_json_rows(database, sql, timeout=5.0):
@@ -777,9 +778,26 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
         try:
             ops_service.psql_json_rows = fake_psql_json_rows
+            ops_service.plugin_runtime_readiness_section = lambda: {
+                "ok": True,
+                "count": 1,
+                "rows": [
+                    {
+                        "plugin_ids": ["langgenius/openai_api_compatible"],
+                        "plugin_unique_identifier": "langgenius/openai_api_compatible:0.0.49@abc",
+                        "package_exists": True,
+                        "installed_exists": True,
+                        "runtime_ready": True,
+                        "runtime_state": {"state_count": 0},
+                        "log": {"ready": True, "error_count_after_last_ready": 0},
+                        "issue_codes": [],
+                    }
+                ],
+            }
             payload = ops_service.provider_model_summary_payload({"limit": ["20"], "recent_limit": ["5"]})
         finally:
             ops_service.psql_json_rows = original_psql_json_rows
+            ops_service.plugin_runtime_readiness_section = original_plugin_runtime_readiness_section
 
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["limit"], 20)
@@ -812,6 +830,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertTrue(readiness["ready_for_service_api_auth"])
         self.assertTrue(readiness["ready_for_llm_dispatch"])
         self.assertEqual(readiness["issue_codes"], [])
+        self.assertEqual(readiness["plugin_runtime_statuses"][0]["status"], "runtime_ready")
         self.assertEqual(readiness["model_bindings"][0]["name"], "gpt-test")
         self.assertNotIn("secret-key", json.dumps(payload))
         self.assertNotIn("should-not-leak", json.dumps(payload))
@@ -880,6 +899,82 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertFalse(row["ready_for_service_api_auth"])
         self.assertTrue(row["ready_for_llm_dispatch"])
         self.assertEqual(row["issue_codes"], ["app_api_token_missing"])
+
+    def test_app_api_readiness_flags_plugin_installed_missing(self):
+        sections = {
+            "app_model_bindings": {
+                "ok": True,
+                "rows": [
+                    {
+                        "app_id": "app-1",
+                        "tenant_id": "tenant-1",
+                        "app_name": "Smoke app",
+                        "mode": "advanced-chat",
+                        "status": "normal",
+                        "enable_api": True,
+                        "workflow_id": "workflow-1",
+                    }
+                ],
+            },
+            "api_tokens": {"ok": True, "rows": [{"app_id": "app-1"}]},
+            "workflow_model_bindings": {
+                "ok": True,
+                "rows": [
+                    {
+                        "workflow_id": "workflow-1",
+                        "app_id": "app-1",
+                        "graph_summary": {
+                            "model_bindings": [
+                                {
+                                    "node_id": "llm-node",
+                                    "node_type": "llm",
+                                    "model": {
+                                        "provider": "langgenius/openai_api_compatible/openai_api_compatible",
+                                        "name": "gpt-test",
+                                        "mode": "chat",
+                                    },
+                                }
+                            ]
+                        },
+                    }
+                ],
+            },
+            "provider_models": {
+                "ok": True,
+                "rows": [
+                    {
+                        "provider_name": "langgenius/openai_api_compatible/openai_api_compatible",
+                        "model_name": "gpt-test",
+                        "is_valid": True,
+                    }
+                ],
+            },
+            "recent_conversation_model_bindings": {"ok": True, "rows": []},
+            "plugin_runtime_readiness": {
+                "ok": True,
+                "rows": [
+                    {
+                        "plugin_ids": ["langgenius/openai_api_compatible"],
+                        "plugin_unique_identifier": "langgenius/openai_api_compatible:0.0.49@abc",
+                        "package_exists": True,
+                        "installed_exists": False,
+                        "runtime_ready": False,
+                        "runtime_state": {"state_count": 0},
+                        "log": {"ready": False, "error_count_after_last_ready": 0},
+                        "issue_codes": ["plugin_installed_missing"],
+                    }
+                ],
+            },
+        }
+
+        payload = ops_service.app_api_readiness_section(sections)
+
+        self.assertTrue(payload["ok"])
+        row = payload["rows"][0]
+        self.assertTrue(row["ready_for_service_api_auth"])
+        self.assertFalse(row["ready_for_llm_dispatch"])
+        self.assertIn("plugin_installed_missing", row["issue_codes"])
+        self.assertEqual(row["plugin_runtime_statuses"][0]["status"], "installed_missing")
 
     def test_cached_payload_builds_once_under_concurrency(self):
         os.environ["OPS_CACHE_TTL_SECONDS"] = "60"

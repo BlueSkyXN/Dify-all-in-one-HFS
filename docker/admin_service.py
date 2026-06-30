@@ -377,6 +377,13 @@ def actions_payload() -> dict[str, Any]:
                 "requires_confirm": True,
                 "description": "Create a Dify app service API token when the selected app has none or when a known token must be restored.",
             },
+            {
+                "id": "ensure-plugin-installed-from-cache",
+                "method": "POST",
+                "path": "/_admin/api/actions/ensure-plugin-installed-from-cache",
+                "requires_confirm": True,
+                "description": "Restore plugin installed package files from the local package cache for plugin identifiers already registered in the plugin database.",
+            },
         ],
     }
 
@@ -578,8 +585,8 @@ def psql_args(database: str | None = None) -> tuple[list[str], dict[str, str] | 
     return args, extra_env
 
 
-def run_psql(sql: str, timeout: float = 10.0, output_limit: int = 200_000) -> dict[str, Any]:
-    args, extra_env = psql_args()
+def run_psql(sql: str, timeout: float = 10.0, output_limit: int = 200_000, database: str | None = None) -> dict[str, Any]:
+    args, extra_env = psql_args(database)
     started = time.time()
     try:
         completed = subprocess.run(
@@ -610,9 +617,9 @@ def run_psql(sql: str, timeout: float = 10.0, output_limit: int = 200_000) -> di
         }
 
 
-def psql_json_rows(sql: str, timeout: float = 10.0) -> dict[str, Any]:
+def psql_json_rows(sql: str, timeout: float = 10.0, database: str | None = None) -> dict[str, Any]:
     wrapped_sql = f"select coalesce(json_agg(row_to_json(q)), '[]'::json)::text from ({sql}) q;"
-    result = run_psql(wrapped_sql, timeout=timeout)
+    result = run_psql(wrapped_sql, timeout=timeout, database=database)
     if not result["ok"]:
         return {"ok": False, "error": result["stderr"] or result["stdout"], "rows": [], "count": 0}
     raw = result["stdout"].strip() or "[]"
@@ -621,6 +628,69 @@ def psql_json_rows(sql: str, timeout: float = 10.0) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         return {"ok": False, "error": f"failed to parse psql json output: {exc}", "rows": [], "count": 0}
     return {"ok": isinstance(rows, list), "rows": rows if isinstance(rows, list) else [], "count": len(rows) if isinstance(rows, list) else 0}
+
+
+def resolve_plugin_storage_path(root: Path, configured: str) -> Path:
+    path = Path(configured)
+    if path.is_absolute():
+        return path
+    return root / path
+
+
+def plugin_storage_paths() -> dict[str, Path]:
+    root = Path(env("PLUGIN_STORAGE_LOCAL_ROOT", "/data/plugin_daemon"))
+    return {
+        "storage_root": root,
+        "installed": resolve_plugin_storage_path(root, env("PLUGIN_INSTALLED_PATH", "plugin")),
+        "package_cache": resolve_plugin_storage_path(root, env("PLUGIN_PACKAGE_CACHE_PATH", "plugin_packages")),
+    }
+
+
+def legacy_hashed_plugin_package_filename(plugin_unique_identifier: str) -> str:
+    digest = hashlib.sha256(plugin_unique_identifier.encode("utf-8")).hexdigest()
+    return f"{digest}.difypkg"
+
+
+def plugin_package_candidates(plugin_unique_identifier: str) -> list[str]:
+    return [
+        plugin_unique_identifier,
+        legacy_hashed_plugin_package_filename(plugin_unique_identifier),
+    ]
+
+
+def safe_plugin_relative_path(value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        raise AdminError(400, "invalid plugin package path")
+    return path
+
+
+def validate_plugin_identifier(raw: Any) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/.:@")
+    if len(value) > 512 or any(char not in allowed for char in value):
+        raise AdminError(400, "plugin_unique_identifier contains unsupported characters")
+    safe_plugin_relative_path(value)
+    return value
+
+
+def plugin_db_identifiers() -> dict[str, Any]:
+    return psql_json_rows(
+        """
+        select distinct plugin_unique_identifier
+        from (
+            select plugin_unique_identifier from plugins where plugin_unique_identifier is not null and plugin_unique_identifier <> ''
+            union all
+            select plugin_unique_identifier from plugin_installations where plugin_unique_identifier is not null and plugin_unique_identifier <> ''
+        ) q
+        order by plugin_unique_identifier
+        limit 500
+        """,
+        timeout=10.0,
+        database=env("DB_PLUGIN_DATABASE", "dify_plugin"),
+    )
 
 
 def generated_app_token() -> str:
@@ -731,6 +801,126 @@ def ensure_app_api_token(payload: dict[str, Any], auth: AuthContext) -> dict[str
             "token": token_summary(token),
         },
     )
+    return response
+
+
+def ensure_plugin_installed_from_cache(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]:
+    if not confirmed(payload):
+        raise AdminError(400, "confirm=true is required")
+    requested_identifier = validate_plugin_identifier(payload.get("plugin_unique_identifier"))
+    restart_plugin_daemon = payload.get("restart_plugin_daemon", True)
+    if isinstance(restart_plugin_daemon, str):
+        restart_plugin_daemon = restart_plugin_daemon.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        restart_plugin_daemon = bool(restart_plugin_daemon)
+
+    action_id = new_action_id("ensure-plugin-installed-from-cache")
+    identifier_rows = plugin_db_identifiers()
+    if not identifier_rows.get("ok"):
+        audit_event(
+            "ensure-plugin-installed-from-cache",
+            False,
+            auth.kind,
+            requested_identifier or "all",
+            {"action_id": action_id, "error": identifier_rows.get("error", "query failed")},
+        )
+        raise AdminError(500, "unable to read plugin metadata", detail=identifier_rows.get("error", ""))
+
+    db_identifiers = sorted(
+        {
+            validate_plugin_identifier(row.get("plugin_unique_identifier"))
+            for row in identifier_rows.get("rows", [])
+            if row.get("plugin_unique_identifier")
+        }
+    )
+    if requested_identifier:
+        if requested_identifier not in db_identifiers:
+            audit_event(
+                "ensure-plugin-installed-from-cache",
+                False,
+                auth.kind,
+                requested_identifier,
+                {"action_id": action_id, "error": "plugin identifier is not registered in plugin database"},
+            )
+            raise AdminError(404, "plugin identifier is not registered in plugin database")
+        selected_identifiers = [requested_identifier]
+    else:
+        selected_identifiers = db_identifiers
+
+    paths = plugin_storage_paths()
+    package_dir = paths["package_cache"]
+    installed_dir = paths["installed"]
+    installed_dir.mkdir(parents=True, exist_ok=True)
+    copied: list[dict[str, Any]] = []
+    already_installed: list[dict[str, Any]] = []
+    missing_source: list[dict[str, Any]] = []
+
+    for identifier in selected_identifiers:
+        source_candidate = ""
+        installed_candidate = ""
+        for candidate in plugin_package_candidates(identifier):
+            relative = safe_plugin_relative_path(candidate)
+            if (package_dir / relative).is_file() and not source_candidate:
+                source_candidate = candidate
+            if (installed_dir / relative).is_file() and not installed_candidate:
+                installed_candidate = candidate
+        if installed_candidate:
+            already_installed.append({"plugin_unique_identifier": identifier, "installed": installed_candidate})
+            continue
+        if not source_candidate:
+            missing_source.append({"plugin_unique_identifier": identifier})
+            continue
+        relative = safe_plugin_relative_path(source_candidate)
+        source = package_dir / relative
+        target = installed_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append(
+            {
+                "plugin_unique_identifier": identifier,
+                "source": source_candidate,
+                "installed": source_candidate,
+                "bytes": target.stat().st_size,
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest()[:16],
+            }
+        )
+
+    restart_result: dict[str, Any] | None = None
+    if copied and restart_plugin_daemon:
+        restart_result = run_cmd(["supervisorctl", "-c", SUPERVISOR_CONFIG, "restart", "plugin-daemon"], timeout=30.0)
+
+    ok = not missing_source and (restart_result is None or restart_result.get("ok"))
+    response = {
+        "ok": ok,
+        "action_id": action_id,
+        "action": "ensure-plugin-installed-from-cache",
+        "selected_count": len(selected_identifiers),
+        "copied_count": len(copied),
+        "already_installed_count": len(already_installed),
+        "missing_source_count": len(missing_source),
+        "copied": copied,
+        "already_installed": already_installed,
+        "missing_source": missing_source,
+        "restart_plugin_daemon": bool(copied and restart_plugin_daemon),
+        "restart_result": restart_result,
+    }
+    audit_event(
+        "ensure-plugin-installed-from-cache",
+        ok,
+        auth.kind,
+        requested_identifier or "all",
+        {
+            "action_id": action_id,
+            "selected_count": len(selected_identifiers),
+            "copied_count": len(copied),
+            "already_installed_count": len(already_installed),
+            "missing_source_count": len(missing_source),
+            "restart_plugin_daemon": bool(copied and restart_plugin_daemon),
+            "restart_returncode": restart_result.get("returncode") if restart_result else None,
+        },
+    )
+    if not ok:
+        raise AdminError(500, "unable to restore every selected plugin installed package", **response)
     return response
 
 
@@ -1820,6 +2010,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(run_health_checks(payload, auth))
             elif path == "/api/actions/ensure-app-api-token":
                 self.send_json(ensure_app_api_token(payload, auth))
+            elif path == "/api/actions/ensure-plugin-installed-from-cache":
+                self.send_json(ensure_plugin_installed_from_cache(payload, auth))
             elif path == "/api/files/mkdir":
                 self.send_json(mkdir_payload(payload, auth))
             else:
