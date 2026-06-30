@@ -1,6 +1,7 @@
 import importlib.util
 import hashlib
 import hmac
+import json
 import os
 import sys
 import tempfile
@@ -311,6 +312,85 @@ class AdminServicePureFunctionTests(unittest.TestCase):
         self.assertTrue(response["created"])
         self.assertRegex(response["token"], r"^app-[A-Za-z0-9]{24}$")
         self.assertEqual(response["token_summary"]["length"], len(response["token"]))
+
+    def test_ensure_plugin_installed_from_cache_requires_confirm(self):
+        with self.assertRaises(admin_service.AdminError) as ctx:
+            admin_service.ensure_plugin_installed_from_cache(
+                {},
+                admin_service.AuthContext(kind="token", csrf_token="1"),
+            )
+
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_ensure_plugin_installed_from_cache_copies_registered_package_and_restarts(self):
+        original_plugin_db_identifiers = admin_service.plugin_db_identifiers
+        original_run_cmd = admin_service.run_cmd
+        calls = []
+        identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "plugin_daemon"
+            package_file = root / "plugin_packages" / "langgenius" / "openai_api_compatible:0.0.49@abc123"
+            package_file.parent.mkdir(parents=True)
+            package_file.write_bytes(b"plugin package")
+            os.environ["PLUGIN_STORAGE_LOCAL_ROOT"] = str(root)
+            os.environ["ADMIN_AUDIT_LOG"] = str(Path(tmpdir) / "admin-audit.jsonl")
+
+            def fake_plugin_db_identifiers():
+                return {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [{"plugin_unique_identifier": identifier}],
+                }
+
+            def fake_run_cmd(args, timeout=10.0, extra_env=None, output_limit=200_000):
+                calls.append((args, timeout))
+                return {"ok": True, "returncode": 0, "stdout": "ok", "stderr": "", "duration_ms": 1}
+
+            try:
+                admin_service.plugin_db_identifiers = fake_plugin_db_identifiers
+                admin_service.run_cmd = fake_run_cmd
+                response = admin_service.ensure_plugin_installed_from_cache(
+                    {"confirm": True, "plugin_unique_identifier": identifier},
+                    admin_service.AuthContext(kind="token", csrf_token="1"),
+                )
+            finally:
+                admin_service.plugin_db_identifiers = original_plugin_db_identifiers
+                admin_service.run_cmd = original_run_cmd
+
+            installed_file = root / "plugin" / "langgenius" / "openai_api_compatible:0.0.49@abc123"
+            self.assertTrue(installed_file.is_file())
+            self.assertEqual(installed_file.read_bytes(), b"plugin package")
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["copied_count"], 1)
+        self.assertEqual(response["missing_source_count"], 0)
+        self.assertEqual(response["copied"][0]["plugin_unique_identifier"], identifier)
+        self.assertNotIn(str(root), json.dumps(response))
+        self.assertEqual(calls[0][0][-1], "plugin-daemon")
+
+    def test_ensure_plugin_installed_from_cache_rejects_unregistered_identifier(self):
+        original_plugin_db_identifiers = admin_service.plugin_db_identifiers
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ADMIN_AUDIT_LOG"] = str(Path(tmpdir) / "admin-audit.jsonl")
+            try:
+                admin_service.plugin_db_identifiers = lambda: {
+                    "ok": True,
+                    "count": 1,
+                    "rows": [{"plugin_unique_identifier": "langgenius/openai:0.4.0@abc"}],
+                }
+                with self.assertRaises(admin_service.AdminError) as ctx:
+                    admin_service.ensure_plugin_installed_from_cache(
+                        {
+                            "confirm": True,
+                            "plugin_unique_identifier": "langgenius/openai_api_compatible:0.0.49@abc123",
+                        },
+                        admin_service.AuthContext(kind="token", csrf_token="1"),
+                    )
+            finally:
+                admin_service.plugin_db_identifiers = original_plugin_db_identifiers
+
+        self.assertEqual(ctx.exception.status, 404)
 
 
 if __name__ == "__main__":

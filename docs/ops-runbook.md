@@ -115,6 +115,8 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 `ensure-app-api-token` 用于修复 live Dify app 已启用 API 但 `api_tokens` 缺失的场景。它只写指定 app 的 `api_tokens` 行，不提供任意 SQL，也不属于 `/_ops` 只读面。请求必须包含 `app_id` 和 `confirm=true`；可选传入已有 `app-...` token 来恢复外部系统正在使用的 key。若不传 token，服务会生成新 token 并只在创建响应中返回一次。审计日志只记录 token prefix、长度和 hash，不记录 token 原文。
 
+`ensure-plugin-installed-from-cache` 用于修复 plugin 数据库仍登记插件、`PLUGIN_PACKAGE_CACHE_PATH` 中也有包，但 `PLUGIN_INSTALLED_PATH` 缺失导致 local runtime 无法重建的场景。它只处理 plugin 数据库中已经存在的 `plugin_unique_identifier`，只从 package cache 复制到 installed bucket，不提供任意路径、任意 SQL 或删除能力。请求必须包含 `confirm=true`；可选传入 `plugin_unique_identifier` 限定单个插件；默认会在复制后重启 `plugin-daemon`。
+
 CLI 示例：
 
 ```bash
@@ -281,6 +283,8 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 ```
 
 该端点只运行固定 SQL，覆盖 `tenant_default_models`、`provider_models`、`provider_model_settings`、`provider_model_credentials`、`provider_credentials`、`load_balancing_model_configs`、`apps` / `app_model_configs`、近期 conversation 的模型绑定、app service `api_tokens` 摘要，以及 workflow graph 中的模型绑定摘要。`app_api_readiness` 是从这些只读 section 派生出的聚合视图，用 `api_token_count`、`ready_for_service_api_auth`、`ready_for_llm_dispatch` 和 `issue_codes` 标出常见阻断，例如 `app_api_token_missing`、`provider_model_missing` 或 `workflow_model_binding_missing`。`encrypted_config` 原文不会返回；响应只包含 hash、key 结构、secret presence boolean、URL host/path hash，以及 `model`、`mode`、`timeout`、`max_tokens` 等 allowlist 字段。`api_tokens.token` 原文也不会返回，只提供 prefix、length 和 sha256，用于核对本地 app key 是否已经和 live Dify 漂移。workflow graph 原文、prompt、变量和 secret 不返回，只提取 LLM-like node 的 provider/name/mode 与安全参数摘要。URL path 不原文返回，因为 Cloudflare Gateway 等路径可能包含 account、tenant 或 routing 标识。
+
+`plugin_runtime_readiness` 会额外把 plugin 数据库、package cache、installed bucket、Redis runtime state 和 Plugin Daemon local-runtime 日志归一成只读摘要。对 plugin provider，例如 `langgenius/openai_api_compatible/...`，`app_api_readiness.ready_for_llm_dispatch` 也会考虑 `plugin_installed_missing`、`plugin_runtime_missing`、`plugin_metadata_missing` 和 `plugin_runtime_unverified`，避免模型表存在但 runtime/schema 不可用时出现假绿。
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
@@ -520,11 +524,12 @@ no plugin states found in redis hashed_plugin_id=<hash>
 
 1. 确认使用同一个插件包，例如 `langgenius/openai_api_compatible:<version>@<checksum>` 对应的 `.difypkg`。
 2. 如果刚部署了 storage-root 修复，先用 `/_admin/api/actions/restart-service` 重启 `plugin-daemon`，等待日志出现 `local runtime starting` / `local runtime ready`。
-3. 如果 `missing_installed_files` 非空，或重启后仍没有 `local runtime ready` 证据，再在 Dify 插件页面卸载损坏的插件。
-4. 重新从本地 `.difypkg` 安装插件。
-5. 等待安装任务完成，并让 Plugin Daemon 重新拉起 runtime。
-6. 回到模型 provider 页面保存 credential 或模型参数。
-7. 再看 `/_ops/persistence`、`/_ops/errors` 和 `plugin-daemon` 日志确认没有新的 runtime 初始化错误。
+3. 如果 `missing_installed_files` 非空且对应 `package_exists=true`，优先用 `/_admin/api/actions/ensure-plugin-installed-from-cache` 从 package cache 恢复 installed bucket，再等待 `plugin-daemon` 重启。
+4. 如果 package cache 也缺失，或恢复后仍没有 `local runtime ready` 证据，再在 Dify 插件页面卸载损坏的插件。
+5. 重新从本地 `.difypkg` 安装插件。
+6. 等待安装任务完成，并让 Plugin Daemon 重新拉起 runtime。
+7. 回到模型 provider 页面保存 credential 或模型参数。
+8. 再看 `/_ops/persistence`、`/_ops/provider-models`、`/_ops/errors` 和 `plugin-daemon` 日志确认没有新的 runtime 初始化错误。
 
 如果卸载再安装后模型配置和 key 仍可见，这是正常现象：OpenAI API compatible 这类自定义模型的模型配置可能保留在 Dify 主库中，插件卸载主要修复的是插件安装元数据、local package、installed bucket 和 runtime 注册状态。不要优先手动修改模型表。
 

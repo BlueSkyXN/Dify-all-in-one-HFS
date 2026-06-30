@@ -1723,6 +1723,23 @@ def plugin_hashed_identity(plugin_unique_identifier: str) -> str:
     return hashlib.sha256(plugin_unique_identifier.encode("utf-8")).hexdigest()
 
 
+def provider_plugin_id(provider_name: str) -> str:
+    parts = [part for part in str(provider_name or "").split("/") if part]
+    if len(parts) < 2:
+        return ""
+    return "/".join(parts[:2])
+
+
+def plugin_runtime_ready(item: dict[str, Any]) -> bool:
+    if not item.get("installed_exists"):
+        return False
+    runtime = item.get("runtime_state") if isinstance(item.get("runtime_state"), dict) else {}
+    log = item.get("log") if isinstance(item.get("log"), dict) else {}
+    if int(runtime.get("state_count") or 0) > 0:
+        return True
+    return bool(log.get("ready")) and int(log.get("error_count_after_last_ready") or 0) == 0
+
+
 def redis_cli_base_args(db: int | None = None) -> tuple[list[str], dict[str, str] | None]:
     args = ["redis-cli", "-h", env("REDIS_HOST", "127.0.0.1"), "-p", env("REDIS_PORT", "6379")]
     if db is not None:
@@ -2314,6 +2331,15 @@ def app_api_readiness_section(sections: dict[str, dict[str, Any]]) -> dict[str, 
         if provider and name:
             provider_models[(provider, name)] = provider_model
 
+    plugin_rows_by_id: dict[str, list[dict[str, Any]]] = {}
+    plugin_section = sections.get("plugin_runtime_readiness", {})
+    if plugin_section.get("ok"):
+        for plugin_row in plugin_section.get("rows", []):
+            plugin_ids = plugin_row.get("plugin_ids") if isinstance(plugin_row.get("plugin_ids"), list) else []
+            for plugin_id in plugin_ids:
+                if plugin_id:
+                    plugin_rows_by_id.setdefault(str(plugin_id), []).append(plugin_row)
+
     workflows_by_app: dict[str, list[dict[str, Any]]] = {}
     for workflow in sections["workflow_model_bindings"].get("rows", []):
         app_id = str(workflow.get("app_id") or "")
@@ -2328,6 +2354,7 @@ def app_api_readiness_section(sections: dict[str, dict[str, Any]]) -> dict[str, 
         app_workflows = workflows_by_app.get(app_id, [])
         issue_codes: list[str] = []
         provider_statuses: list[dict[str, Any]] = []
+        plugin_statuses: list[dict[str, Any]] = []
         unique_bindings: dict[tuple[str, str, str], dict[str, Any]] = {}
         workflow_model_binding_count = 0
 
@@ -2377,12 +2404,53 @@ def app_api_readiness_section(sections: dict[str, dict[str, Any]]) -> dict[str, 
                 elif provider_model is not None:
                     provider_statuses.append({"provider": provider, "name": name, "status": "valid"})
 
+                plugin_id = provider_plugin_id(provider)
+                if plugin_id:
+                    if plugin_section and not plugin_section.get("ok"):
+                        if "plugin_runtime_unverified" not in issue_codes:
+                            issue_codes.append("plugin_runtime_unverified")
+                        plugin_statuses.append({"provider": provider, "plugin_id": plugin_id, "status": "unverified"})
+                    elif plugin_rows_by_id:
+                        plugin_rows = plugin_rows_by_id.get(plugin_id, [])
+                        if not plugin_rows:
+                            if "plugin_metadata_missing" not in issue_codes:
+                                issue_codes.append("plugin_metadata_missing")
+                            plugin_statuses.append({"provider": provider, "plugin_id": plugin_id, "status": "metadata_missing"})
+                        elif any(plugin_runtime_ready(plugin_row) for plugin_row in plugin_rows):
+                            plugin_statuses.append({"provider": provider, "plugin_id": plugin_id, "status": "runtime_ready"})
+                        else:
+                            row_issue_codes = sorted({code for plugin_row in plugin_rows for code in plugin_row.get("issue_codes", [])})
+                            if any(code == "plugin_installed_missing" for code in row_issue_codes):
+                                if "plugin_installed_missing" not in issue_codes:
+                                    issue_codes.append("plugin_installed_missing")
+                                status = "installed_missing"
+                            else:
+                                if "plugin_runtime_missing" not in issue_codes:
+                                    issue_codes.append("plugin_runtime_missing")
+                                status = "runtime_missing"
+                            plugin_statuses.append(
+                                {
+                                    "provider": provider,
+                                    "plugin_id": plugin_id,
+                                    "status": status,
+                                    "issue_codes": row_issue_codes,
+                                }
+                            )
+
         if app_workflows and workflow_model_binding_count == 0:
             issue_codes.append("workflow_model_binding_missing")
         if not app_workflows and app.get("mode") in {"advanced-chat", "workflow"}:
             issue_codes.append("workflow_missing")
 
         app_conversations = conversations_by_app.get(app_id, [])
+        llm_blocking_codes = {
+            "provider_model_missing",
+            "provider_model_invalid",
+            "plugin_metadata_missing",
+            "plugin_installed_missing",
+            "plugin_runtime_missing",
+            "plugin_runtime_unverified",
+        }
         rows.append(
             {
                 "app_id": app_id,
@@ -2397,7 +2465,7 @@ def app_api_readiness_section(sections: dict[str, dict[str, Any]]) -> dict[str, 
                 "workflow_count": len(app_workflows),
                 "workflow_model_binding_count": workflow_model_binding_count,
                 "ready_for_llm_dispatch": workflow_model_binding_count > 0
-                and not any(code in issue_codes for code in ("provider_model_missing", "provider_model_invalid")),
+                and not any(code in issue_codes for code in llm_blocking_codes),
                 "model_bindings": sorted(
                     unique_bindings.values(),
                     key=lambda item: (item.get("provider") or "", item.get("name") or "", item.get("mode") or ""),
@@ -2405,6 +2473,10 @@ def app_api_readiness_section(sections: dict[str, dict[str, Any]]) -> dict[str, 
                 "provider_model_statuses": sorted(
                     provider_statuses,
                     key=lambda item: (item.get("provider") or "", item.get("name") or "", item.get("status") or ""),
+                )[:50],
+                "plugin_runtime_statuses": sorted(
+                    plugin_statuses,
+                    key=lambda item: (item.get("provider") or "", item.get("plugin_id") or "", item.get("status") or ""),
                 )[:50],
                 "recent_conversation_count": len(app_conversations),
                 "latest_conversation_created_at": app_conversations[0].get("created_at") if app_conversations else None,
@@ -2544,6 +2616,7 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
         sections["workflow_model_bindings"]["rows"] = summarize_workflow_rows(
             sections["workflow_model_bindings"].get("rows", [])
         )
+    sections["plugin_runtime_readiness"] = plugin_runtime_readiness_section()
     sections["app_api_readiness"] = app_api_readiness_section(sections)
 
     section_status = {
@@ -2566,7 +2639,8 @@ def provider_model_summary_payload(query: dict[str, list[str]] | None = None) ->
             "encrypted_config raw values are never returned; only hashes, key structure, secret presence booleans, URL host/path hashes, and allowlisted non-secret fields are summarized.",
             "api_tokens.token raw values are never returned; only prefix, length and sha256 are summarized for local key drift checks.",
             "workflow graph raw values are never returned; only node model provider/name/mode and safe completion parameter summaries are returned.",
-            "app_api_readiness is derived from the fixed read-only sections and flags enabled apps with missing service API tokens or unresolvable workflow model bindings.",
+            "plugin_runtime_readiness summarizes plugin DB metadata, package cache, installed bucket and runtime state without returning secrets.",
+            "app_api_readiness is derived from the fixed read-only sections and flags enabled apps with missing service API tokens, unresolvable workflow model bindings, or unavailable plugin runtimes.",
             "URL path values are not returned because gateway paths can contain tenant, account, or routing identifiers.",
         ],
     }
@@ -2655,6 +2729,65 @@ def collect_plugin_identifiers(db_payload: dict[str, Any], package_dir: Path, in
                 if row.get(extra_key) and extra_key not in ("tenant_id", "plugin_id"):
                     entry[extra_key] = row[extra_key]
     return list(identifiers.values())
+
+
+def plugin_runtime_readiness_section() -> dict[str, Any]:
+    plugin_paths = plugin_storage_paths()
+    package_dir = plugin_paths["package_cache"]
+    installed_dir = plugin_paths["installed"]
+    db_payload = plugin_db_payload()
+    db_sections = [db_payload["plugins"], db_payload["plugin_installations"], db_payload["api_plugin_references"]]
+    failed_sections = [
+        {"section": name, "error": db_payload.get(name, {}).get("error", "")}
+        for name in ("plugins", "plugin_installations", "api_plugin_references")
+        if not db_payload.get(name, {}).get("ok")
+    ]
+    if failed_sections:
+        return {
+            "ok": False,
+            "count": 0,
+            "rows": [],
+            "error": "required plugin database section failed",
+            "failed_sections": failed_sections,
+        }
+
+    runtime_state = redis_hash_scan_candidates("plugin_state")
+    runtime_state_fields = runtime_state.get("fields", {}) if runtime_state.get("ok") else {}
+    rows: list[dict[str, Any]] = []
+    for item in collect_plugin_identifiers(db_payload, package_dir, installed_dir):
+        runtime = runtime_state_summary(item["plugin_unique_identifier"], runtime_state_fields)
+        log = plugin_runtime_log_summary(item["plugin_unique_identifier"])
+        row = {
+            **item,
+            "runtime_state": runtime,
+            "log": log,
+        }
+        issue_codes: list[str] = []
+        if not row.get("package_exists"):
+            issue_codes.append("plugin_package_missing")
+        if not row.get("installed_exists"):
+            issue_codes.append("plugin_installed_missing")
+        if row.get("installed_exists") and not plugin_runtime_ready(row):
+            issue_codes.append("plugin_runtime_state_missing")
+        if not runtime_state.get("ok"):
+            issue_codes.append("plugin_runtime_state_unverified")
+        row["runtime_ready"] = plugin_runtime_ready(row)
+        row["issue_codes"] = issue_codes
+        rows.append(row)
+
+    return {
+        "ok": bool(all(section.get("ok") for section in db_sections) and runtime_state.get("ok")),
+        "count": len(rows),
+        "rows": rows,
+        "runtime_state": {
+            "ok": runtime_state.get("ok"),
+            "key": runtime_state.get("key"),
+            "db": runtime_state.get("db"),
+            "prefix": runtime_state.get("prefix"),
+            "count": runtime_state.get("count", 0),
+            "error": runtime_state.get("error", ""),
+        },
+    }
 
 
 def persistence_payload() -> dict[str, Any]:
