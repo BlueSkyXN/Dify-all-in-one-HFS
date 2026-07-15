@@ -1,7 +1,10 @@
 import builtins
 import importlib.util
 import os
+import subprocess
 import sys
+import tempfile
+import textwrap
 import types
 import unittest
 from pathlib import Path
@@ -40,6 +43,11 @@ class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
 
     def tearDown(self):
         requests.sessions.Session.request = self.original_request
+        sys.meta_path[:] = [
+            finder
+            for finder in sys.meta_path
+            if not getattr(finder, "__dify_plugin_connect_timeout_import_hook__", False)
+        ]
         os.environ.clear()
         os.environ.update(self.original_env)
 
@@ -60,7 +68,8 @@ class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
             return "ok"
 
         requests.sessions.Session.request = fake_request
-        load_shim("plugin_runtime_sitecustomize_keyword_test")
+        shim = load_shim("plugin_runtime_sitecustomize_keyword_test")
+        self.assertTrue(shim.install_requests_timeout_shim())
 
         result = sdk_call(
             "    return requests.post(\n"
@@ -80,7 +89,8 @@ class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
             return "ok"
 
         requests.sessions.Session.request = fake_request
-        load_shim("plugin_runtime_sitecustomize_positional_test")
+        shim = load_shim("plugin_runtime_sitecustomize_positional_test")
+        self.assertTrue(shim.install_requests_timeout_shim())
 
         sdk_call(
             "    return requests.sessions.Session().request(\n"
@@ -100,7 +110,8 @@ class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
             return "ok"
 
         requests.sessions.Session.request = fake_request
-        load_shim("plugin_runtime_sitecustomize_validation_test")
+        shim = load_shim("plugin_runtime_sitecustomize_validation_test")
+        self.assertTrue(shim.install_requests_timeout_shim())
 
         result = sdk_call(
             "    return requests.post(\n"
@@ -138,6 +149,51 @@ class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
             self.assertFalse(shim.install_requests_timeout_shim())
 
         self.assertIs(requests.sessions.Session.request, self.original_request)
+
+    def test_requests_import_is_deferred_until_sdk_module_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp)
+            target = package_root / "dify_plugin" / "interfaces" / "model" / "openai_compatible"
+            target.mkdir(parents=True)
+            for package in (
+                package_root / "dify_plugin",
+                package_root / "dify_plugin" / "interfaces",
+                package_root / "dify_plugin" / "interfaces" / "model",
+                target,
+            ):
+                (package / "__init__.py").write_text("", encoding="utf-8")
+            (target / "llm.py").write_text("import requests\n", encoding="utf-8")
+
+            code = textwrap.dedent(
+                f"""
+                import importlib
+                import importlib.util
+                import sys
+
+                assert "requests" not in sys.modules
+                spec = importlib.util.spec_from_file_location("deferred_sitecustomize", {str(SHIM_PATH)!r})
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[spec.name] = module
+                spec.loader.exec_module(module)
+                assert "requests" not in sys.modules
+                sys.path.insert(0, {str(package_root)!r})
+                importlib.import_module("dify_plugin.interfaces.model.openai_compatible.llm")
+                import requests.sessions
+                assert getattr(
+                    requests.sessions.Session.request,
+                    "__dify_plugin_connect_timeout_shim__",
+                    False,
+                )
+                """
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", code],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
 
 if __name__ == "__main__":
