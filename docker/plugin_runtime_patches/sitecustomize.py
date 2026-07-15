@@ -10,6 +10,8 @@ leaves scalar timeouts, validation calls, and unrelated request shapes alone.
 from __future__ import annotations
 
 import functools
+import importlib.abc
+import importlib.machinery
 import os
 import sys
 from typing import Any
@@ -20,6 +22,7 @@ MAX_CONFIGURED_CONNECT_TIMEOUT_SECONDS = 300
 SDK_OPENAI_COMPATIBLE_MODULE = "dify_plugin.interfaces.model.openai_compatible.llm"
 SDK_OPENAI_COMPATIBLE_GENERATE_FUNCTION = "_generate"
 _SHIM_MARKER = "__dify_plugin_connect_timeout_shim__"
+_IMPORT_HOOK_MARKER = "__dify_plugin_connect_timeout_import_hook__"
 
 
 def configured_connect_timeout() -> int | None:
@@ -108,4 +111,55 @@ def install_requests_timeout_shim() -> bool:
     return True
 
 
-install_requests_timeout_shim()
+def remove_sdk_import_hook() -> None:
+    sys.meta_path[:] = [
+        finder
+        for finder in sys.meta_path
+        if not getattr(finder, _IMPORT_HOOK_MARKER, False)
+    ]
+
+
+class _SdkModuleLoader(importlib.abc.Loader):
+    def __init__(self, delegate: importlib.abc.Loader) -> None:
+        self.delegate = delegate
+
+    def create_module(self, spec: Any) -> Any:
+        create_module = getattr(self.delegate, "create_module", None)
+        return create_module(spec) if create_module is not None else None
+
+    def exec_module(self, module: Any) -> None:
+        try:
+            self.delegate.exec_module(module)
+            install_requests_timeout_shim()
+        finally:
+            remove_sdk_import_hook()
+
+
+class _SdkModuleFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname: str, path: Any, target: Any = None) -> Any:
+        del target
+        if fullname != SDK_OPENAI_COMPATIBLE_MODULE:
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(fullname, path)
+        if spec is None or spec.loader is None:
+            return spec
+        spec.loader = _SdkModuleLoader(spec.loader)
+        return spec
+
+
+def install_sdk_import_hook() -> bool:
+    # Dify imports gevent and calls monkey.patch_all() from dify_plugin.__init__.
+    # Importing Requests here would load ssl too early and can trigger recursive
+    # late monkey-patching. Defer the Requests patch until the exact SDK module
+    # has completed its normal import after the gevent bootstrap.
+    if SDK_OPENAI_COMPATIBLE_MODULE in sys.modules:
+        return install_requests_timeout_shim()
+    if any(getattr(finder, _IMPORT_HOOK_MARKER, False) for finder in sys.meta_path):
+        return False
+    finder = _SdkModuleFinder()
+    setattr(finder, _IMPORT_HOOK_MARKER, True)
+    sys.meta_path.insert(0, finder)
+    return True
+
+
+install_sdk_import_hook()
