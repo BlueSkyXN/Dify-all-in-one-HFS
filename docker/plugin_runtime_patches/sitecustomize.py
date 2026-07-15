@@ -1,10 +1,14 @@
-"""Bound the connect timeout used by Dify's OpenAI-compatible plugin SDK.
+"""Bound Dify's OpenAI-compatible plugin SDK request failure surface.
 
 The SDK currently sends model requests with ``timeout=(10, MAX_REQUEST_TIMEOUT)``.
 During DNS/TCP/TLS setup, Requests reports the first value as a ``ReadTimeout``;
 raising only the provider credential's read timeout therefore cannot fix a slow
 connection setup.  This image-controlled shim changes only that exact tuple and
 leaves scalar timeouts, validation calls, and unrelated request shapes alone.
+
+An opt-in retry handles one narrowly identified TLS EOF before Requests returns
+a response.  It is disabled by default because retrying a model POST can cause
+duplicate inference or billing when the upstream received the first request.
 """
 
 from __future__ import annotations
@@ -14,11 +18,15 @@ import importlib.abc
 import importlib.machinery
 import os
 import sys
+import time
 from typing import Any
 
 
 DEFAULT_SDK_CONNECT_TIMEOUT_SECONDS = 10
 MAX_CONFIGURED_CONNECT_TIMEOUT_SECONDS = 300
+DEFAULT_SSL_EOF_MAX_RETRIES = 0
+MAX_SSL_EOF_MAX_RETRIES = 1
+SSL_EOF_RETRY_BACKOFF_SECONDS = 0.25
 SDK_OPENAI_COMPATIBLE_MODULE = "dify_plugin.interfaces.model.openai_compatible.llm"
 SDK_OPENAI_COMPATIBLE_GENERATE_FUNCTION = "_generate"
 _SHIM_MARKER = "__dify_plugin_connect_timeout_shim__"
@@ -45,6 +53,13 @@ def configured_read_timeout() -> int | None:
     return value if value > 0 else None
 
 
+def configured_ssl_eof_max_retries() -> int:
+    raw = os.environ.get("PLUGIN_SSL_EOF_MAX_RETRIES", str(DEFAULT_SSL_EOF_MAX_RETRIES)).strip()
+    if raw not in {str(DEFAULT_SSL_EOF_MAX_RETRIES), str(MAX_SSL_EOF_MAX_RETRIES)}:
+        return DEFAULT_SSL_EOF_MAX_RETRIES
+    return int(raw)
+
+
 def rewrite_timeout(timeout: Any) -> Any:
     connect_timeout = configured_connect_timeout()
     read_timeout = configured_read_timeout()
@@ -57,6 +72,44 @@ def rewrite_timeout(timeout: Any) -> Any:
     if connect_timeout > read_timeout:
         return timeout
     return (connect_timeout, read_timeout)
+
+
+def wrapped_exceptions(error: BaseException):
+    pending = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        yield current
+
+        cause = getattr(current, "__cause__", None)
+        if isinstance(cause, BaseException):
+            pending.append(cause)
+        elif not getattr(current, "__suppress_context__", False):
+            context = getattr(current, "__context__", None)
+            if isinstance(context, BaseException):
+                pending.append(context)
+
+        reason = getattr(current, "reason", None)
+        if isinstance(reason, BaseException):
+            pending.append(reason)
+        pending.extend(item for item in current.args if isinstance(item, BaseException))
+
+
+def is_ssl_eof_error(error: BaseException) -> bool:
+    # Import ssl only after the SDK module completed its gevent bootstrap.
+    import ssl
+
+    for current in wrapped_exceptions(error):
+        if current is error:
+            continue
+        if isinstance(current, ssl.SSLEOFError):
+            return True
+        if "UNEXPECTED_EOF_WHILE_READING" in str(current).upper():
+            return True
+    return False
 
 
 def is_sdk_openai_compatible_generate_request() -> bool:
@@ -99,12 +152,23 @@ def install_requests_timeout_shim() -> bool:
         **kwargs: Any,
     ) -> Any:
         positional = list(args)
-        if is_sdk_openai_compatible_generate_request():
+        is_target_request = is_sdk_openai_compatible_generate_request()
+        if is_target_request:
             if len(positional) > 6:
                 positional[6] = rewrite_timeout(positional[6])
             elif "timeout" in kwargs:
                 kwargs["timeout"] = rewrite_timeout(kwargs["timeout"])
-        return current(self, method, url, *positional, **kwargs)
+
+        max_retries = configured_ssl_eof_max_retries() if is_target_request else 0
+        retries = 0
+        while True:
+            try:
+                return current(self, method, url, *positional, **kwargs)
+            except requests.exceptions.SSLError as error:
+                if retries >= max_retries or not is_ssl_eof_error(error):
+                    raise
+                retries += 1
+                time.sleep(SSL_EOF_RETRY_BACKOFF_SECONDS)
 
     setattr(request_with_bounded_connect_timeout, _SHIM_MARKER, True)
     requests.sessions.Session.request = request_with_bounded_connect_timeout
