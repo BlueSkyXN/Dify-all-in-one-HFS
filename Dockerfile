@@ -170,6 +170,7 @@ COPY docker/dify.env.runtime /etc/dify/dify.env.runtime
 COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
+COPY docker/plugin_runtime_patches /opt/dify/plugin-runtime-patches
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service

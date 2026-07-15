@@ -59,6 +59,7 @@ require_file docker/entrypoint.sh
 require_file docker/supervisord.conf
 require_file docker/ops_service.py
 require_file docker/admin_service.py
+require_file docker/plugin_runtime_patches/sitecustomize.py
 require_file docker/healthcheck.sh
 require_file scripts/hf-space-smoke.sh
 require_file docs/hfs-alignment.md
