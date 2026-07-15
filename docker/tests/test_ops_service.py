@@ -87,6 +87,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                 "DIFY_AIO_BUILD_DIFY_SOURCE_REPO": "https://github.com/BlueSkyXN/dify.git",
                 "DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF": "1d2cc1e",
                 "DIFY_AIO_BUILD_DIFY_AGENT_SOURCE_REF": "cf5735d",
+                "DIFY_AIO_BUILD_DIFY_UPSTREAM_MAIN_REF": "abb9972",
                 "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF": "44cdbd5",
                 "SANDBOX_UID_POOL_MIN": "1000",
                 "SANDBOX_UID_POOL_MAX": "1001",
@@ -105,6 +106,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(build["dify_source_repo"], "https://github.com/BlueSkyXN/dify.git")
         self.assertEqual(build["dify_source_main_ref"], "1d2cc1e")
         self.assertEqual(build["dify_agent_source_ref"], "cf5735d")
+        self.assertEqual(build["dify_upstream_main_ref"], "abb9972")
         self.assertEqual(build["sandbox_source_ref"], "44cdbd5")
         self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
         self.assertEqual(sandbox["uid_pool_min"], "1000")

@@ -98,10 +98,12 @@ SANDBOX_API_KEY
 AGENT_BACKEND_BASE_URL
 DIFY_AGENT_REDIS_URL
 DIFY_AGENT_PLUGIN_DAEMON_API_KEY
-DIFY_AGENT_DIFY_API_INNER_API_KEY
+DIFY_AGENT_INNER_API_KEY
+DIFY_AGENT_STUB_API_BASE_URL
+DIFY_AGENT_SERVER_SECRET_KEY
 ```
 
-其中 `SERVER_CONSOLE_API_URL` 在 all-in-one 容器内固定默认到 `http://127.0.0.1:5001`，供 Dify Web 的 server-side rendering 直接访问同容器 API；不要把它覆盖为 Hugging Face 公网域名。`CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。`DIFY_AGENT_ENABLED=true` 时，`with-dify-env` 会派生 Agent backend base URL、Redis URL、Plugin Daemon key 和 Dify inner API key。重复上传这些变量会增加配置漂移风险。
+其中 `SERVER_CONSOLE_API_URL` 在 all-in-one 容器内固定默认到 `http://127.0.0.1:5001`，供 Dify Web 的 server-side rendering 直接访问同容器 API；不要把它覆盖为 Hugging Face 公网域名。`CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。`DIFY_AGENT_ENABLED=true` 时，`with-dify-env` 会派生 Agent backend base URL、Redis URL、Plugin Daemon key、Dify inner API key 和同容器 Agent Stub URL；entrypoint 会生成 Agent Stub server secret。重复上传这些变量会增加配置漂移风险。
 
 ## Hugging Face Space Metadata
 
@@ -166,9 +168,13 @@ AGENT_BACKEND_BASE_URL=http://127.0.0.1:5005
 DIFY_AGENT_REDIS_URL=redis://:<url-encoded-REDIS_PASSWORD>@127.0.0.1:6379/2
 DIFY_AGENT_PLUGIN_DAEMON_URL=http://127.0.0.1:5002
 DIFY_AGENT_PLUGIN_DAEMON_API_KEY=${PLUGIN_DAEMON_KEY}
-DIFY_AGENT_DIFY_API_BASE_URL=http://127.0.0.1:5001
-DIFY_AGENT_DIFY_API_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
+DIFY_AGENT_INNER_API_URL=http://127.0.0.1:5001
+DIFY_AGENT_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
+DIFY_AGENT_STUB_API_BASE_URL=http://127.0.0.1:5005/agent-stub
+DIFY_AGENT_SERVER_SECRET_KEY=<generated-in-/data/config/generated.env>
 ```
+
+旧的 `DIFY_AGENT_DIFY_API_BASE_URL`、`DIFY_AGENT_DIFY_API_INNER_API_KEY` 和 `DIFY_AGENT_STUB_URL` 仍作为兼容 alias 接受，但最新 self fork 实际读取的是上面的 canonical 变量；新配置不要继续上传旧名。
 
 可按需覆盖的非 secret 开关：
 
@@ -182,14 +188,18 @@ DIFY_AGENT_DIFY_API_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
 | `DIFY_AGENT_ENABLED` | `true` | 是否启动本容器内 `dify-agent` FastAPI backend |
 | `DIFY_AGENT_HOST` | `127.0.0.1` | backend 监听地址；不要绑定公网 |
 | `DIFY_AGENT_PORT` | `5005` | backend 内部端口 |
+| `DIFY_AGENT_VIRTUAL_ENV` | `/opt/dify-agent/.venv` | 独立 Agent/shellctl Python 环境；不要改回 `/app/api/.venv`，两边 `graphon` 版本不兼容 |
 | `DIFY_AGENT_STARTUP_DELAY_SECONDS` | `30` | core API health 通过后再启动 backend 的延迟，降低 HFS cpu-basic 启动期资源竞争 |
 | `AGENT_BACKEND_USE_FAKE` | `false` | API 侧 fake backend 开关，仅用于局部开发/测试 |
 | `AGENT_SHELL_ENABLED` | `true` | shell layer 开关；NEXT 默认由同容器 loopback `shellctl` 支撑，设为 `false` 时 `run-shellctl` 保持 idle |
 | `AGENT_DRIVE_MANIFEST_ENABLED` | `true` | drive manifest 开关；让 Agent runtime 接收 Skills & Files drive manifest 声明 |
+| `DIFY_AGENT_INNER_API_URL` | `http://127.0.0.1:5001` | Agent backend 调用同容器 Dify `/inner/api/...` 的 canonical base URL |
+| `DIFY_AGENT_STUB_API_BASE_URL` | `http://127.0.0.1:5005/agent-stub` | 注入 shell job 的同容器 Agent Stub API；只保持 loopback，不经 Nginx 暴露 |
+| `DIFY_AGENT_SHELL_PROVIDER` | `shellctl` | self fork 的 shell provider；HFS NEXT 使用同容器 Python shellctl，不启用 enterprise gateway |
 | `DIFY_AGENT_SHELLCTL_ENTRYPOINT` | `http://127.0.0.1:5004` | Agent shell layer 的内部 shellctl endpoint；只能保持 loopback，不要暴露到 Nginx 或公网 |
 | `DIFY_AGENT_REDIS_PREFIX` | `dify-agent-next` | Agent backend Redis key prefix |
 
-`SERVER_WORKER_CLASS` 和 `API_WEBSOCKET_WORKER_CLASS` 默认使用 `geventwebsocket.gunicorn.workers.GeventWebSocketWorker`，Nginx 保留 `/socket.io/` WebSocket upgrade headers。`/_ops/health` 会暴露 `agent_backend` 和 `shellctl` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 与 shellctl 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
+`DIFY_AGENT_SERVER_SECRET_KEY` 由 entrypoint 自动生成并持久化到 `/data/config/generated.env`，用于 Agent Stub token 派生；`/_ops` 只返回 presence boolean，不返回原文。`SERVER_WORKER_CLASS` 和 `API_WEBSOCKET_WORKER_CLASS` 默认使用 `geventwebsocket.gunicorn.workers.GeventWebSocketWorker`，Nginx 保留 `/socket.io/` WebSocket upgrade headers。`/_ops/health` 会暴露 `agent_backend` 和 `shellctl` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 与 shellctl 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
 
 ## 推荐 Space Secrets
 

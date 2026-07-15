@@ -63,12 +63,13 @@ SANDBOX_IMAGE_REF
 DIFY_SOURCE_REPO
 DIFY_SOURCE_MAIN_REF
 DIFY_AGENT_SOURCE_REF
+DIFY_UPSTREAM_MAIN_REF
 DIFY_SANDBOX_SOURCE_REF
 UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_MAIN_REF` 记录 maintained Dify fork main commit；`DIFY_AGENT_SOURCE_REF` 是 overlay 安装 `dify-agent` backend package 的 source pin；`DIFY_SANDBOX_SOURCE_REF` 是 NEXT patched Sandbox server binary 的 source pin。NEXT branch 默认值已 pin 到 Docker Hub main digest 和 maintained fork source set；更新上游、更新 fork main 或回到稳定版时必须作为一组 co-pin 修改。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源或 Agent package 来源。
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_MAIN_REF` 记录 maintained self fork main commit；`DIFY_AGENT_SOURCE_REF` 是独立 `/opt/dify-agent/.venv` 安装 `dify-agent` backend package 的 source pin；`DIFY_UPSTREAM_MAIN_REF` 记录 Web/API official main image 的源码 commit；`DIFY_SANDBOX_SOURCE_REF` 是 NEXT patched Sandbox server binary 的 source pin。NEXT branch 默认值已 pin 到 Docker Hub main digest、official upstream image ref 和 self fork source set；更新上游、更新 fork main 或回到稳定版时必须作为一组 co-pin 修改。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源或 Agent package 来源。
 
 ### `.dockerignore`
 
@@ -274,7 +275,7 @@ Dify API/Web/Worker/Beat 的环境包装器。
 
 - source runtime defaults 和 generated secrets。
 - 确保 `/app/api/.venv/bin` 在 `PATH` 中。
-- `DIFY_AGENT_ENABLED=true` 时派生 `AGENT_BACKEND_BASE_URL`、URL-encoded `DIFY_AGENT_REDIS_URL`、`DIFY_AGENT_PLUGIN_DAEMON_API_KEY` 和 `DIFY_AGENT_DIFY_API_INNER_API_KEY`。
+- `DIFY_AGENT_ENABLED=true` 时派生 `AGENT_BACKEND_BASE_URL`、URL-encoded `DIFY_AGENT_REDIS_URL`、`DIFY_AGENT_PLUGIN_DAEMON_API_KEY`、`DIFY_AGENT_INNER_API_URL`、`DIFY_AGENT_INNER_API_KEY` 和 `DIFY_AGENT_STUB_API_BASE_URL`；旧 `DIFY_AGENT_DIFY_API_*` / `DIFY_AGENT_STUB_URL` 只保留兼容映射。
 - 执行传入命令。
 
 ### `docker/run-dify-agent`
@@ -284,7 +285,7 @@ NEXT Agent backend 启动脚本。
 职责：
 
 - `DIFY_AGENT_ENABLED=false` 时保持 supervisor program idle，不影响稳定 demo。
-- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后启动 `uvicorn dify_agent.server.app:app`。
+- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后从独立 `/opt/dify-agent/.venv` 启动 `uvicorn dify_agent.server.app:app`。
 - 只监听内部 `DIFY_AGENT_HOST:DIFY_AGENT_PORT`，默认 `127.0.0.1:5005`。
 
 ### `docker/run-shellctl`
@@ -294,7 +295,7 @@ NEXT Agent shell layer 启动脚本。
 职责：
 
 - `DIFY_AGENT_ENABLED=false` 或 `AGENT_SHELL_ENABLED=false` 时保持 supervisor program idle。
-- 开启时执行 `shellctl serve --listen 127.0.0.1:5004`。
+- 开启时从独立 `/opt/dify-agent/.venv` 执行 `shellctl serve --listen 127.0.0.1:5004`，并把 SQLite/tmux runtime 放到 `${RUNTIME_ROOT}/shellctl`。
 - 只服务内部 loopback endpoint，不经 Nginx 暴露公网。
 
 ### `docker/with-plugin-env`
@@ -391,6 +392,7 @@ SANDBOX_IMAGE_REF
 DIFY_SOURCE_REPO
 DIFY_SOURCE_MAIN_REF
 DIFY_AGENT_SOURCE_REF
+DIFY_UPSTREAM_MAIN_REF
 DIFY_SANDBOX_SOURCE_REF
 DIFY_VERSION
 UV_VERSION

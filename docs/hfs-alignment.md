@@ -107,6 +107,7 @@ SANDBOX_IMAGE_REF
 DIFY_SOURCE_REPO
 DIFY_SOURCE_MAIN_REF
 DIFY_AGENT_SOURCE_REF
+DIFY_UPSTREAM_MAIN_REF
 DIFY_SANDBOX_SOURCE_REF
 ```
 
@@ -114,19 +115,20 @@ NEXT branch 默认值 pin 到当前可运行的 NEXT digest/source set：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a9da248482d446889b4b153a44766eaf9b34934a29b3406307b4dba7085d62c7
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:d4be5a72cf33b29de4b7d00c30f1ca8ab929bb35948ecdcbb3e18bfb6f6d6857
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c32b9aadb9231697eef850fae4ac79a
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:1625345656d367085adb258e9670f72ee359dcb434ad5d09f96fabe0cbcb423f
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=d5ecd503008d2ce21e93ff07d864dcb82307f93a
-DIFY_AGENT_SOURCE_REF=d5ecd503008d2ce21e93ff07d864dcb82307f93a
-DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
+DIFY_SOURCE_MAIN_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_AGENT_SOURCE_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
+DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
 UV_VERSION=0.11.21
-DIFY_VERSION=BlueSkyXN-dify-main-d5ecd503008d2ce21e93ff07d864dcb82307f93a-agent-d5ecd503008d2ce21e93ff07d864dcb82307f93a
+DIFY_VERSION=BlueSkyXN-dify-main-4890f9e16557b3cbae6f9388b69f2cda1c39ee44-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-4890f9e16557b3cbae6f9388b69f2cda1c39ee44
 ```
 
-这个 pin set 对 Web/API 指向 Docker Hub 当前 `main` digest；Agent backend package 从 maintained fork main source ref 覆盖安装；Sandbox 的 `/conf` 和 `/dependencies` 使用 HFS 执行自检已通过的 digest，Sandbox server binary 仍来自 source-pinned patch build。不要把上游 `docker/docker-compose.yaml` 中仍引用 release image tag 的事实，误读为目标 main 源码没有进入 NEXT；直接 `docker compose up` upstream main 仍可能跑 release 镜像，NEXT/HFS 则显式选择 digest-pinned Docker Hub main image 和 Agent source overlay。Docker Hub 当前没有 fork merge commit `d5ecd503008d2ce21e93ff07d864dcb82307f93a` 或 upstream commit `0035d90e36369aa20a3b83cc92ac42eeb7a1b4cf` 对应的 API/Web commit tag，所以 release note 必须区分 image digest 与 source ref。
+这个 pin set 对 Web/API 指向 Docker Hub 当前 `main` digest；Agent backend package 从 self main source ref 安装到独立 `/opt/dify-agent/.venv`；Sandbox 的 `/conf` 和 `/dependencies` 使用当前 `main` digest，server binary 仍来自 source-pinned HFS patch build。API image 与 self Agent package 的 `graphon` 约束不同，独立 virtualenv 是当前 co-pin contract 的一部分。Docker Hub 通常没有 fork merge commit 对应的 API/Web commit tag，所以 release note 必须区分 image digest 与 source ref。
 
 更新 NEXT 上游时必须记录并传入新的 digest ref：
 
@@ -139,6 +141,7 @@ SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:...
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
 DIFY_SOURCE_MAIN_REF=<dify-main-commit>
 DIFY_AGENT_SOURCE_REF=<dify-agent-hotfix-commit>
+DIFY_UPSTREAM_MAIN_REF=<official-upstream-image-commit>
 DIFY_SANDBOX_SOURCE_REF=<dify-sandbox-commit>
 UV_VERSION=<pinned-version>
 ```

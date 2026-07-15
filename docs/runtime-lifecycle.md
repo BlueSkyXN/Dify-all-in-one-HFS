@@ -7,12 +7,12 @@
 `Dockerfile` 使用多阶段构建，复用官方镜像资产：
 
 1. `web-builder`
-   - 来源：`${DIFY_WEB_IMAGE_REF}`，NEXT 默认 pin 到 Docker Hub 当前 `langgenius/dify-web:main` digest `langgenius/dify-web@sha256:a9da248482d446889b4b153a44766eaf9b34934a29b3406307b4dba7085d62c7`。
+   - 来源：`${DIFY_WEB_IMAGE_REF}`，NEXT 默认 pin 到 official upstream `${DIFY_UPSTREAM_MAIN_REF}` 对应的 Docker Hub `main` digest `langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c32b9aadb9231697eef850fae4ac79a`。
    - 验证 `/app/targets/next`、`/app/targets/vinext` 和 `/app/entrypoint.sh` 存在。
    - 最终复制 `/app/targets/` 和 `/app/entrypoint.sh` 到 runtime。
 
 2. `api-image`
-   - 来源：`${DIFY_API_IMAGE_REF}`，NEXT 默认 pin 到 Docker Hub 当前 `langgenius/dify-api:main` digest `langgenius/dify-api@sha256:d4be5a72cf33b29de4b7d00c30f1ca8ab929bb35948ecdcbb3e18bfb6f6d6857`。
+   - 来源：`${DIFY_API_IMAGE_REF}`，NEXT 默认 pin 到 official upstream `${DIFY_UPSTREAM_MAIN_REF}` 对应的 Docker Hub `main` digest `langgenius/dify-api@sha256:1625345656d367085adb258e9670f72ee359dcb434ad5d09f96fabe0cbcb423f`。
    - 验证 `/app/api/.venv/bin/flask` 和 `/app/api/docker/entrypoint.sh` 存在。
    - 最终复制 `/app/api` 到 runtime。
 
@@ -22,19 +22,19 @@
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
 4. `sandbox-image`
-   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到 HFS `sandbox_exec` 启动自检已通过的 config/dependencies digest `langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788`。`sandbox_exec` 判定必须同时满足 sandbox HTTP 200、JSON envelope 成功、`exit_code=0`、`error=""` 和 stdout marker。
+   - 来源：`${SANDBOX_IMAGE_REF}`，NEXT 默认 pin 到当前 config/dependencies digest `langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8`。`sandbox_exec` 判定必须同时满足 sandbox HTTP 200、JSON envelope 成功、`exit_code=0`、`error=""` 和 stdout marker。
    - 最终复制 `/conf` 和 `/dependencies`。
    - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
 5. `sandbox-builder`
-   - 来源：`${DIFY_SANDBOX_SOURCE_REF}`，NEXT 默认 pin 到 `44cdbd5d1991b97e40cb113c669800f4628920bb`。
+   - 来源：`${DIFY_SANDBOX_SOURCE_REF}`，NEXT 默认 pin 到 `97c8097d51d0f46238bb720b1e9e9439ce68784d`。
    - 构建一个只包含 HFS UID/GID 兼容 patch 的 `/opt/dify/sandbox/main`，使 sandbox execution 默认使用 Hugging Face 映射的 UID/GID `1000`，而不是 upstream 默认 `10000..10999` UID pool。
    - 仍使用 upstream chroot/seccomp 代码路径；HFS 默认 `SANDBOX_UID_POOL_MIN=1000`、`SANDBOX_UID_POOL_MAX=1001`、`SANDBOX_RUN_GID=1000` 会让 code execution 串行化到单 UID。
 
 6. `runtime`
    - 来源：`${BASE_IMAGE_REF}`，开发默认 `python:3.12-slim-bookworm`。
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv、tmux 等运行时依赖。
-   - 先通过 `uv pip install --no-deps` 从 `${DIFY_SOURCE_REPO}@${DIFY_AGENT_SOURCE_REF}` 的 `dify-agent` 子目录覆盖安装 maintained fork main package，再补齐并 pin `dify-agent` server 和 `shellctl` 运行所需依赖，执行 `import dify_agent.server.app`、source assertion、`shellctl --help` 和 `uv pip check` 作为 build gate；只放行 API image 已存在的 `clickzetta-connector-python` / `pyarrow`、`alibabacloud-tea-openapi` / `cryptography` 和 `msal` / `cryptography` 版本不兼容，其余依赖冲突仍会 fail。
+   - 在 `/opt/dify-agent/.venv` 从 `${DIFY_SOURCE_REPO}@${DIFY_AGENT_SOURCE_REF}` 安装 self package 的 `server`、`grpc`、`shellctl-server` extras；执行 Agent/server/shellctl import、source assertion、API 与 Agent 双 `graphon` 版本断言、CLI help 和独立 `uv pip check` 作为 build gate。API 的 `/app/api/.venv` 不再被 Agent overlay 修改。
    - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
    - 将 Sandbox binary 设置为 setuid root，满足 sandbox runtime 需求。
@@ -43,19 +43,20 @@
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:a9da248482d446889b4b153a44766eaf9b34934a29b3406307b4dba7085d62c7
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:d4be5a72cf33b29de4b7d00c30f1ca8ab929bb35948ecdcbb3e18bfb6f6d6857
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c32b9aadb9231697eef850fae4ac79a
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:1625345656d367085adb258e9670f72ee359dcb434ad5d09f96fabe0cbcb423f
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:41632ad63bddd8bcea83453270f3284d287c9e7cb463dac96644268770270788
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=d5ecd503008d2ce21e93ff07d864dcb82307f93a
-DIFY_AGENT_SOURCE_REF=d5ecd503008d2ce21e93ff07d864dcb82307f93a
-DIFY_SANDBOX_SOURCE_REF=44cdbd5d1991b97e40cb113c669800f4628920bb
-DIFY_VERSION=BlueSkyXN-dify-main-d5ecd503008d2ce21e93ff07d864dcb82307f93a-agent-d5ecd503008d2ce21e93ff07d864dcb82307f93a
+DIFY_SOURCE_MAIN_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_AGENT_SOURCE_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
+DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+DIFY_VERSION=BlueSkyXN-dify-main-4890f9e16557b3cbae6f9388b69f2cda1c39ee44-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-4890f9e16557b3cbae6f9388b69f2cda1c39ee44
 UV_VERSION=0.11.21
 ```
 
-NEXT branch 默认值已使用 digest ref、Dify source ref、Agent source ref 和 sandbox source ref，便于复现当前 Docker Hub main image + maintained fork main Agent package 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF` 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。不要用上游 `docker/docker-compose.yaml` 里的 release image tag 判断 main 代码是否已经运行；NEXT 走的是 digest-pinned Docker Hub main image，不是 compose release tag。若目标源码已经前进但对应 Web/API commit-tag 镜像还不存在，保持可验证 digest set、使用小范围 Python package overlay，或改走源码自建，比只改 `DIFY_VERSION` 更准确。
+NEXT branch 默认值已使用 digest ref、official upstream image source ref、self source ref、Agent source ref 和 sandbox source ref，便于复现当前 Docker Hub main image + self fork Agent package 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image、`DIFY_UPSTREAM_MAIN_REF`、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF` 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。不要用上游 `docker/docker-compose.yaml` 里的 release image tag 判断 main 代码是否已经运行；NEXT 走的是 digest-pinned Docker Hub main image，不是 compose release tag。若 official upstream commit-tag 镜像尚未发布，应等待 image provenance 可验证后再推进，而不是只改 metadata；self Agent package 继续在独立 virtualenv 中安装。
 
 `DIFY_VERSION` 只作为 build/runtime metadata，不再参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`；需要切换 Agent backend package 时必须覆盖 `DIFY_AGENT_SOURCE_REF`。Plugin Daemon 使用 `0.6.2-local` 对应 digest，发布验证不要依赖可变的 `latest-local` tag。
 

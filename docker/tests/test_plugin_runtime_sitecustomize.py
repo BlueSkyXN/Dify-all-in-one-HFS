@@ -70,6 +70,9 @@ def run_with_plugin_env(retry_value: str | None):
         wrapper.write_text(wrapper_text, encoding="utf-8")
 
         env = os.environ.copy()
+        env["RUNTIME_ROOT"] = str(root / "runtime")
+        env["PLUGIN_STORAGE_LOCAL_ROOT"] = str(root / "plugin-storage")
+        env["PLUGIN_WORKING_PATH"] = str(root / "plugin-cwd")
         if retry_value is None:
             env.pop("PLUGIN_SSL_EOF_MAX_RETRIES", None)
         else:

@@ -18,4 +18,20 @@ if ! is_true "${AGENT_SHELL_ENABLED:-false}"; then
   exec sleep infinity
 fi
 
-exec /app/api/.venv/bin/shellctl serve --listen 127.0.0.1:5004
+agent_virtual_env=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}
+if [ ! -x "${agent_virtual_env}/bin/shellctl" ]; then
+  printf '[shellctl] shellctl is missing from DIFY_AGENT_VIRTUAL_ENV: %s\n' "$agent_virtual_env" >&2
+  exit 1
+fi
+export VIRTUAL_ENV="$agent_virtual_env"
+export PATH="${agent_virtual_env}/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+export SHELLCTL_AUTH_TOKEN=${SHELLCTL_AUTH_TOKEN:-${DIFY_AGENT_SHELLCTL_AUTH_TOKEN:-}}
+
+state_dir=${SHELLCTL_STATE_DIR:-${RUNTIME_ROOT:-/tmp/dify-aio}/shellctl}
+runtime_dir=${SHELLCTL_RUNTIME_DIR:-${state_dir}/run}
+mkdir -p "$state_dir" "$runtime_dir"
+
+exec "${agent_virtual_env}/bin/shellctl" serve \
+  --listen 127.0.0.1:5004 \
+  --state-dir "$state_dir" \
+  --runtime-dir "$runtime_dir"

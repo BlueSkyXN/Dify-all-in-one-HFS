@@ -12,6 +12,7 @@ for arg_name in \
   DIFY_SOURCE_REPO \
   DIFY_SOURCE_MAIN_REF \
   DIFY_AGENT_SOURCE_REF \
+  DIFY_UPSTREAM_MAIN_REF \
   DIFY_SANDBOX_SOURCE_REF \
   DIFY_VERSION \
   UV_VERSION; do
@@ -29,6 +30,7 @@ done
 # DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git \
 # DIFY_SOURCE_MAIN_REF=<dify-main-commit> \
 # DIFY_AGENT_SOURCE_REF=<dify-agent-hotfix-commit> \
+# DIFY_UPSTREAM_MAIN_REF=<upstream-main-image-commit> \
 # DIFY_SANDBOX_SOURCE_REF=<dify-sandbox-commit> \
 # BASE_IMAGE_REF=python:3.12-slim-bookworm \
 # DIFY_VERSION=BlueSkyXN-dify-main-<commit>-agent-<commit> \
