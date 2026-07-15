@@ -74,13 +74,13 @@ DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfe
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=1.16.0-rc1
+DIFY_VERSION=1.15.0
 UV_VERSION=latest
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-Web/API 默认值固定为经过兼容性确认的 `1.16.0-rc1` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍保留现有开发默认值。发布或长期演示仍应记录全部 image ref 并固定剩余可移动输入。`DIFY_VERSION=1.16.0-rc1` 只作为 metadata 描述该 Web/API pair，真实镜像内容始终以两个 digest ref 为准。
+Web/API 默认值固定为经过兼容性确认的 `1.15.0` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍保留现有开发默认值。发布或长期演示仍应记录全部 image ref 并固定剩余可移动输入。`DIFY_VERSION=1.15.0` 只作为 metadata 描述该 Web/API pair，真实镜像内容始终以两个 digest ref 为准。
 
 ## 运行状态入口
 

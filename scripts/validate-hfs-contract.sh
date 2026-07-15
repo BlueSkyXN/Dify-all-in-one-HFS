@@ -253,12 +253,12 @@ require_grep '^ARG SANDBOX_IMAGE_REF=' Dockerfile \
 require_line \
   'ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106' \
   Dockerfile \
-  "Dockerfile must default DIFY_WEB_IMAGE_REF to the validated 1.16.0-rc1 web digest"
+  "Dockerfile must default DIFY_WEB_IMAGE_REF to the validated 1.15.0 web digest"
 require_line \
   'ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24' \
   Dockerfile \
-  "Dockerfile must default DIFY_API_IMAGE_REF to the validated 1.16.0-rc1 API digest"
-require_line 'ARG DIFY_VERSION=1.16.0-rc1' Dockerfile \
+  "Dockerfile must default DIFY_API_IMAGE_REF to the validated 1.15.0 API digest"
+require_line 'ARG DIFY_VERSION=1.15.0' Dockerfile \
   "Dockerfile DIFY_VERSION metadata must describe the validated Web/API digest pair"
 require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
   "Dockerfile must select web image from DIFY_WEB_IMAGE_REF"

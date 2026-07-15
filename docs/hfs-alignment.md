@@ -106,7 +106,7 @@ PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
 ```
 
-当前 Web/API 默认值固定为兼容的 `1.16.0-rc1` digest pair；其他上游输入保留现有开发默认值：
+当前 Web/API 默认值固定为兼容的 `1.15.0` digest pair；其他上游输入保留现有开发默认值：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
@@ -115,7 +115,7 @@ DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c4
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
 UV_VERSION=latest
-DIFY_VERSION=1.16.0-rc1
+DIFY_VERSION=1.15.0
 ```
 
 Web/API 默认选择已经可复现，但完整发布仍必须记录全部输入，并把其余 image ref 与 uv 固定后再构建：
@@ -129,7 +129,7 @@ SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:...
 UV_VERSION=<pinned-version>
 ```
 
-`DIFY_VERSION=1.16.0-rc1` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源，两个 digest ref 才是事实源。
+`DIFY_VERSION=1.15.0` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源，两个 digest ref 才是事实源。
 
 ## 对其他 HFS 项目的迁移规则
 

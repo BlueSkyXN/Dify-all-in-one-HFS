@@ -64,7 +64,7 @@ UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。Dify Web/API 默认固定为兼容的 `1.16.0-rc1` digest pair；其他上游输入仍可由 build arg 覆盖，发布构建应记录并固定全部 image ref。`DIFY_VERSION` 只作为 metadata，不决定 Dify Web/API 镜像来源。
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。Dify Web/API 默认固定为兼容的 `1.15.0` digest pair；其他上游输入仍可由 build arg 覆盖，发布构建应记录并固定全部 image ref。`DIFY_VERSION` 只作为 metadata，不决定 Dify Web/API 镜像来源。
 
 ### `.dockerignore`
 

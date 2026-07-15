@@ -19,7 +19,7 @@ ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb33533931
 ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-ARG DIFY_VERSION=1.16.0-rc1
+ARG DIFY_VERSION=1.15.0
 ARG UV_VERSION=latest
 
 # -----------------------------

@@ -64,7 +64,7 @@ All image refs use digest? yes/no:
 Mutable defaults used? yes/no + reason:
 ```
 
-当前 Dify Web/API 默认已固定为兼容的 `1.16.0-rc1` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍可能使用现有可移动开发默认值。发布或长期演示必须记录并固定全部输入；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据。
+当前 Dify Web/API 默认已固定为兼容的 `1.15.0` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍可能使用现有可移动开发默认值。发布或长期演示必须记录并固定全部输入；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据。
 
 `scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
 
