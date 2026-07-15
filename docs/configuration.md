@@ -323,6 +323,8 @@ Plugin Daemon 会用 `plugin_unique_identifier` 作为 package bucket key 在 `P
 
 `PLUGIN_SSL_EOF_MAX_RETRIES=1` 是独立的 opt-in 恢复门，只作用于 `dify_plugin.interfaces.model.openai_compatible.llm._generate` 调用栈中、`requests.exceptions.SSLError` 的包装链明确包含 `ssl.SSLEOFError` 或 `UNEXPECTED_EOF_WHILE_READING` 的失败。它不会 retry credential validation、其他 SDK 调用、HTTP status、connect/read timeout 或普通 connection error；第二次失败会原样抛出。虽然异常发生在 Requests 返回 response 之前，模型 `POST` 仍可能已经到达上游，因此 retry 可能产生重复推理或双计费；默认保持 `0`，生产部署应优先在 provider/gateway 或上游 SDK 中使用可观测、可幂等的 retry 机制。
 
+部署后可通过 `/_ops/process-env?service=plugin-daemon&runtime_scan=true&runtime_inspect=true` 脱敏回读 `PLUGIN_SSL_EOF_MAX_RETRIES`。该字段属于固定 safe-key allowlist，只返回 `0` 或 `1` 等配置值，不返回 provider credential；应同时核对 Supervisor 进程和实际 Plugin runtime 的值，避免只改 Space variable 但旧 runtime 尚未接管。
+
 ## Nginx
 
 | 变量 | 默认值 | 当前状态 |

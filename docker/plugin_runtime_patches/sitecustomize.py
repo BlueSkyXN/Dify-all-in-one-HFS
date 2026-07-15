@@ -84,10 +84,17 @@ def wrapped_exceptions(error: BaseException):
         seen.add(id(current))
         yield current
 
-        for attribute in ("__cause__", "__context__", "reason"):
-            nested = getattr(current, attribute, None)
-            if isinstance(nested, BaseException):
-                pending.append(nested)
+        cause = getattr(current, "__cause__", None)
+        if isinstance(cause, BaseException):
+            pending.append(cause)
+        elif not getattr(current, "__suppress_context__", False):
+            context = getattr(current, "__context__", None)
+            if isinstance(context, BaseException):
+                pending.append(context)
+
+        reason = getattr(current, "reason", None)
+        if isinstance(reason, BaseException):
+            pending.append(reason)
         pending.extend(item for item in current.args if isinstance(item, BaseException))
 
 

@@ -16,6 +16,7 @@ import requests.sessions
 
 ROOT = Path(__file__).resolve().parents[2]
 SHIM_PATH = ROOT / "docker" / "plugin_runtime_patches" / "sitecustomize.py"
+WITH_PLUGIN_ENV_PATH = ROOT / "docker" / "with-plugin-env"
 
 
 def load_shim(name: str):
@@ -51,6 +52,35 @@ def ssl_eof_marker_request_error() -> requests.exceptions.SSLError:
     error = requests.exceptions.SSLError("TLS request failed")
     error.__context__ = OSError("UNEXPECTED_EOF_WHILE_READING")
     return error
+
+
+def run_with_plugin_env(retry_value: str | None):
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        wrapper = root / "with-plugin-env"
+        generated_env = root / "generated.env"
+        legacy_generated_env = root / "legacy-generated.env"
+        wrapper_text = WITH_PLUGIN_ENV_PATH.read_text(encoding="utf-8")
+        wrapper_text = wrapper_text.replace(
+            "/etc/dify/dify.env.runtime",
+            str(ROOT / "docker" / "dify.env.runtime"),
+        )
+        wrapper_text = wrapper_text.replace("/data/config/generated.env", str(generated_env))
+        wrapper_text = wrapper_text.replace("/etc/dify/generated.env", str(legacy_generated_env))
+        wrapper.write_text(wrapper_text, encoding="utf-8")
+
+        env = os.environ.copy()
+        if retry_value is None:
+            env.pop("PLUGIN_SSL_EOF_MAX_RETRIES", None)
+        else:
+            env["PLUGIN_SSL_EOF_MAX_RETRIES"] = retry_value
+        return subprocess.run(
+            ["bash", str(wrapper), "bash", "-c", 'printf "%s" "$PLUGIN_SSL_EOF_MAX_RETRIES"'],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=env,
+        )
 
 
 class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
@@ -202,6 +232,23 @@ class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
 
         self.assertEqual(result, "ok")
         self.assertEqual(len(calls), 2)
+
+    def test_suppressed_ssl_eof_context_is_not_traversed(self):
+        error = requests.exceptions.SSLError("TLS request failed")
+        error.__context__ = ssl.SSLEOFError(8, "UNEXPECTED_EOF_WHILE_READING")
+        error.__suppress_context__ = True
+        shim = load_shim("plugin_runtime_sitecustomize_suppressed_context_test")
+
+        self.assertFalse(shim.is_ssl_eof_error(error))
+
+    def test_explicit_cause_takes_precedence_over_old_ssl_eof_context(self):
+        error = requests.exceptions.SSLError("TLS request failed")
+        error.__cause__ = OSError("certificate verify failed")
+        error.__context__ = ssl.SSLEOFError(8, "UNEXPECTED_EOF_WHILE_READING")
+        error.__suppress_context__ = False
+        shim = load_shim("plugin_runtime_sitecustomize_explicit_cause_test")
+
+        self.assertFalse(shim.is_ssl_eof_error(error))
 
     def test_non_eof_ssl_error_is_not_retried(self):
         calls = []
@@ -420,6 +467,20 @@ class PluginRuntimeSiteCustomizeTests(unittest.TestCase):
         os.environ["PLUGIN_CONNECT_TIMEOUT_SECONDS"] = "60"
         os.environ["MAX_REQUEST_TIMEOUT"] = "30"
         self.assertEqual(shim.rewrite_timeout((10, 30)), (10, 30))
+
+    def test_with_plugin_env_normalizes_ssl_eof_retry_configuration(self):
+        for raw, expected, warning in [
+            (None, "0", False),
+            ("0", "0", False),
+            ("1", "1", False),
+            ("2", "0", True),
+            ("invalid", "0", True),
+        ]:
+            with self.subTest(raw=raw):
+                result = run_with_plugin_env(raw)
+                self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+                self.assertEqual(result.stdout, expected)
+                self.assertEqual("disabling SSL EOF retry" in result.stderr, warning)
 
     def test_missing_requests_dependency_fails_open(self):
         original_import = builtins.__import__
