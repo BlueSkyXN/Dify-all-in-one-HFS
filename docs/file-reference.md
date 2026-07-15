@@ -462,7 +462,8 @@ HFS 范式结构契约检查脚本。
 
 - 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
-- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`、默认 Web/API digest pair 与 `DIFY_VERSION` metadata，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
 - 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/health` 和 shellctl 状态。

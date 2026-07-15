@@ -29,7 +29,7 @@ name = "DIFY_API_IMAGE_REF"
 type = "image_ref"
 source = "Dockerfile ARG"
 required_for_release = true
-dev_mutable_default_allowed = true
+dev_mutable_default_allowed = false
 release_requires_digest = true
 
 [[release_pins]]
@@ -37,7 +37,7 @@ name = "DIFY_WEB_IMAGE_REF"
 type = "image_ref"
 source = "Dockerfile ARG"
 required_for_release = true
-dev_mutable_default_allowed = true
+dev_mutable_default_allowed = false
 release_requires_digest = true
 
 [[release_pins]]
