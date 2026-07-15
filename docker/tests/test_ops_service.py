@@ -784,12 +784,14 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
     def test_process_env_summary_returns_only_safe_values(self):
         values = ops_service.parse_environ_bytes(
-            b"MAX_REQUEST_TIMEOUT=300\0OPS_TOKEN=secret-token\0PLUGIN_WORKING_PATH=/data/plugin_daemon/cwd\0"
+            b"MAX_REQUEST_TIMEOUT=300\0PLUGIN_SSL_EOF_MAX_RETRIES=1\0"
+            b"OPS_TOKEN=secret-token\0PLUGIN_WORKING_PATH=/data/plugin_daemon/cwd\0"
         )
 
         summary = ops_service.process_env_safe_summary(values)
 
         self.assertEqual(summary["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertEqual(summary["safe_values"]["PLUGIN_SSL_EOF_MAX_RETRIES"], "1")
         self.assertEqual(summary["safe_values"]["PLUGIN_WORKING_PATH"], "/data/plugin_daemon/cwd")
         self.assertNotIn("OPS_TOKEN", summary["safe_values"])
         self.assertTrue(summary["secret_presence"]["OPS_TOKEN"])
@@ -826,6 +828,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             (plugin_cwd / ".env").write_text(
                 "MAX_REQUEST_TIMEOUT=300\n"
                 "PLUGIN_CONNECT_TIMEOUT_SECONDS=60\n"
+                "PLUGIN_SSL_EOF_MAX_RETRIES=1\n"
                 "PYTHONPATH=/opt/dify/plugin-runtime-patches\n"
                 "OPS_TOKEN=secret-token\n",
                 encoding="utf-8",
@@ -840,6 +843,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                     f"INSTALL_METHOD=local\0"
                     f"MAX_REQUEST_TIMEOUT=300\0"
                     f"PLUGIN_CONNECT_TIMEOUT_SECONDS=60\0"
+                    f"PLUGIN_SSL_EOF_MAX_RETRIES=1\0"
                     f"PYTHONPATH=/opt/dify/plugin-runtime-patches\0"
                     f"PLUGIN_WORKING_PATH={working_root}\0"
                     f"VIRTUAL_ENV={plugin_cwd / '.venv'}\0"
@@ -869,6 +873,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(match["ppid"], 45)
         self.assertEqual(match["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
         self.assertEqual(match["safe_values"]["PLUGIN_CONNECT_TIMEOUT_SECONDS"], "60")
+        self.assertEqual(match["safe_values"]["PLUGIN_SSL_EOF_MAX_RETRIES"], "1")
         self.assertEqual(match["safe_values"]["PYTHONPATH"], "/opt/dify/plugin-runtime-patches")
         self.assertNotIn("OPS_TOKEN", match["safe_values"])
         self.assertTrue(match["secret_presence"]["OPS_TOKEN"])
@@ -880,6 +885,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(inspection["dify_plugin_versions"][0]["version"], "0.7.4")
         self.assertEqual(inspection["env_file"]["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
         self.assertEqual(inspection["env_file"]["safe_values"]["PLUGIN_CONNECT_TIMEOUT_SECONDS"], "60")
+        self.assertEqual(inspection["env_file"]["safe_values"]["PLUGIN_SSL_EOF_MAX_RETRIES"], "1")
         self.assertEqual(
             inspection["env_file"]["safe_values"]["PYTHONPATH"],
             "/opt/dify/plugin-runtime-patches",
