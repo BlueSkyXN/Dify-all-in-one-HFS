@@ -8,6 +8,7 @@
 - 推荐把 Hugging Face Storage Bucket 挂到 `/persist`；核心状态写入 `/persist`，日志、run、cache 写入 `/tmp/dify-aio`。
 - Nginx 对外监听 `7860`，内部转发到 Dify Web/API/Plugin Daemon。
 - 如果运行时存在 `SPACE_HOST` 且 `PUBLIC_URL` 未设置，会自动变成 `https://${SPACE_HOST}`。
+- Dify Web SSR 使用 `SERVER_CONSOLE_API_URL=http://127.0.0.1:5001` 直连同容器 API，不通过 Hugging Face 公网域名回环。
 
 建议 Space Settings：
 

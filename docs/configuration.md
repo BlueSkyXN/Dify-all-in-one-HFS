@@ -79,12 +79,13 @@ docker/dify.env.demo
 | Variable | `PERSIST_MODE=bucket` | 初始化前建议使用，比默认 `auto` 更严格；`/persist` 缺失时直接失败 |
 | Variable | `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` | 当前 HF bucket 推荐值；bucket live PGDATA 启动超时时回退到 runtime PGDATA 并从 dump 恢复 |
 
-不要上传以下派生值，除非你明确要覆盖默认推导：
+不要上传以下派生值或同容器内部默认值，除非你明确要覆盖默认推导或改变部署拓扑：
 
 ```env
 PUBLIC_URL
 CONSOLE_WEB_URL
 CONSOLE_API_URL
+SERVER_CONSOLE_API_URL
 APP_WEB_URL
 APP_API_URL
 FILES_URL
@@ -96,7 +97,7 @@ INNER_API_KEY_FOR_PLUGIN
 SANDBOX_API_KEY
 ```
 
-其中 `CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。重复上传这些变量会增加配置漂移风险。
+其中 `SERVER_CONSOLE_API_URL` 在 all-in-one 容器内固定默认到 `http://127.0.0.1:5001`，供 Dify Web 的 server-side rendering 直接访问同容器 API；不要把它覆盖为 Hugging Face 公网域名。`CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。重复上传这些变量会增加配置漂移风险。
 
 ## Hugging Face Space Metadata
 
@@ -182,6 +183,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `PUBLIC_URL` | `https://${SPACE_HOST}` 或 `http://localhost:8080` | 浏览器看到的外部 URL |
 | `CONSOLE_WEB_URL` | `${PUBLIC_URL}` | Console Web URL |
 | `CONSOLE_API_URL` | `${PUBLIC_URL}` | Console API URL |
+| `SERVER_CONSOLE_API_URL` | `http://127.0.0.1:5001` | Dify Web SSR 的同容器 API origin；显式环境变量仍可覆盖 |
 | `SERVICE_API_URL` | `http://127.0.0.1:5001` | 容器内服务 API URL |
 | `APP_WEB_URL` | `${PUBLIC_URL}` | App Web URL |
 | `APP_API_URL` | `${PUBLIC_URL}` | App API URL |
@@ -190,7 +192,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `ENDPOINT_URL_TEMPLATE` | `${PUBLIC_URL}/e/{hook_id}` | Plugin endpoint hook URL 模板 |
 | `TRIGGER_URL` | `${PUBLIC_URL}` | Trigger 外部 URL |
 
-在 Hugging Face Space 中，通常不需要手动设置 `PUBLIC_URL`，因为 `SPACE_HOST` 会自动注入。
+在 Hugging Face Space 中，通常不需要手动设置 `PUBLIC_URL`，因为 `SPACE_HOST` 会自动注入。浏览器 URL 继续使用公网 `PUBLIC_URL`；Dify Web 的 server-side 请求使用 `SERVER_CONSOLE_API_URL` 直连本地 API，避免再次经过 Hugging Face public domain / ELB 并触发边缘限流。
 
 ## Dify API / Worker
 

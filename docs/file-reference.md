@@ -64,7 +64,7 @@ UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。开发默认值允许使用可移动 tag；发布构建应传入 `image@sha256:...` digest ref。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源。
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。Dify Web/API 默认固定为兼容的 `1.15.0` digest pair；其他上游输入仍可由 build arg 覆盖，发布构建应记录并固定全部 image ref。`DIFY_VERSION` 只作为 metadata，不决定 Dify Web/API 镜像来源。
 
 ### `.dockerignore`
 
@@ -416,7 +416,8 @@ HFS 范式结构契约检查脚本。
 
 - 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
-- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`、默认 Web/API digest pair 与 `DIFY_VERSION` metadata，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
 - 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz` 和 `/_ops/health`。
