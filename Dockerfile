@@ -15,11 +15,11 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api:latest
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-ARG DIFY_VERSION=latest
+ARG DIFY_VERSION=1.15.0
 ARG UV_VERSION=latest
 
 # -----------------------------
@@ -170,6 +170,7 @@ COPY docker/dify.env.runtime /etc/dify/dify.env.runtime
 COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
+COPY docker/plugin_runtime_patches /opt/dify/plugin-runtime-patches
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service

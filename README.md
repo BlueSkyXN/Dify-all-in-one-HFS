@@ -134,6 +134,8 @@ TRIGGER_URL
 ENDPOINT_URL_TEMPLATE
 ```
 
+Dify Web 的 server-side rendering 不走上述公网派生地址。`SERVER_CONSOLE_API_URL` 默认是 `http://127.0.0.1:5001`，让 Web 进程直接访问同容器 API，避免 SSR 请求重新进入 Hugging Face public edge。
+
 因此，通常不需要手工设置 `PUBLIC_URL`。如果你使用自定义域名，可以在 Space Variables 中显式设置：
 
 ```env

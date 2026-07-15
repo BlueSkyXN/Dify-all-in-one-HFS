@@ -78,6 +78,32 @@ export UV_PATH="${UV_PATH:-/usr/local/bin/uv}"
 unset VIRTUAL_ENV
 export PYTHON_ENV_INIT_TIMEOUT="${PLUGIN_PYTHON_ENV_INIT_TIMEOUT:-120}"
 export MAX_REQUEST_TIMEOUT="${PLUGIN_MAX_REQUEST_TIMEOUT:-${MAX_REQUEST_TIMEOUT:-300}}"
+plugin_connect_timeout_seconds="${PLUGIN_CONNECT_TIMEOUT_SECONDS:-60}"
+case "${plugin_connect_timeout_seconds}" in
+  ''|*[!0-9]*)
+    echo "PLUGIN_CONNECT_TIMEOUT_SECONDS must be an integer from 10 to 300" >&2
+    exit 64
+    ;;
+esac
+if [ "${plugin_connect_timeout_seconds}" -lt 10 ] || [ "${plugin_connect_timeout_seconds}" -gt 300 ]; then
+  echo "PLUGIN_CONNECT_TIMEOUT_SECONDS must be an integer from 10 to 300" >&2
+  exit 64
+fi
+export PLUGIN_CONNECT_TIMEOUT_SECONDS="${plugin_connect_timeout_seconds}"
+plugin_ssl_eof_max_retries="${PLUGIN_SSL_EOF_MAX_RETRIES:-0}"
+case "${plugin_ssl_eof_max_retries}" in
+  0|1) ;;
+  *)
+    echo "PLUGIN_SSL_EOF_MAX_RETRIES must be 0 or 1; disabling SSL EOF retry" >&2
+    plugin_ssl_eof_max_retries=0
+    ;;
+esac
+export PLUGIN_SSL_EOF_MAX_RETRIES="${plugin_ssl_eof_max_retries}"
+plugin_runtime_patch_path="/opt/dify/plugin-runtime-patches"
+case ":${PYTHONPATH:-}:" in
+  *":${plugin_runtime_patch_path}:"*) ;;
+  *) export PYTHONPATH="${plugin_runtime_patch_path}${PYTHONPATH:+:${PYTHONPATH}}" ;;
+esac
 export PLUGIN_MAX_EXECUTION_TIMEOUT="${PLUGIN_MAX_EXECUTION_TIMEOUT:-600}"
 export PLUGIN_STDIO_BUFFER_SIZE="${PLUGIN_STDIO_BUFFER_SIZE:-1024}"
 export PLUGIN_STDIO_MAX_BUFFER_SIZE="${PLUGIN_STDIO_MAX_BUFFER_SIZE:-5242880}"

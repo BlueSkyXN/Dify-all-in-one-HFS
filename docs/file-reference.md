@@ -64,7 +64,7 @@ UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。开发默认值允许使用可移动 tag；发布构建应传入 `image@sha256:...` digest ref。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源。
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。Dify Web/API 默认固定为兼容的 `1.15.0` digest pair；其他上游输入仍可由 build arg 覆盖，发布构建应记录并固定全部 image ref。`DIFY_VERSION` 只作为 metadata，不决定 Dify Web/API 镜像来源。
 
 ### `.dockerignore`
 
@@ -275,6 +275,17 @@ Plugin Daemon 环境包装器。
   - `PLUGIN_DIFY_INNER_API_URL` -> `DIFY_INNER_API_URL`
   - `PLUGIN_DIFY_INNER_API_KEY` -> `DIFY_INNER_API_KEY`
   - `PLUGIN_MAX_REQUEST_TIMEOUT` -> `MAX_REQUEST_TIMEOUT`
+  - `/opt/dify/plugin-runtime-patches` -> Plugin runtime `PYTHONPATH`
+
+### `docker/plugin_runtime_patches/sitecustomize.py`
+
+Plugin runtime 的 image-controlled timeout compatibility shim。
+
+职责：
+
+- 只改写 OpenAI-compatible SDK 精确的 `(10, MAX_REQUEST_TIMEOUT)` Requests timeout tuple。
+- 使用 `PLUGIN_CONNECT_TIMEOUT_SECONDS` 提高 connect/TLS 上限，不读取或记录 provider credential。
+- 官方 SDK 不再使用该固定 tuple 时自动不生效，不修改签名 `.difypkg` 或临时 venv。
 
 ### `docker/with-sandbox-env`
 
@@ -405,7 +416,8 @@ HFS 范式结构契约检查脚本。
 
 - 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
-- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`、默认 Web/API digest pair 与 `DIFY_VERSION` metadata，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
 - 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz` 和 `/_ops/health`。

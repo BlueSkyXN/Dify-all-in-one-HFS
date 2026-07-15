@@ -79,12 +79,13 @@ docker/dify.env.demo
 | Variable | `PERSIST_MODE=bucket` | 初始化前建议使用，比默认 `auto` 更严格；`/persist` 缺失时直接失败 |
 | Variable | `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` | 当前 HF bucket 推荐值；bucket live PGDATA 启动超时时回退到 runtime PGDATA 并从 dump 恢复 |
 
-不要上传以下派生值，除非你明确要覆盖默认推导：
+不要上传以下派生值或同容器内部默认值，除非你明确要覆盖默认推导或改变部署拓扑：
 
 ```env
 PUBLIC_URL
 CONSOLE_WEB_URL
 CONSOLE_API_URL
+SERVER_CONSOLE_API_URL
 APP_WEB_URL
 APP_API_URL
 FILES_URL
@@ -96,7 +97,7 @@ INNER_API_KEY_FOR_PLUGIN
 SANDBOX_API_KEY
 ```
 
-其中 `CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。重复上传这些变量会增加配置漂移风险。
+其中 `SERVER_CONSOLE_API_URL` 在 all-in-one 容器内固定默认到 `http://127.0.0.1:5001`，供 Dify Web 的 server-side rendering 直接访问同容器 API；不要把它覆盖为 Hugging Face 公网域名。`CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。重复上传这些变量会增加配置漂移风险。
 
 ## Hugging Face Space Metadata
 
@@ -182,6 +183,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `PUBLIC_URL` | `https://${SPACE_HOST}` 或 `http://localhost:8080` | 浏览器看到的外部 URL |
 | `CONSOLE_WEB_URL` | `${PUBLIC_URL}` | Console Web URL |
 | `CONSOLE_API_URL` | `${PUBLIC_URL}` | Console API URL |
+| `SERVER_CONSOLE_API_URL` | `http://127.0.0.1:5001` | Dify Web SSR 的同容器 API origin；显式环境变量仍可覆盖 |
 | `SERVICE_API_URL` | `http://127.0.0.1:5001` | 容器内服务 API URL |
 | `APP_WEB_URL` | `${PUBLIC_URL}` | App Web URL |
 | `APP_API_URL` | `${PUBLIC_URL}` | App API URL |
@@ -190,7 +192,7 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `ENDPOINT_URL_TEMPLATE` | `${PUBLIC_URL}/e/{hook_id}` | Plugin endpoint hook URL 模板 |
 | `TRIGGER_URL` | `${PUBLIC_URL}` | Trigger 外部 URL |
 
-在 Hugging Face Space 中，通常不需要手动设置 `PUBLIC_URL`，因为 `SPACE_HOST` 会自动注入。
+在 Hugging Face Space 中，通常不需要手动设置 `PUBLIC_URL`，因为 `SPACE_HOST` 会自动注入。浏览器 URL 继续使用公网 `PUBLIC_URL`；Dify Web 的 server-side 请求使用 `SERVER_CONSOLE_API_URL` 直连本地 API，避免再次经过 Hugging Face public domain / ELB 并触发边缘限流。
 
 ## Dify API / Worker
 
@@ -309,13 +311,19 @@ HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 | `PLUGIN_MAX_PACKAGE_SIZE` | `52428800` | 插件包最大大小 |
 | `PLUGIN_PYTHON_ENV_INIT_TIMEOUT` | `120` | 插件 Python 环境初始化 timeout |
 | `PLUGIN_MAX_REQUEST_TIMEOUT` | `300` | 插件 Python runtime 对外模型/API 请求 read timeout；`with-plugin-env` 会映射为 Dify Plugin SDK 使用的 `MAX_REQUEST_TIMEOUT` |
+| `PLUGIN_CONNECT_TIMEOUT_SECONDS` | `60` | OpenAI-compatible SDK 请求的连接/TLS timeout；镜像 shim 只把 SDK 固定的 `(10, MAX_REQUEST_TIMEOUT)` tuple 改为该值，范围 `10..300` |
+| `PLUGIN_SSL_EOF_MAX_RETRIES` | `0` | OpenAI-compatible SDK `_generate` 遇到精确 TLS unexpected EOF 时的额外 retry 次数，只允许 `0` 或 `1`；非法值 fail closed 为 `0`，一次 retry 使用固定 250ms backoff |
 | `PLUGIN_MAX_EXECUTION_TIMEOUT` | `600` | 插件执行 timeout |
 | `ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES` | `false` | 是否强制 LangGenius plugin signature |
 | `FORCE_VERIFYING_SIGNATURE` | `false` | 是否强制验证签名 |
 
 Plugin Daemon 会用 `plugin_unique_identifier` 作为 package bucket key 在 `PLUGIN_PACKAGE_CACHE_PATH` 下查找本地包，例如 `plugin_packages/langgenius/openai_api_compatible:0.0.49@<checksum>`。本地 runtime watchdog 则从 `PLUGIN_INSTALLED_PATH` 枚举已安装插件并拉起 local runtime；Redis `plugin_state` 是 cluster routing 视图，单容器本机 runtime 已 ready 时它可能不是唯一证据。bucket-lite 下 wrapper 会让 Plugin Daemon 直接使用 `/persist/plugin_daemon` 作为 storage root；不要把 `PLUGIN_STORAGE_LOCAL_ROOT` 强制回 `/data/plugin_daemon`，否则 Go `filepath.WalkDir` 不会跟随 `/data/plugin_daemon/plugin` 这个 symlink root，重建后已安装插件可能不会被重新拉起。重建后如果数据库中的 `plugin_unique_identifier` 还在、但 package cache、installed bucket 或 local runtime ready 证据缺失，Dify 页面可能仍显示 provider 配置，实际 plugin runtime 却无法重新拉起。用 `/_ops/persistence` 检查 `plugin_storage_layout_issues`、`missing_package_files`、`missing_installed_files`、`missing_runtime_states`、`plugin_runtime_state.checked` 和 `plugin_runtime_state.identifiers[].log.ready` 可以直接确认这类错配；`scripts/hf-space-smoke.sh` 也会把这些字段作为 `ops-persistence` 回归条件。
 
-`with-plugin-env` 会把 `DB_PLUGIN_DATABASE` 映射到 Plugin Daemon 期望的 `DB_DATABASE`。
+`with-plugin-env` 会把 `DB_PLUGIN_DATABASE` 映射到 Plugin Daemon 期望的 `DB_DATABASE`，并把镜像内只读的 `/opt/dify/plugin-runtime-patches` 前置到 Plugin runtime 的 `PYTHONPATH`。该 shim 不修改已签名 `.difypkg`，也不改 scalar timeout、credential validation 的 `(10, 300)` 或其他 request shape；只有运行时请求精确使用 `(10, MAX_REQUEST_TIMEOUT)` 时才提高 connect/TLS timeout。它通过精确 SDK module import hook 延迟安装 Requests wrapper，确保 `dify_plugin` 先完成 `gevent.monkey.patch_all()`，不会在启动期提前导入 `requests`/`ssl`。官方 SDK 移除固定 10 秒 tuple 后，timeout rewrite 自动不再生效。
+
+`PLUGIN_SSL_EOF_MAX_RETRIES=1` 是独立的 opt-in 恢复门，只作用于 `dify_plugin.interfaces.model.openai_compatible.llm._generate` 调用栈中、`requests.exceptions.SSLError` 的包装链明确包含 `ssl.SSLEOFError` 或 `UNEXPECTED_EOF_WHILE_READING` 的失败。它不会 retry credential validation、其他 SDK 调用、HTTP status、connect/read timeout 或普通 connection error；第二次失败会原样抛出。虽然异常发生在 Requests 返回 response 之前，模型 `POST` 仍可能已经到达上游，因此 retry 可能产生重复推理或双计费；默认保持 `0`，生产部署应优先在 provider/gateway 或上游 SDK 中使用可观测、可幂等的 retry 机制。
+
+部署后可通过 `/_ops/process-env?service=plugin-daemon&runtime_scan=true&runtime_inspect=true` 脱敏回读 `PLUGIN_SSL_EOF_MAX_RETRIES`。该字段属于固定 safe-key allowlist，只返回 `0` 或 `1` 等配置值，不返回 provider credential；应同时核对 Supervisor 进程和实际 Plugin runtime 的值，避免只改 Space variable 但旧 runtime 尚未接管。
 
 ## Nginx
 

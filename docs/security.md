@@ -179,6 +179,10 @@ Plugin Daemon 依赖：
 
 这些值必须保持一致，否则 Dify API 和 Plugin Daemon 通信会失败。
 
+镜像会通过 `with-plugin-env` 把只读 `/opt/dify/plugin-runtime-patches` 放入 Plugin runtime 的 `PYTHONPATH`。其中的 `sitecustomize.py` 只在 Requests timeout 精确等于 OpenAI-compatible SDK 的 `(10, MAX_REQUEST_TIMEOUT)` 时，把 connect/TLS timeout 提高到受限的 `PLUGIN_CONNECT_TIMEOUT_SECONDS`；它不读取 provider credential、不修改签名插件包，也不接受插件或请求参数提供的代码路径。Requests wrapper 只在精确 SDK module 完成导入后安装，使 `dify_plugin` 的 gevent bootstrap 先完成，避免在 monkey patch 前提前导入 `requests`/`ssl`。
+
+TLS EOF retry 由 `PLUGIN_SSL_EOF_MAX_RETRIES` 独立控制，默认 `0` 且只允许 opt-in 为 `1`；非法值会禁用 retry。启用后，它只对精确 `_generate` 调用中、异常包装链包含 `ssl.SSLEOFError` 或 `UNEXPECTED_EOF_WHILE_READING` 的 `requests.exceptions.SSLError` 等待固定 250ms 后重试一次，不覆盖 validation、HTTP status、timeout 或普通 connection error。该限制降低了误重试面，但不能证明首次模型 `POST` 未到达上游，因此仍存在重复推理、重复计费和非幂等 provider 行为风险。生产化拆分部署应优先采用 provider/gateway 或上游 SDK 提供的可观测、带幂等语义的修复，而不是默认开启这个 demo wrapper shim。
+
 ## Database
 
 默认 PostgreSQL 只监听：

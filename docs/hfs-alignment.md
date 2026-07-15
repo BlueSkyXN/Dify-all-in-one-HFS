@@ -106,19 +106,19 @@ PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
 ```
 
-开发默认值仍偏便利，允许可移动 tag：
+当前 Web/API 默认值固定为兼容的 `1.15.0` digest pair；其他上游输入保留现有开发默认值：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
-DIFY_API_IMAGE_REF=langgenius/dify-api:latest
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
 UV_VERSION=latest
-DIFY_VERSION=latest
+DIFY_VERSION=1.15.0
 ```
 
-这不等于发布态可复现。发布或长期演示前必须记录并传入 digest ref：
+Web/API 默认选择已经可复现，但完整发布仍必须记录全部输入，并把其余 image ref 与 uv 固定后再构建：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm@sha256:...
@@ -129,7 +129,7 @@ SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:...
 UV_VERSION=<pinned-version>
 ```
 
-`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源。
+`DIFY_VERSION=1.15.0` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源，两个 digest ref 才是事实源。
 
 ## 对其他 HFS 项目的迁移规则
 

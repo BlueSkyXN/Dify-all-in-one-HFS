@@ -28,6 +28,15 @@ require_grep() {
   fi
 }
 
+require_line() {
+  local expected=$1
+  local path=$2
+  local message=$3
+  if ! grep -Fqx -- "$expected" "$path"; then
+    fail "$message"
+  fi
+}
+
 require_absent() {
   local pattern=$1
   local path=$2
@@ -57,8 +66,11 @@ require_file Dockerfile
 require_file docker/nginx.conf
 require_file docker/entrypoint.sh
 require_file docker/supervisord.conf
+require_file docker/dify.env.runtime
+require_file docker/dify.env.demo
 require_file docker/ops_service.py
 require_file docker/admin_service.py
+require_file docker/plugin_runtime_patches/sitecustomize.py
 require_file docker/healthcheck.sh
 require_file scripts/hf-space-smoke.sh
 require_file docs/hfs-alignment.md
@@ -104,13 +116,13 @@ expected_pins = {
     "DIFY_API_IMAGE_REF": {
         "type": "image_ref",
         "required_for_release": True,
-        "dev_mutable_default_allowed": True,
+        "dev_mutable_default_allowed": False,
         "release_requires_digest": True,
     },
     "DIFY_WEB_IMAGE_REF": {
         "type": "image_ref",
         "required_for_release": True,
-        "dev_mutable_default_allowed": True,
+        "dev_mutable_default_allowed": False,
         "release_requires_digest": True,
     },
     "PLUGIN_DAEMON_IMAGE_REF": {
@@ -238,6 +250,16 @@ require_grep '^ARG PLUGIN_DAEMON_IMAGE_REF=' Dockerfile \
   "Dockerfile must expose PLUGIN_DAEMON_IMAGE_REF build input"
 require_grep '^ARG SANDBOX_IMAGE_REF=' Dockerfile \
   "Dockerfile must expose SANDBOX_IMAGE_REF build input"
+require_line \
+  'ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106' \
+  Dockerfile \
+  "Dockerfile must default DIFY_WEB_IMAGE_REF to the validated 1.15.0 web digest"
+require_line \
+  'ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24' \
+  Dockerfile \
+  "Dockerfile must default DIFY_API_IMAGE_REF to the validated 1.15.0 API digest"
+require_line 'ARG DIFY_VERSION=1.15.0' Dockerfile \
+  "Dockerfile DIFY_VERSION metadata must describe the validated Web/API digest pair"
 require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
   "Dockerfile must select web image from DIFY_WEB_IMAGE_REF"
 require_grep '^FROM \${DIFY_API_IMAGE_REF} AS api-image$' Dockerfile \
@@ -260,6 +282,37 @@ require_absent '^FROM \${DIFY_WEB_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build web image refs by image:version concatenation"
 require_absent '^FROM \${DIFY_API_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build API image refs by image:version concatenation"
+
+require_line \
+  'export SERVER_CONSOLE_API_URL=${SERVER_CONSOLE_API_URL:-http://127.0.0.1:5001}' \
+  docker/dify.env.runtime \
+  "runtime defaults must keep Dify Web SSR console API traffic on the same-container API origin"
+require_line 'SERVER_CONSOLE_API_URL=http://127.0.0.1:5001' docker/dify.env.demo \
+  "demo env must expose the same-container Dify Web SSR API origin"
+require_grep '\| `SERVER_CONSOLE_API_URL` \| `http://127\.0\.0\.1:5001` \|' docs/configuration.md \
+  "configuration docs must describe the Dify Web SSR internal API origin"
+
+if ! env -i PATH="$PATH" SPACE_HOST=contract.example bash -c '
+  set -euo pipefail
+  source docker/dify.env.runtime
+  [ "$PUBLIC_URL" = "https://contract.example" ]
+  [ "$CONSOLE_API_URL" = "https://contract.example" ]
+  [ "${SERVER_CONSOLE_API_URL:-}" = "http://127.0.0.1:5001" ]
+'; then
+  fail "runtime URL defaults must keep browser URLs public and Dify Web SSR API traffic internal"
+fi
+
+if ! env -i \
+  PATH="$PATH" \
+  SPACE_HOST=contract.example \
+  SERVER_CONSOLE_API_URL=http://api.internal:5001 \
+  bash -c '
+    set -euo pipefail
+    source docker/dify.env.runtime
+    [ "$SERVER_CONSOLE_API_URL" = "http://api.internal:5001" ]
+  '; then
+  fail "runtime URL defaults must preserve an explicit SERVER_CONSOLE_API_URL override"
+fi
 
 require_grep '^local/$|^\*\*/local/$' .dockerignore \
   ".dockerignore must exclude local/ from Docker build context"
