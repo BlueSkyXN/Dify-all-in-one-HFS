@@ -179,6 +179,8 @@ Plugin Daemon 依赖：
 
 这些值必须保持一致，否则 Dify API 和 Plugin Daemon 通信会失败。
 
+镜像会通过 `with-plugin-env` 把只读 `/opt/dify/plugin-runtime-patches` 放入 Plugin runtime 的 `PYTHONPATH`。其中的 `sitecustomize.py` 只在 Requests timeout 精确等于 OpenAI-compatible SDK 的 `(10, MAX_REQUEST_TIMEOUT)` 时，把 connect/TLS timeout 提高到受限的 `PLUGIN_CONNECT_TIMEOUT_SECONDS`；它不读取 provider credential、不修改签名插件包，也不接受插件或请求参数提供的代码路径。生产化拆分部署应优先采用上游 SDK 修复，而不是复制这个 demo wrapper shim。
+
 ## Database
 
 默认 PostgreSQL 只监听：

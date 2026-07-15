@@ -275,6 +275,17 @@ Plugin Daemon 环境包装器。
   - `PLUGIN_DIFY_INNER_API_URL` -> `DIFY_INNER_API_URL`
   - `PLUGIN_DIFY_INNER_API_KEY` -> `DIFY_INNER_API_KEY`
   - `PLUGIN_MAX_REQUEST_TIMEOUT` -> `MAX_REQUEST_TIMEOUT`
+  - `/opt/dify/plugin-runtime-patches` -> Plugin runtime `PYTHONPATH`
+
+### `docker/plugin_runtime_patches/sitecustomize.py`
+
+Plugin runtime 的 image-controlled timeout compatibility shim。
+
+职责：
+
+- 只改写 OpenAI-compatible SDK 精确的 `(10, MAX_REQUEST_TIMEOUT)` Requests timeout tuple。
+- 使用 `PLUGIN_CONNECT_TIMEOUT_SECONDS` 提高 connect/TLS 上限，不读取或记录 provider credential。
+- 官方 SDK 不再使用该固定 tuple 时自动不生效，不修改签名 `.difypkg` 或临时 venv。
 
 ### `docker/with-sandbox-env`
 

@@ -576,7 +576,13 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             plugin_llm = plugin_cwd / "models" / "llm"
             plugin_llm.mkdir(parents=True)
             (plugin_llm / "llm.py").write_text("return super()._invoke(*args)\n", encoding="utf-8")
-            (plugin_cwd / ".env").write_text("MAX_REQUEST_TIMEOUT=300\nOPS_TOKEN=secret-token\n", encoding="utf-8")
+            (plugin_cwd / ".env").write_text(
+                "MAX_REQUEST_TIMEOUT=300\n"
+                "PLUGIN_CONNECT_TIMEOUT_SECONDS=60\n"
+                "PYTHONPATH=/opt/dify/plugin-runtime-patches\n"
+                "OPS_TOKEN=secret-token\n",
+                encoding="utf-8",
+            )
 
             matched = proc_root / "123"
             matched.mkdir()
@@ -586,6 +592,8 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                 (
                     f"INSTALL_METHOD=local\0"
                     f"MAX_REQUEST_TIMEOUT=300\0"
+                    f"PLUGIN_CONNECT_TIMEOUT_SECONDS=60\0"
+                    f"PYTHONPATH=/opt/dify/plugin-runtime-patches\0"
                     f"PLUGIN_WORKING_PATH={working_root}\0"
                     f"VIRTUAL_ENV={plugin_cwd / '.venv'}\0"
                     f"OPS_TOKEN=secret-token\0"
@@ -613,6 +621,8 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(match["pid"], 123)
         self.assertEqual(match["ppid"], 45)
         self.assertEqual(match["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertEqual(match["safe_values"]["PLUGIN_CONNECT_TIMEOUT_SECONDS"], "60")
+        self.assertEqual(match["safe_values"]["PYTHONPATH"], "/opt/dify/plugin-runtime-patches")
         self.assertNotIn("OPS_TOKEN", match["safe_values"])
         self.assertTrue(match["secret_presence"]["OPS_TOKEN"])
         self.assertNotIn("cmdline", match)
@@ -622,6 +632,11 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertTrue(inspection["ok"])
         self.assertEqual(inspection["dify_plugin_versions"][0]["version"], "0.7.4")
         self.assertEqual(inspection["env_file"]["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertEqual(inspection["env_file"]["safe_values"]["PLUGIN_CONNECT_TIMEOUT_SECONDS"], "60")
+        self.assertEqual(
+            inspection["env_file"]["safe_values"]["PYTHONPATH"],
+            "/opt/dify/plugin-runtime-patches",
+        )
         self.assertNotIn("OPS_TOKEN", inspection["env_file"]["safe_values"])
         self.assertTrue(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["uses_plugin_config_max_request_timeout"])
         self.assertFalse(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["has_hardcoded_timeout_10_10"])
