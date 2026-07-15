@@ -555,6 +555,15 @@ curl -X POST \
 
 执行后重新读取 `/_ops/provider-models`，确认对应 credential 的 `safe_values.read_timeout` 已出现，再用 app API 或下游 smoke 复测。这个 action 不是任意 SQL 通道；如果 provider、model 或 model_type 不匹配，会返回 404，不会创建新 credential。
 
+如果 credential 已经是 `read_timeout=300`、Plugin runtime 的 `MAX_REQUEST_TIMEOUT=300`，但失败仍稳定发生在约 10 秒，优先把它判定为 SDK 固定 connect/TLS timeout，而不是继续反复写同一个 credential。`requests timeout=(connect, read)` 在 TLS handshake 阶段也可能以 `Read timed out. (read timeout=<connect>)` 呈现。当前镜像通过 `PLUGIN_CONNECT_TIMEOUT_SECONDS`（默认 `60`）和只读 runtime shim，仅改写 OpenAI-compatible SDK 精确的 `(10, MAX_REQUEST_TIMEOUT)` 请求 tuple。用下面的回读确认 shim 已注入 Plugin runtime，再执行真实 app API 或下游 smoke：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" \
+  "https://your-space.hf.space/_ops/process-env?service=plugin-daemon&runtime_scan=true&runtime_inspect=true"
+```
+
+重点看 `PLUGIN_CONNECT_TIMEOUT_SECONDS=60`、`PYTHONPATH` 包含 `/opt/dify/plugin-runtime-patches`，并确认 Plugin runtime 仍是预期版本。不要直接编辑签名 `.difypkg`、持久化 plugin package bucket 或临时 venv。
+
 不要通过后台简单复制 package bucket 到 installed bucket 来修复。那会绕开 Plugin Daemon 的安装任务、数据库状态更新、依赖初始化和 `LaunchLocalPlugin` 等流程，只能制造“文件看起来在，但 runtime 仍没注册”的假恢复。
 
 ## Smoke 脚本参数
