@@ -1,10 +1,10 @@
 diff --git a/internal/core/runner/init.go b/internal/core/runner/init.go
-index b4be396..edb18cb 100644
+index b4be396..aa45464 100644
 --- a/internal/core/runner/init.go
 +++ b/internal/core/runner/init.go
 @@ -5,0 +6 @@ import (
 +	"os"
-@@ -28,0 +30,11 @@ func init() {
+@@ -13,0 +15,11 @@ func init() {
 +	if gidOverride := strings.TrimSpace(os.Getenv("SANDBOX_RUN_GID")); gidOverride != "" {
 +		gid, err := strconv.Atoi(gidOverride)
 +		if err != nil {
@@ -78,35 +78,38 @@ index 08d0437..ad0967d 100644
 +		min, max := uidPoolBounds()
 +		globalPool = NewUIDPool(min, max)
 diff --git a/internal/static/python_syscall/syscalls_amd64.go b/internal/static/python_syscall/syscalls_amd64.go
-index c5dd37d..5459910 100644
+index c9a7df6..c6e01ca 100644
 --- a/internal/static/python_syscall/syscalls_amd64.go
 +++ b/internal/static/python_syscall/syscalls_amd64.go
-@@ -8,3 +8,10 @@ const (
+@@ -8,5 +8,10 @@ const (
 -	SYS_GETRANDOM = 318
 -	SYS_RSEQ      = 334
 -	SYS_SENDMMSG  = 307
+-	SYS_STATX     = 332
+-	SYS_CLONE3    = 435
 +	SYS_GETRANDOM   = 318
 +	SYS_RSEQ        = 334
 +	SYS_SENDMMSG    = 307
++	SYS_STATX       = 332
 +	SYS_CLONE3      = 435
 +	SYS_CLOSE_RANGE = 436
 +	SYS_OPENAT2     = 437
 +	SYS_FACCESSAT2  = 439
 +	SYS_GETCPU      = 309
 +	SYS_MEMBARRIER  = 324
-+	SYS_STATX       = 332
-@@ -39,0 +47,12 @@ var ALLOW_SYSCALLS = []int{
+@@ -44,0 +50,11 @@ var ALLOW_SYSCALLS = []int{
 +	// Python 3.12 on current HFS base images can issue these after the
 +	// prescript installs seccomp. They are read-only/process-introspection
 +	// or descriptor housekeeping calls; network syscalls remain gated by
 +	// ENABLE_NETWORK below.
 +	syscall.SYS_ACCESS, syscall.SYS_FACCESSAT, SYS_FACCESSAT2,
-+	syscall.SYS_STAT, syscall.SYS_LSTAT, syscall.SYS_STATFS, syscall.SYS_FSTATFS, SYS_STATX,
++	syscall.SYS_STAT, syscall.SYS_LSTAT, syscall.SYS_STATFS, syscall.SYS_FSTATFS,
 +	syscall.SYS_OPEN, SYS_OPENAT2, syscall.SYS_READLINK, syscall.SYS_READLINKAT,
-+	syscall.SYS_READV, syscall.SYS_WRITEV, syscall.SYS_PREAD64,
 +	syscall.SYS_POLL, syscall.SYS_PPOLL, syscall.SYS_EPOLL_WAIT, syscall.SYS_EPOLL_PWAIT,
-+	syscall.SYS_GETCWD, syscall.SYS_GETRLIMIT, syscall.SYS_PRLIMIT64,
-+	syscall.SYS_GETRUSAGE, syscall.SYS_GETGID, syscall.SYS_GETEUID, syscall.SYS_GETEGID, syscall.SYS_GETGROUPS,
-+	syscall.SYS_PRCTL, SYS_GETCPU, syscall.SYS_UTIMENSAT, SYS_CLOSE_RANGE, SYS_MEMBARRIER,
-@@ -43,0 +62 @@ var ALLOW_ERROR_SYSCALLS = []int{
-+	SYS_CLONE3, syscall.SYS_FORK, syscall.SYS_VFORK, syscall.SYS_EXECVE,
++	syscall.SYS_GETRLIMIT, syscall.SYS_GETRUSAGE, syscall.SYS_GETGID, syscall.SYS_GETEUID,
++	syscall.SYS_GETEGID, syscall.SYS_GETGROUPS, syscall.SYS_PRCTL, SYS_GETCPU,
++	syscall.SYS_UTIMENSAT, SYS_CLOSE_RANGE, SYS_MEMBARRIER,
+@@ -49,0 +66,3 @@ var ALLOW_ERROR_SYSCALLS = []int{
++	syscall.SYS_FORK,
++	syscall.SYS_VFORK,
++	syscall.SYS_EXECVE,

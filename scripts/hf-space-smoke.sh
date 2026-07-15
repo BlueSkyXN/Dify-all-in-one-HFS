@@ -359,25 +359,44 @@ check_admin_action() {
 check_space_frame_headers() {
   local label="space-frame-headers"
   local url="$BASE_URL/apps"
+  local location
   local status
   local attempt
 
   for attempt in $(seq 1 "$SMOKE_RETRIES"); do
     status=$(curl -sS -D "$tmp_headers" -o "$tmp_body" -w '%{http_code}' --max-time 30 "$url" || true)
-    if [[ "$status" =~ ^(200|30[12378])$ ]]; then
-      break
-    fi
+    case "$status" in
+      200|301|302|303|307|308) break ;;
+    esac
     if [ "$attempt" != "$SMOKE_RETRIES" ]; then
-      printf 'WAIT %s: expected HTTP 200/3xx, got %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      printf 'WAIT %s: expected HTTP 200 or controlled redirect, got %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
       sleep "$SMOKE_DELAY"
     fi
   done
 
-  if ! [[ "$status" =~ ^(200|30[12378])$ ]]; then
-    printf 'FAIL %s: expected HTTP 200/3xx, got %s\n' "$label" "$status" >&2
-    sed -n '1,40p' "$tmp_body" >&2 || true
-    exit 1
-  fi
+  case "$status" in
+    200) ;;
+    301|302|303|307|308)
+      location=$(awk 'tolower($0) ~ /^location:/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit }' "$tmp_headers")
+      case "$location" in
+        /*)
+          if [[ "$location" == //* ]]; then
+            printf 'FAIL %s: redirect Location must remain same-origin, got %s\n' "$label" "$location" >&2
+            exit 1
+          fi
+          ;;
+        *)
+          printf 'FAIL %s: redirect Location must be a relative path, got %s\n' "$label" "${location:-<missing>}" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    *)
+      printf 'FAIL %s: expected HTTP 200 or controlled redirect, got %s\n' "$label" "$status" >&2
+      sed -n '1,40p' "$tmp_body" >&2 || true
+      exit 1
+      ;;
+  esac
 
   if grep -qi '^x-frame-options:' "$tmp_headers"; then
     printf 'FAIL %s: X-Frame-Options blocks Hugging Face iframe embedding\n' "$label" >&2
@@ -397,7 +416,7 @@ check_space_frame_headers() {
     exit 1
   fi
 
-  printf 'PASS %s: iframe headers allow Hugging Face Space embedding\n' "$label"
+  printf 'PASS %s: HTTP %s iframe headers allow Hugging Face Space embedding\n' "$label" "$status"
 }
 
 check_status "web-root" "$BASE_URL/" "200"

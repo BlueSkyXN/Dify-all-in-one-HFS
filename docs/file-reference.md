@@ -63,12 +63,13 @@ SANDBOX_IMAGE_REF
 DIFY_SOURCE_REPO
 DIFY_SOURCE_MAIN_REF
 DIFY_AGENT_SOURCE_REF
+DIFY_UPSTREAM_MAIN_REF
 DIFY_SANDBOX_SOURCE_REF
 UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_MAIN_REF` 记录 maintained Dify fork main commit；`DIFY_AGENT_SOURCE_REF` 是 overlay 安装 `dify-agent` backend package 的 source pin；`DIFY_SANDBOX_SOURCE_REF` 是 NEXT patched Sandbox server binary 的 source pin。NEXT branch 默认值已 pin 到 Docker Hub main digest 和 maintained fork source set；更新上游、更新 fork main 或回到稳定版时必须作为一组 co-pin 修改。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源或 Agent package 来源。
+`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_MAIN_REF` 记录 maintained self fork main commit；`DIFY_AGENT_SOURCE_REF` 是独立 `/opt/dify-agent/.venv` 安装 `dify-agent` backend package 的 source pin；`DIFY_UPSTREAM_MAIN_REF` 记录 Web/API official main image 的源码 commit；`DIFY_SANDBOX_SOURCE_REF` 是 NEXT patched Sandbox server binary 的 source pin。NEXT branch 默认值已 pin 到 Docker Hub main digest、official upstream image ref 和 self fork source set；更新上游、更新 fork main 或回到稳定版时必须作为一组 co-pin 修改。`DIFY_VERSION` 只作为 metadata，不再决定 Dify Web/API 镜像来源或 Agent package 来源。
 
 ### `.dockerignore`
 
@@ -274,7 +275,7 @@ Dify API/Web/Worker/Beat 的环境包装器。
 
 - source runtime defaults 和 generated secrets。
 - 确保 `/app/api/.venv/bin` 在 `PATH` 中。
-- `DIFY_AGENT_ENABLED=true` 时派生 `AGENT_BACKEND_BASE_URL`、URL-encoded `DIFY_AGENT_REDIS_URL`、`DIFY_AGENT_PLUGIN_DAEMON_API_KEY` 和 `DIFY_AGENT_DIFY_API_INNER_API_KEY`。
+- `DIFY_AGENT_ENABLED=true` 时派生 `AGENT_BACKEND_BASE_URL`、URL-encoded `DIFY_AGENT_REDIS_URL`、`DIFY_AGENT_PLUGIN_DAEMON_API_KEY`、`DIFY_AGENT_INNER_API_URL`、`DIFY_AGENT_INNER_API_KEY` 和 `DIFY_AGENT_STUB_API_BASE_URL`；旧 `DIFY_AGENT_DIFY_API_*` / `DIFY_AGENT_STUB_URL` 只保留兼容映射。
 - 执行传入命令。
 
 ### `docker/run-dify-agent`
@@ -284,7 +285,7 @@ NEXT Agent backend 启动脚本。
 职责：
 
 - `DIFY_AGENT_ENABLED=false` 时保持 supervisor program idle，不影响稳定 demo。
-- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后启动 `uvicorn dify_agent.server.app:app`。
+- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后从独立 `/opt/dify-agent/.venv` 启动 `uvicorn dify_agent.server.app:app`。
 - 只监听内部 `DIFY_AGENT_HOST:DIFY_AGENT_PORT`，默认 `127.0.0.1:5005`。
 
 ### `docker/run-shellctl`
@@ -294,7 +295,7 @@ NEXT Agent shell layer 启动脚本。
 职责：
 
 - `DIFY_AGENT_ENABLED=false` 或 `AGENT_SHELL_ENABLED=false` 时保持 supervisor program idle。
-- 开启时执行 `shellctl serve --listen 127.0.0.1:5004`。
+- 开启时从独立 `/opt/dify-agent/.venv` 执行 `shellctl serve --listen 127.0.0.1:5004`，并把 SQLite/tmux runtime 放到 `${RUNTIME_ROOT}/shellctl`。
 - 只服务内部 loopback endpoint，不经 Nginx 暴露公网。
 
 ### `docker/with-plugin-env`
@@ -308,10 +309,21 @@ Plugin Daemon 环境包装器。
   - `DB_PLUGIN_DATABASE` -> `DB_DATABASE`
   - `PLUGIN_DAEMON_PORT` -> `SERVER_PORT`
   - `PLUGIN_DAEMON_KEY` -> `SERVER_KEY`
-  - `PLUGIN_DIFY_INNER_API_URL` -> `DIFY_INNER_API_URL`
-  - `PLUGIN_DIFY_INNER_API_KEY` -> `DIFY_INNER_API_KEY`
-  - `PLUGIN_MAX_REQUEST_TIMEOUT` -> `MAX_REQUEST_TIMEOUT`
+- `PLUGIN_DIFY_INNER_API_URL` -> `DIFY_INNER_API_URL`
+- `PLUGIN_DIFY_INNER_API_KEY` -> `DIFY_INNER_API_KEY`
+- `PLUGIN_MAX_REQUEST_TIMEOUT` -> `MAX_REQUEST_TIMEOUT`
 - 固定 `UV_CACHE_DIR` 到 `PLUGIN_UV_CACHE_DIR`，并在启动前创建/校验可写目录，避免插件 Python venv 初始化回落到不可写的 `/home/user/.cache/uv`。
+- `/opt/dify/plugin-runtime-patches` -> Plugin runtime `PYTHONPATH`
+
+### `docker/plugin_runtime_patches/sitecustomize.py`
+
+Plugin runtime 的 image-controlled timeout compatibility shim。
+
+职责：
+
+- 只改写 OpenAI-compatible SDK 精确的 `(10, MAX_REQUEST_TIMEOUT)` Requests timeout tuple。
+- 使用 `PLUGIN_CONNECT_TIMEOUT_SECONDS` 提高 connect/TLS 上限，不读取或记录 provider credential。
+- 官方 SDK 不再使用该固定 tuple 时自动不生效，不修改签名 `.difypkg` 或临时 venv。
 
 ### `docker/with-sandbox-env`
 
@@ -380,6 +392,7 @@ SANDBOX_IMAGE_REF
 DIFY_SOURCE_REPO
 DIFY_SOURCE_MAIN_REF
 DIFY_AGENT_SOURCE_REF
+DIFY_UPSTREAM_MAIN_REF
 DIFY_SANDBOX_SOURCE_REF
 DIFY_VERSION
 UV_VERSION
@@ -451,7 +464,8 @@ HFS 范式结构契约检查脚本。
 
 - 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
-- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`、默认 Web/API digest pair 与 `DIFY_VERSION` metadata，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
 - 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/health` 和 shellctl 状态。

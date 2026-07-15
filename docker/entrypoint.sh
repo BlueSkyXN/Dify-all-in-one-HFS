@@ -80,6 +80,7 @@ write_generated_env() {
   local provided_plugin_inner_key=${PLUGIN_DIFY_INNER_API_KEY:-}
   local provided_code_execution_key=${CODE_EXECUTION_API_KEY:-}
   local provided_sandbox_key=${SANDBOX_API_KEY:-}
+  local provided_agent_server_secret=${DIFY_AGENT_SERVER_SECRET_KEY:-}
 
   if [ -f /data/config/generated.env ]; then
     # shellcheck disable=SC1091
@@ -91,12 +92,14 @@ write_generated_env() {
   local plugin_inner_key=${provided_plugin_inner_key:-${PLUGIN_DIFY_INNER_API_KEY:-}}
   local code_execution_key=${provided_code_execution_key:-${CODE_EXECUTION_API_KEY:-}}
   local sandbox_key=${provided_sandbox_key:-${SANDBOX_API_KEY:-}}
+  local agent_server_secret=${provided_agent_server_secret:-${DIFY_AGENT_SERVER_SECRET_KEY:-}}
 
   [ -n "$secret_key" ] || secret_key="$(openssl rand -base64 42)"
   [ -n "$plugin_daemon_key" ] || plugin_daemon_key="$(openssl rand -base64 42)"
   [ -n "$plugin_inner_key" ] || plugin_inner_key="$(openssl rand -base64 42)"
   [ -n "$code_execution_key" ] || code_execution_key="$(openssl rand -base64 42)"
   [ -n "$sandbox_key" ] || sandbox_key="$code_execution_key"
+  [ -n "$agent_server_secret" ] || agent_server_secret="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
 
   cat > /data/config/generated.env <<EOF_GENERATED
 export SECRET_KEY=$(shell_quote "$secret_key")
@@ -105,6 +108,7 @@ export PLUGIN_DIFY_INNER_API_KEY=$(shell_quote "$plugin_inner_key")
 export INNER_API_KEY_FOR_PLUGIN=$(shell_quote "$plugin_inner_key")
 export CODE_EXECUTION_API_KEY=$(shell_quote "$code_execution_key")
 export SANDBOX_API_KEY=$(shell_quote "$sandbox_key")
+export DIFY_AGENT_SERVER_SECRET_KEY=$(shell_quote "$agent_server_secret")
 EOF_GENERATED
   chmod 600 /data/config/generated.env || true
 }

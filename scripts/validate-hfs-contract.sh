@@ -28,6 +28,15 @@ require_grep() {
   fi
 }
 
+require_line() {
+  local expected=$1
+  local path=$2
+  local message=$3
+  if ! grep -Fqx -- "$expected" "$path"; then
+    fail "$message"
+  fi
+}
+
 require_absent() {
   local pattern=$1
   local path=$2
@@ -57,8 +66,11 @@ require_file Dockerfile
 require_file docker/nginx.conf
 require_file docker/entrypoint.sh
 require_file docker/supervisord.conf
+require_file docker/dify.env.runtime
+require_file docker/dify.env.demo
 require_file docker/ops_service.py
 require_file docker/admin_service.py
+require_file docker/plugin_runtime_patches/sitecustomize.py
 require_file docker/healthcheck.sh
 require_file scripts/hf-space-smoke.sh
 require_file docs/hfs-alignment.md
@@ -104,13 +116,13 @@ expected_pins = {
     "DIFY_API_IMAGE_REF": {
         "type": "image_ref",
         "required_for_release": True,
-        "dev_mutable_default_allowed": True,
+        "dev_mutable_default_allowed": False,
         "release_requires_digest": True,
     },
     "DIFY_WEB_IMAGE_REF": {
         "type": "image_ref",
         "required_for_release": True,
-        "dev_mutable_default_allowed": True,
+        "dev_mutable_default_allowed": False,
         "release_requires_digest": True,
     },
     "PLUGIN_DAEMON_IMAGE_REF": {
@@ -136,6 +148,11 @@ expected_pins = {
         "dev_mutable_default_allowed": True,
     },
     "DIFY_AGENT_SOURCE_REF": {
+        "type": "source_revision",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+    },
+    "DIFY_UPSTREAM_MAIN_REF": {
         "type": "source_revision",
         "required_for_release": True,
         "dev_mutable_default_allowed": True,
@@ -264,6 +281,8 @@ require_grep '^ARG DIFY_SOURCE_MAIN_REF=' Dockerfile \
   "Dockerfile must expose DIFY_SOURCE_MAIN_REF build input"
 require_grep '^ARG DIFY_AGENT_SOURCE_REF=' Dockerfile \
   "Dockerfile must expose DIFY_AGENT_SOURCE_REF build input"
+require_grep '^ARG DIFY_UPSTREAM_MAIN_REF=' Dockerfile \
+  "Dockerfile must expose DIFY_UPSTREAM_MAIN_REF build input"
 require_grep '^ARG DIFY_SANDBOX_SOURCE_REF=' Dockerfile \
   "Dockerfile must expose DIFY_SANDBOX_SOURCE_REF build input"
 require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
@@ -288,6 +307,83 @@ require_absent '^FROM \${DIFY_WEB_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build web image refs by image:version concatenation"
 require_absent '^FROM \${DIFY_API_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build API image refs by image:version concatenation"
+require_grep 'uv venv --python /usr/local/bin/python3 /opt/dify-agent/\.venv' Dockerfile \
+  "Dockerfile must isolate the self Agent runtime from the Dify API virtualenv"
+require_grep 'dify-agent\[grpc,server,shellctl-server\] @ git\+' Dockerfile \
+  "Dockerfile must install the self Agent backend and integrated shellctl extras"
+require_absent 'uv pip install --python /app/api/\.venv/bin/python --no-cache --no-deps' Dockerfile \
+  "Dockerfile must not overlay the self Agent package into the API virtualenv"
+require_line 'export DIFY_AGENT_VIRTUAL_ENV=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}' docker/dify.env.runtime \
+  "runtime defaults must point Agent and shellctl at the isolated virtualenv"
+require_grep 'DIFY_AGENT_INNER_API_URL' docker/with-dify-env \
+  "Dify env wrapper must derive the canonical Agent inner API URL"
+require_grep 'DIFY_AGENT_INNER_API_KEY' docker/with-dify-env \
+  "Dify env wrapper must derive the canonical Agent inner API key"
+require_grep 'DIFY_AGENT_STUB_API_BASE_URL' docker/with-dify-env \
+  "Dify env wrapper must derive the canonical Agent Stub API base URL"
+require_line 'agent_virtual_env=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}' docker/run-dify-agent \
+  "Agent launcher must default to the isolated virtualenv"
+require_grep 'exec "\$VIRTUAL_ENV/bin/uvicorn"' docker/run-dify-agent \
+  "Agent launcher must execute uvicorn from the isolated virtualenv"
+require_line 'agent_virtual_env=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}' docker/run-shellctl \
+  "shellctl launcher must default to the isolated virtualenv"
+require_grep 'exec "\${agent_virtual_env}/bin/shellctl"' docker/run-shellctl \
+  "shellctl launcher must execute from the isolated virtualenv"
+
+require_line \
+  'export SERVER_CONSOLE_API_URL=${SERVER_CONSOLE_API_URL:-http://127.0.0.1:5001}' \
+  docker/dify.env.runtime \
+  "runtime defaults must keep Dify Web SSR console API traffic on the same-container API origin"
+require_line 'SERVER_CONSOLE_API_URL=http://127.0.0.1:5001' docker/dify.env.demo \
+  "demo env must expose the same-container Dify Web SSR API origin"
+require_grep '\| `SERVER_CONSOLE_API_URL` \| `http://127\.0\.0\.1:5001` \|' docs/configuration.md \
+  "configuration docs must describe the Dify Web SSR internal API origin"
+
+if ! env -i PATH="$PATH" SPACE_HOST=contract.example bash -c '
+  set -euo pipefail
+  source docker/dify.env.runtime
+  [ "$PUBLIC_URL" = "https://contract.example" ]
+  [ "$CONSOLE_API_URL" = "https://contract.example" ]
+  [ "${SERVER_CONSOLE_API_URL:-}" = "http://127.0.0.1:5001" ]
+'; then
+  fail "runtime URL defaults must keep browser URLs public and Dify Web SSR API traffic internal"
+fi
+
+if ! env -i \
+  PATH="$PATH" \
+  SPACE_HOST=contract.example \
+  SERVER_CONSOLE_API_URL=http://api.internal:5001 \
+  bash -c '
+    set -euo pipefail
+    source docker/dify.env.runtime
+    [ "$SERVER_CONSOLE_API_URL" = "http://api.internal:5001" ]
+  '; then
+  fail "runtime URL defaults must preserve an explicit SERVER_CONSOLE_API_URL override"
+fi
+
+if ! env -i PATH="$PATH" bash -c '
+  set -euo pipefail
+  source docker/dify.env.runtime
+  [ "$DIFY_AGENT_VIRTUAL_ENV" = "/opt/dify-agent/.venv" ]
+  [ "$DIFY_AGENT_INNER_API_URL" = "http://127.0.0.1:5001" ]
+  [ "$DIFY_AGENT_SHELL_PROVIDER" = "shellctl" ]
+  [ "$DIFY_AGENT_STUB_API_BASE_URL" = "http://127.0.0.1:5005/agent-stub" ]
+'; then
+  fail "runtime Agent defaults must use canonical self-fork variables and the isolated virtualenv"
+fi
+
+if ! env -i \
+  PATH="$PATH" \
+  DIFY_AGENT_DIFY_API_BASE_URL=http://legacy-api:5001 \
+  DIFY_AGENT_STUB_URL=http://legacy-agent:5005/agent-stub \
+  bash -c '
+    set -euo pipefail
+    source docker/dify.env.runtime
+    [ "$DIFY_AGENT_INNER_API_URL" = "http://legacy-api:5001" ]
+    [ "$DIFY_AGENT_STUB_API_BASE_URL" = "http://legacy-agent:5005/agent-stub" ]
+  '; then
+  fail "runtime Agent defaults must preserve legacy alias compatibility"
+fi
 
 require_grep '^local/$|^\*\*/local/$' .dockerignore \
   ".dockerignore must exclude local/ from Docker build context"

@@ -87,6 +87,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                 "DIFY_AIO_BUILD_DIFY_SOURCE_REPO": "https://github.com/BlueSkyXN/dify.git",
                 "DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF": "1d2cc1e",
                 "DIFY_AIO_BUILD_DIFY_AGENT_SOURCE_REF": "cf5735d",
+                "DIFY_AIO_BUILD_DIFY_UPSTREAM_MAIN_REF": "abb9972",
                 "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF": "44cdbd5",
                 "SANDBOX_UID_POOL_MIN": "1000",
                 "SANDBOX_UID_POOL_MAX": "1001",
@@ -105,6 +106,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(build["dify_source_repo"], "https://github.com/BlueSkyXN/dify.git")
         self.assertEqual(build["dify_source_main_ref"], "1d2cc1e")
         self.assertEqual(build["dify_agent_source_ref"], "cf5735d")
+        self.assertEqual(build["dify_upstream_main_ref"], "abb9972")
         self.assertEqual(build["sandbox_source_ref"], "44cdbd5")
         self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
         self.assertEqual(sandbox["uid_pool_min"], "1000")
@@ -784,12 +786,14 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
     def test_process_env_summary_returns_only_safe_values(self):
         values = ops_service.parse_environ_bytes(
-            b"MAX_REQUEST_TIMEOUT=300\0OPS_TOKEN=secret-token\0PLUGIN_WORKING_PATH=/data/plugin_daemon/cwd\0"
+            b"MAX_REQUEST_TIMEOUT=300\0PLUGIN_SSL_EOF_MAX_RETRIES=1\0"
+            b"OPS_TOKEN=secret-token\0PLUGIN_WORKING_PATH=/data/plugin_daemon/cwd\0"
         )
 
         summary = ops_service.process_env_safe_summary(values)
 
         self.assertEqual(summary["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertEqual(summary["safe_values"]["PLUGIN_SSL_EOF_MAX_RETRIES"], "1")
         self.assertEqual(summary["safe_values"]["PLUGIN_WORKING_PATH"], "/data/plugin_daemon/cwd")
         self.assertNotIn("OPS_TOKEN", summary["safe_values"])
         self.assertTrue(summary["secret_presence"]["OPS_TOKEN"])
@@ -823,7 +827,14 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             plugin_llm = plugin_cwd / "models" / "llm"
             plugin_llm.mkdir(parents=True)
             (plugin_llm / "llm.py").write_text("return super()._invoke(*args)\n", encoding="utf-8")
-            (plugin_cwd / ".env").write_text("MAX_REQUEST_TIMEOUT=300\nOPS_TOKEN=secret-token\n", encoding="utf-8")
+            (plugin_cwd / ".env").write_text(
+                "MAX_REQUEST_TIMEOUT=300\n"
+                "PLUGIN_CONNECT_TIMEOUT_SECONDS=60\n"
+                "PLUGIN_SSL_EOF_MAX_RETRIES=1\n"
+                "PYTHONPATH=/opt/dify/plugin-runtime-patches\n"
+                "OPS_TOKEN=secret-token\n",
+                encoding="utf-8",
+            )
 
             matched = proc_root / "123"
             matched.mkdir()
@@ -833,6 +844,9 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                 (
                     f"INSTALL_METHOD=local\0"
                     f"MAX_REQUEST_TIMEOUT=300\0"
+                    f"PLUGIN_CONNECT_TIMEOUT_SECONDS=60\0"
+                    f"PLUGIN_SSL_EOF_MAX_RETRIES=1\0"
+                    f"PYTHONPATH=/opt/dify/plugin-runtime-patches\0"
                     f"PLUGIN_WORKING_PATH={working_root}\0"
                     f"VIRTUAL_ENV={plugin_cwd / '.venv'}\0"
                     f"OPS_TOKEN=secret-token\0"
@@ -860,6 +874,9 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(match["pid"], 123)
         self.assertEqual(match["ppid"], 45)
         self.assertEqual(match["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertEqual(match["safe_values"]["PLUGIN_CONNECT_TIMEOUT_SECONDS"], "60")
+        self.assertEqual(match["safe_values"]["PLUGIN_SSL_EOF_MAX_RETRIES"], "1")
+        self.assertEqual(match["safe_values"]["PYTHONPATH"], "/opt/dify/plugin-runtime-patches")
         self.assertNotIn("OPS_TOKEN", match["safe_values"])
         self.assertTrue(match["secret_presence"]["OPS_TOKEN"])
         self.assertNotIn("cmdline", match)
@@ -869,6 +886,12 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertTrue(inspection["ok"])
         self.assertEqual(inspection["dify_plugin_versions"][0]["version"], "0.7.4")
         self.assertEqual(inspection["env_file"]["safe_values"]["MAX_REQUEST_TIMEOUT"], "300")
+        self.assertEqual(inspection["env_file"]["safe_values"]["PLUGIN_CONNECT_TIMEOUT_SECONDS"], "60")
+        self.assertEqual(inspection["env_file"]["safe_values"]["PLUGIN_SSL_EOF_MAX_RETRIES"], "1")
+        self.assertEqual(
+            inspection["env_file"]["safe_values"]["PYTHONPATH"],
+            "/opt/dify/plugin-runtime-patches",
+        )
         self.assertNotIn("OPS_TOKEN", inspection["env_file"]["safe_values"])
         self.assertTrue(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["uses_plugin_config_max_request_timeout"])
         self.assertFalse(inspection["sdk_openai_compatible_llm"][0]["timeout_markers"]["has_hardcoded_timeout_10_10"])

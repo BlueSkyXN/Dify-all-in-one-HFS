@@ -82,7 +82,8 @@ python3 -m py_compile \
   docker/ops_service.py \
   docker/admin_service.py \
   docker/sandbox-selfcheck \
-  scripts/check-next-pins.py
+  scripts/check-next-pins.py \
+  docker/plugin_runtime_patches/sitecustomize.py
 python3 -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check
 check_changed_file_trailing_whitespace

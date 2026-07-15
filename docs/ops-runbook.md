@@ -298,7 +298,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 
 `/_ops/metrics` 返回 Prometheus text format，包含 ops service、health check、load、memory、disk、uptime 和 process count 指标。它仍然需要 `OPS_TOKEN`，可以给 Prometheus、Uptime Kuma 或其他外部监控通过 header 抓取。
 
-`/_ops/process-env?service=plugin-daemon` 用于排查 Supervisor 进程和 plugin runtime 子进程是否继承了关键安全配置。它只接受固定 service 白名单，只读取 `/proc/<pid>/environ` 中的固定 safe keys，并且只返回 secret presence boolean，不返回 secret 原文。排查插件请求超时时，重点看 `process.safe_values.MAX_REQUEST_TIMEOUT` 和 `children[].safe_values.MAX_REQUEST_TIMEOUT` 是否符合 `PLUGIN_MAX_REQUEST_TIMEOUT`。如果插件 runtime 已经脱离 Supervisor 子进程树，使用 `/_ops/process-env?service=plugin-daemon&runtime_scan=true` 额外扫描匹配 Dify 插件 runtime 形态的 Python 进程；该扫描不返回 raw cmdline、cwd 或 secret 原文，只返回 safe env keys、secret presence、`pid`、`ppid`、`comm` 和匹配原因。需要核对 live 插件 venv 时，加 `runtime_inspect=true`；返回内容仅包含 dist-info 版本、固定 timeout marker、文件 hash 和 `.env` safe keys，不返回源码、raw path 或 secret。`with-plugin-env` 会清理继承自宿主 API venv 的 `VIRTUAL_ENV`，正常情况下 plugin runtime 不应再显示 `/app/api/.venv`。
+`/_ops/process-env?service=plugin-daemon` 用于排查 Supervisor 进程和 plugin runtime 子进程是否继承了关键安全配置。它只接受固定 service 白名单，只读取 `/proc/<pid>/environ` 中的固定 safe keys，并且只返回 secret presence boolean，不返回 secret 原文。排查插件请求超时或 TLS EOF 时，重点看 `MAX_REQUEST_TIMEOUT`、`PLUGIN_CONNECT_TIMEOUT_SECONDS` 和 `PLUGIN_SSL_EOF_MAX_RETRIES` 是否同时出现在 `process.safe_values`、相关 `children[].safe_values` 或 runtime scan 中；retry 值应为默认 `0`，或 owner 明确 opt-in 后的 `1`。如果插件 runtime 已经脱离 Supervisor 子进程树，使用 `/_ops/process-env?service=plugin-daemon&runtime_scan=true` 额外扫描匹配 Dify 插件 runtime 形态的 Python 进程；该扫描不返回 raw cmdline、cwd 或 secret 原文，只返回 safe env keys、secret presence、`pid`、`ppid`、`comm` 和匹配原因。需要核对 live 插件 venv 时，加 `runtime_inspect=true`；返回内容仅包含 dist-info 版本、固定 timeout marker、文件 hash 和 `.env` safe keys，不返回源码、raw path 或 secret。`with-plugin-env` 会清理继承自宿主 API venv 的 `VIRTUAL_ENV`，正常情况下 plugin runtime 不应再显示 `/app/api/.venv`。
 
 ## 日志入口
 
@@ -554,6 +554,15 @@ curl -X POST \
 ```
 
 执行后重新读取 `/_ops/provider-models`，确认对应 credential 的 `safe_values.read_timeout` 已出现，再用 app API 或下游 smoke 复测。这个 action 不是任意 SQL 通道；如果 provider、model 或 model_type 不匹配，会返回 404，不会创建新 credential。
+
+如果 credential 已经是 `read_timeout=300`、Plugin runtime 的 `MAX_REQUEST_TIMEOUT=300`，但失败仍稳定发生在约 10 秒，优先把它判定为 SDK 固定 connect/TLS timeout，而不是继续反复写同一个 credential。`requests timeout=(connect, read)` 在 TLS handshake 阶段也可能以 `Read timed out. (read timeout=<connect>)` 呈现。当前镜像通过 `PLUGIN_CONNECT_TIMEOUT_SECONDS`（默认 `60`）和只读 runtime shim，仅改写 OpenAI-compatible SDK 精确的 `(10, MAX_REQUEST_TIMEOUT)` 请求 tuple。用下面的回读确认 shim 已注入 Plugin runtime，再执行真实 app API 或下游 smoke：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" \
+  "https://your-space.hf.space/_ops/process-env?service=plugin-daemon&runtime_scan=true&runtime_inspect=true"
+```
+
+重点看 `PLUGIN_CONNECT_TIMEOUT_SECONDS=60`、`PLUGIN_SSL_EOF_MAX_RETRIES=0|1`、`PYTHONPATH` 包含 `/opt/dify/plugin-runtime-patches`，并确认 Supervisor 进程与实际 Plugin runtime 子进程的 retry 值一致。`0` 表示 TLS EOF retry 仍关闭；只有 owner 接受重复推理/计费风险并显式配置后才应看到 `1`。不要直接编辑签名 `.difypkg`、持久化 plugin package bucket 或临时 venv。
 
 不要通过后台简单复制 package bucket 到 installed bucket 来修复。那会绕开 Plugin Daemon 的安装任务、数据库状态更新、依赖初始化和 `LaunchLocalPlugin` 等流程，只能制造“文件看起来在，但 runtime 仍没注册”的假恢复。
 
