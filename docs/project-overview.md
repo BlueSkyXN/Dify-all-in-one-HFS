@@ -69,18 +69,18 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api:latest
-DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=latest
+DIFY_VERSION=1.16.0-rc1
 UV_VERSION=latest
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-开发默认值允许使用可移动 tag。发布或长期演示应把 image ref 换成 `image@sha256:...` digest，并固定 `UV_VERSION`；`DIFY_VERSION` 只作为 metadata，不再决定 Web/API 镜像内容。
+Web/API 默认值固定为经过兼容性确认的 `1.16.0-rc1` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍保留现有开发默认值。发布或长期演示仍应记录全部 image ref 并固定剩余可移动输入。`DIFY_VERSION=1.16.0-rc1` 只作为 metadata 描述该 Web/API pair，真实镜像内容始终以两个 digest ref 为准。
 
 ## 运行状态入口
 

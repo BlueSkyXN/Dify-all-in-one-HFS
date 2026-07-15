@@ -7,12 +7,12 @@
 `Dockerfile` 使用多阶段构建，复用官方镜像资产：
 
 1. `web-builder`
-   - 来源：`${DIFY_WEB_IMAGE_REF}`，开发默认 `langgenius/dify-web:latest`。
+   - 来源：`${DIFY_WEB_IMAGE_REF}`，默认固定为 `langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106`。
    - 验证 `/app/targets/next`、`/app/targets/vinext` 和 `/app/entrypoint.sh` 存在。
    - 最终复制 `/app/targets/` 和 `/app/entrypoint.sh` 到 runtime。
 
 2. `api-image`
-   - 来源：`${DIFY_API_IMAGE_REF}`，开发默认 `langgenius/dify-api:latest`。
+   - 来源：`${DIFY_API_IMAGE_REF}`，默认固定为 `langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24`。
    - 验证 `/app/api/.venv/bin/flask` 和 `/app/api/docker/entrypoint.sh` 存在。
    - 最终复制 `/app/api` 到 runtime。
 
@@ -37,17 +37,17 @@
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web:latest
-DIFY_API_IMAGE_REF=langgenius/dify-api:latest
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-DIFY_VERSION=latest
+DIFY_VERSION=1.16.0-rc1
 UV_VERSION=latest
 ```
 
-开发默认值允许使用可移动 tag，方便 demo 跟随上游。发布或长期演示时，`BASE_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`DIFY_API_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF` 和 `SANDBOX_IMAGE_REF` 必须记录并传入 `image@sha256:...` digest ref；`UV_VERSION` 也必须传入固定版本。
+Web/API 默认值固定为经过兼容性确认的 `1.16.0-rc1` digest pair。`BASE_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `UV_VERSION` 仍保留原有可移动开发默认值；发布或长期演示时必须记录全部输入，并把这些剩余输入固定到 digest 或明确版本。
 
-`DIFY_VERSION` 只作为 build/runtime metadata，不再参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`。`langgenius/dify-plugin-daemon` 当前不发布 `latest` tag；开发默认使用可移动的 `main-local` 作为最新构建入口。
+`DIFY_VERSION=1.16.0-rc1` 只作为 build/runtime metadata，不参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`，并让 metadata 准确描述该 pair。`langgenius/dify-plugin-daemon` 当前不发布 `latest` tag；开发默认使用可移动的 `main-local` 作为最新构建入口。
 
 ## Container Entry Point
 
