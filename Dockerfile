@@ -20,11 +20,11 @@ ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:1625345656d367085adb258e9670f7
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-ARG DIFY_SOURCE_MAIN_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
-ARG DIFY_AGENT_SOURCE_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+ARG DIFY_SOURCE_MAIN_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
+ARG DIFY_AGENT_SOURCE_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
 ARG DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
 ARG DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
-ARG DIFY_VERSION=BlueSkyXN-dify-main-4890f9e16557b3cbae6f9388b69f2cda1c39ee44-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+ARG DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-94b490d3d2801c78c0d94b5b06415b9a6f80065d
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
@@ -185,6 +185,25 @@ ENV HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub
 # Copy Dify API source + venv. Keep the official /app/api path because console
 # script shebangs inside .venv point there.
 COPY --from=api-image --chown=user:user /app/api /app/api
+
+# The Web/API base remains the official digest-pinned image. Overlay only the
+# maintained fork's Agent observability service so fork-specific monitoring
+# fixes are present without rebuilding or copying the full Dify API source tree.
+RUN set -eu; \
+    self_source_dir=/tmp/dify-self-source; \
+    self_overlay=api/services/agent/observability_service.py; \
+    rm -rf "${self_source_dir}"; \
+    git init -q "${self_source_dir}"; \
+    git -C "${self_source_dir}" remote add origin "${DIFY_SOURCE_REPO}"; \
+    git -C "${self_source_dir}" -c protocol.version=2 fetch --depth 1 --filter=blob:none --no-tags origin "${DIFY_SOURCE_MAIN_REF}"; \
+    expected_blob="$(git -C "${self_source_dir}" rev-parse "FETCH_HEAD:${self_overlay}")"; \
+    git -C "${self_source_dir}" show "FETCH_HEAD:${self_overlay}" > "/app/api/${self_overlay#api/}"; \
+    actual_blob="$(git hash-object "/app/api/${self_overlay#api/}")"; \
+    test "${actual_blob}" = "${expected_blob}"; \
+    chown user:user "/app/api/${self_overlay#api/}"; \
+    /app/api/.venv/bin/python -W error::SyntaxWarning -m py_compile "/app/api/${self_overlay#api/}"; \
+    printf 'Applied self API overlay %s@%s blob=%s\n' "${DIFY_SOURCE_REPO}" "${DIFY_SOURCE_MAIN_REF}" "${actual_blob}"; \
+    rm -rf "${self_source_dir}"
 
 # NEXT Agent v2 needs the maintained fork's backend and integrated shellctl.
 # Keep them in a dedicated virtualenv: current API main requires graphon 0.6,

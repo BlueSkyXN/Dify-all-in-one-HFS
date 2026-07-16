@@ -307,6 +307,16 @@ require_absent '^FROM \${DIFY_WEB_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build web image refs by image:version concatenation"
 require_absent '^FROM \${DIFY_API_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build API image refs by image:version concatenation"
+require_grep 'self_overlay=api/services/agent/observability_service\.py' Dockerfile \
+  "Dockerfile must declare the targeted self API Agent observability overlay"
+require_grep 'fetch --depth 1 --filter=blob:none --no-tags origin "\${DIFY_SOURCE_MAIN_REF}"' Dockerfile \
+  "Dockerfile must fetch the self API overlay from the pinned maintained fork revision"
+require_grep 'show "FETCH_HEAD:\${self_overlay}"' Dockerfile \
+  "Dockerfile must materialize the self API overlay from the fetched revision"
+require_grep 'git hash-object "/app/api/\${self_overlay#api/}"' Dockerfile \
+  "Dockerfile must verify the applied self API overlay blob"
+require_grep '/app/api/\.venv/bin/python -W error::SyntaxWarning -m py_compile' Dockerfile \
+  "Dockerfile must syntax-check the self API overlay with SyntaxWarning promoted to failure"
 require_grep 'uv venv --python /usr/local/bin/python3 /opt/dify-agent/\.venv' Dockerfile \
   "Dockerfile must isolate the self Agent runtime from the Dify API virtualenv"
 require_grep 'dify-agent\[grpc,server,shellctl-server\] @ git\+' Dockerfile \

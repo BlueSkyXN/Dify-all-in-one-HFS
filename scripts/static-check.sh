@@ -78,7 +78,7 @@ require_executable docker/run-postgres
 require_executable docker/sandbox-selfcheck
 
 scripts/validate-hfs-contract.sh
-python3 -m py_compile \
+python3 -W error::SyntaxWarning -m py_compile \
   docker/ops_service.py \
   docker/admin_service.py \
   docker/sandbox-selfcheck \

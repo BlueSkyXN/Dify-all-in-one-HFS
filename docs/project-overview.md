@@ -76,26 +76,26 @@ DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
-DIFY_AGENT_SOURCE_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_SOURCE_MAIN_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
+DIFY_AGENT_SOURCE_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
 DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=BlueSkyXN-dify-main-4890f9e16557b3cbae6f9388b69f2cda1c39ee44-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-94b490d3d2801c78c0d94b5b06415b9a6f80065d
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-NEXT branch 默认值已 pin 到 Docker Hub 当前 `langgenius/dify-api:main` / `langgenius/dify-web:main` digest set、对应的 `DIFY_UPSTREAM_MAIN_REF`、`BlueSkyXN/dify` self main source ref、当前 Sandbox config/dependencies digest 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`DIFY_UPSTREAM_MAIN_REF`、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
+NEXT branch 默认值已 pin 到 Docker Hub 当前 `langgenius/dify-api:main` / `langgenius/dify-web:main` digest set、对应的 `DIFY_UPSTREAM_MAIN_REF`、`BlueSkyXN/dify` self API Agent observability overlay 与 Agent package source ref、当前 Sandbox config/dependencies digest 和 patched Sandbox source ref。需要回到稳定版时不要只改 `DIFY_VERSION`，必须同时切换 `DIFY_API_IMAGE_REF`、`DIFY_WEB_IMAGE_REF`、`DIFY_UPSTREAM_MAIN_REF`、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。
 
-注意：上游 `main/docker/docker-compose.yaml` 的 release/service 组合和 Docker Hub `main` image 发布节奏不是同一个 truth source。NEXT/HFS 使用 Docker Hub 当前 `main` digest，再叠加本仓库 all-in-one runtime glue 与 `BlueSkyXN/dify` self main 的 `dify-agent` package。fork merge commit 通常没有 API/Web commit tag，所以不能只改 metadata 声称 Web/API 镜像由 fork SHA 选择。
+注意：上游 `main/docker/docker-compose.yaml` 的 release/service 组合和 Docker Hub `main` image 发布节奏不是同一个 truth source。NEXT/HFS 使用 Docker Hub 当前 `main` digest，再叠加本仓库 all-in-one runtime glue、`BlueSkyXN/dify` self main 的 targeted Agent observability service overlay 与 `dify-agent` package。fork merge commit 通常没有 API/Web commit tag，所以不能只改 metadata 声称完整 Web/API 镜像由 fork SHA 选择。
 
 ## 与源码自建 main 的边界
 
-截至当前 NEXT pin 的 `BlueSkyXN/dify` self main `4890f9e16557b3cbae6f9388b69f2cda1c39ee44`，fork 已选择性吸收最新上游安全、可靠性与 Agent DSL 变化，并保留 fork-specific Python shellctl/Agent Stub 以及 Agent monitoring correctness 修复。Web/API image 则明确记录来自 official upstream main `abb9972e1960eea63041854cb6fbe15a7abe2bd6`。当前 API image 要求 `graphon==0.6.0`，self `dify-agent` 要求 `graphon==0.5.2`，因此两者必须使用独立 virtualenv，不能继续把 Agent overlay 装进 `/app/api/.venv`。
+截至当前 NEXT pin 的 `BlueSkyXN/dify` self main `94b490d3d2801c78c0d94b5b06415b9a6f80065d`，fork 已选择性吸收最新上游安全、可靠性与 Agent DSL 变化，并保留 fork-specific Python shellctl/Agent Stub、Agent monitoring correctness 修复，以及默认/非精确 workflow 日志按 app 聚合的兼容修复。Web/API image 则明确记录来自 official upstream main `abb9972e1960eea63041854cb6fbe15a7abe2bd6`。当前 API image 要求 `graphon==0.6.0`，self `dify-agent` 要求 `graphon==0.5.2`，因此两者必须使用独立 virtualenv，不能继续把 Agent overlay 装进 `/app/api/.venv`。
 
-当前 HFS NEXT 没有把完整 `BlueSkyXN/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是 digest-pinned API/Web `main` image，加上从 maintained fork main 安装的 `dify-agent` package：
+当前 HFS NEXT 没有把完整 `BlueSkyXN/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是 digest-pinned API/Web `main` image，加上从 maintained fork main 精确覆盖的 Agent observability service，以及独立安装的 `dify-agent` package：
 
 ```text
 DIFY_API_IMAGE_REF
@@ -103,7 +103,7 @@ DIFY_WEB_IMAGE_REF
 DIFY_AGENT_SOURCE_REF
 ```
 
-因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 在 `/opt/dify-agent/.venv` 独立安装 self package 的 `server`、`grpc` 和 `shellctl-server` extras，API image venv 保持原样。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend、shell layer、Agent Stub 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
+因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只把 `api/services/agent/observability_service.py` 作为 source-pinned self overlay，并在 `/opt/dify-agent/.venv` 独立安装 self package 的 `server`、`grpc` 和 `shellctl-server` extras，API image venv 保持原样。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend、shell layer、Agent Stub 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
 
 ## 运行状态入口
 
