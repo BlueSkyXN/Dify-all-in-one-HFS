@@ -120,12 +120,12 @@ DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:1625345656d367085adb258e9670f72ee3
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
-DIFY_AGENT_SOURCE_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_SOURCE_MAIN_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
+DIFY_AGENT_SOURCE_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
 DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
 UV_VERSION=0.11.21
-DIFY_VERSION=BlueSkyXN-dify-main-4890f9e16557b3cbae6f9388b69f2cda1c39ee44-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-94b490d3d2801c78c0d94b5b06415b9a6f80065d
 ```
 
 这个 pin set 对 Web/API 指向 Docker Hub 当前 `main` digest；Agent backend package 从 self main source ref 安装到独立 `/opt/dify-agent/.venv`；Sandbox 的 `/conf` 和 `/dependencies` 使用当前 `main` digest，server binary 仍来自 source-pinned HFS patch build。API image 与 self Agent package 的 `graphon` 约束不同，独立 virtualenv 是当前 co-pin contract 的一部分。Docker Hub 通常没有 fork merge commit 对应的 API/Web commit tag，所以 release note 必须区分 image digest 与 source ref。

@@ -76,12 +76,12 @@ DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
-DIFY_AGENT_SOURCE_REF=4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_SOURCE_MAIN_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
+DIFY_AGENT_SOURCE_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
 DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=BlueSkyXN-dify-main-4890f9e16557b3cbae6f9388b69f2cda1c39ee44-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-4890f9e16557b3cbae6f9388b69f2cda1c39ee44
+DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-94b490d3d2801c78c0d94b5b06415b9a6f80065d
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
@@ -93,7 +93,7 @@ NEXT branch 默认值已 pin 到 Docker Hub 当前 `langgenius/dify-api:main` / 
 
 ## 与源码自建 main 的边界
 
-截至当前 NEXT pin 的 `BlueSkyXN/dify` self main `4890f9e16557b3cbae6f9388b69f2cda1c39ee44`，fork 已选择性吸收最新上游安全、可靠性与 Agent DSL 变化，并保留 fork-specific Python shellctl/Agent Stub 以及 Agent monitoring correctness 修复。Web/API image 则明确记录来自 official upstream main `abb9972e1960eea63041854cb6fbe15a7abe2bd6`。当前 API image 要求 `graphon==0.6.0`，self `dify-agent` 要求 `graphon==0.5.2`，因此两者必须使用独立 virtualenv，不能继续把 Agent overlay 装进 `/app/api/.venv`。
+截至当前 NEXT pin 的 `BlueSkyXN/dify` self main `94b490d3d2801c78c0d94b5b06415b9a6f80065d`，fork 已选择性吸收最新上游安全、可靠性与 Agent DSL 变化，并保留 fork-specific Python shellctl/Agent Stub、Agent monitoring correctness 修复，以及默认/非精确 workflow 日志按 app 聚合的兼容修复。Web/API image 则明确记录来自 official upstream main `abb9972e1960eea63041854cb6fbe15a7abe2bd6`。当前 API image 要求 `graphon==0.6.0`，self `dify-agent` 要求 `graphon==0.5.2`，因此两者必须使用独立 virtualenv，不能继续把 Agent overlay 装进 `/app/api/.venv`。
 
 当前 HFS NEXT 没有把完整 `BlueSkyXN/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是 digest-pinned API/Web `main` image，加上从 maintained fork main 安装的 `dify-agent` package：
 
