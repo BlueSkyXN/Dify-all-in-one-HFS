@@ -34,6 +34,7 @@
 6. `runtime`
    - 来源：`${BASE_IMAGE_REF}`，开发默认 `python:3.12-slim-bookworm`。
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv、tmux 等运行时依赖。
+   - 保留 official API image 和 `/app/api/.venv`，但从 `${DIFY_SOURCE_REPO}@${DIFY_SOURCE_MAIN_REF}` 精确覆盖 `api/services/agent/observability_service.py`；build 会校验 Git blob 并以 `SyntaxWarning` 为错误做语法检查。该 overlay 只承载 self fork 的 Agent monitoring 聚合/兼容修复，不等于从 self source 重建完整 API。
    - 在 `/opt/dify-agent/.venv` 从 `${DIFY_SOURCE_REPO}@${DIFY_AGENT_SOURCE_REF}` 安装 self package 的 `server`、`grpc`、`shellctl-server` extras；执行 Agent/server/shellctl import、source assertion、API 与 Agent 双 `graphon` 版本断言、CLI help 和独立 `uv pip check` 作为 build gate。API 的 `/app/api/.venv` 不再被 Agent overlay 修改。
    - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
@@ -56,7 +57,7 @@ DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstre
 UV_VERSION=0.11.21
 ```
 
-NEXT branch 默认值已使用 digest ref、official upstream image source ref、self source ref、Agent source ref 和 sandbox source ref，便于复现当前 Docker Hub main image + self fork Agent package 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image、`DIFY_UPSTREAM_MAIN_REF`、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF` 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。不要用上游 `docker/docker-compose.yaml` 里的 release image tag 判断 main 代码是否已经运行；NEXT 走的是 digest-pinned Docker Hub main image，不是 compose release tag。若 official upstream commit-tag 镜像尚未发布，应等待 image provenance 可验证后再推进，而不是只改 metadata；self Agent package 继续在独立 virtualenv 中安装。
+NEXT branch 默认值已使用 digest ref、official upstream image source ref、self API Agent observability overlay ref、Agent package source ref 和 sandbox source ref，便于复现当前 Docker Hub main image + targeted self API overlay + self fork Agent package 代际。需要切换回稳定版或更新到新的 main commit 时，必须把 Web/API/Plugin Daemon/Sandbox image、`DIFY_UPSTREAM_MAIN_REF`、`DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF` 与 `DIFY_SANDBOX_SOURCE_REF` 作为一组 co-pin 更新并重新 smoke。不要用上游 `docker/docker-compose.yaml` 里的 release image tag 判断 main 代码是否已经运行；NEXT 走的是 digest-pinned Docker Hub main image，不是 compose release tag。若 official upstream commit-tag 镜像尚未发布，应等待 image provenance 可验证后再推进，而不是只改 metadata；self API 只做目标文件 overlay，self Agent package 继续在独立 virtualenv 中安装。
 
 `DIFY_VERSION` 只作为 build/runtime metadata，不再参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`；需要切换 Agent backend package 时必须覆盖 `DIFY_AGENT_SOURCE_REF`。Plugin Daemon 使用 `0.6.2-local` 对应 digest，发布验证不要依赖可变的 `latest-local` tag。
 

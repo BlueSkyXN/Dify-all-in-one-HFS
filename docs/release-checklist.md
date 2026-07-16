@@ -70,7 +70,7 @@ All image refs use digest? yes/no:
 Mutable defaults used? yes/no + reason:
 ```
 
-NEXT branch 默认值已经 pin 到 `image@sha256:...` digest ref，并为 self fork main、Agent source、official Web/API image source 和 patched Sandbox server binary 分别 pin `DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF`、`DIFY_UPSTREAM_MAIN_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。更新 fork main、official upstream image 或 Agent source 时，必须重新记录 Web/API/Plugin Daemon/Sandbox image 与 source ref 的 co-pin set；`DIFY_VERSION` 只作为 metadata，不是 selected image content 或 Agent package content 的证据。
+NEXT branch 默认值已经 pin 到 `image@sha256:...` digest ref，并为 self API Agent observability overlay、Agent package source、official Web/API image source 和 patched Sandbox server binary 分别 pin `DIFY_SOURCE_MAIN_REF`、`DIFY_AGENT_SOURCE_REF`、`DIFY_UPSTREAM_MAIN_REF` 和 `DIFY_SANDBOX_SOURCE_REF`。更新 fork main、official upstream image 或 Agent source 时，必须重新记录 Web/API/Plugin Daemon/Sandbox image 与 source ref 的 co-pin set；`DIFY_VERSION` 只作为 metadata，不是 selected image、targeted self API overlay 或 Agent package content 的证据。
 
 `scripts/check-next-pins.py` 会实时检查：
 
@@ -85,7 +85,7 @@ langgenius/dify-sandbox:main
 langgenius/dify-sandbox refs/heads/main
 ```
 
-它分别校验 self fork source 和 official upstream image source：API/Web 的 official commit tag 必须与 `main` digest 相同，避免再把 fork SHA metadata 误写成 Web/API image provenance。
+它分别校验 self fork overlay/package source 和 official upstream image source：API/Web 的 official commit tag 必须与 `main` digest 相同，避免把 fork SHA metadata 误写成完整 Web/API image provenance；Docker build 还必须校验 targeted self API overlay 的 Git blob。
 
 `scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
 

@@ -186,6 +186,25 @@ ENV HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub
 # script shebangs inside .venv point there.
 COPY --from=api-image --chown=user:user /app/api /app/api
 
+# The Web/API base remains the official digest-pinned image. Overlay only the
+# maintained fork's Agent observability service so fork-specific monitoring
+# fixes are present without rebuilding or copying the full Dify API source tree.
+RUN set -eu; \
+    self_source_dir=/tmp/dify-self-source; \
+    self_overlay=api/services/agent/observability_service.py; \
+    rm -rf "${self_source_dir}"; \
+    git init -q "${self_source_dir}"; \
+    git -C "${self_source_dir}" remote add origin "${DIFY_SOURCE_REPO}"; \
+    git -C "${self_source_dir}" -c protocol.version=2 fetch --depth 1 --filter=blob:none --no-tags origin "${DIFY_SOURCE_MAIN_REF}"; \
+    expected_blob="$(git -C "${self_source_dir}" rev-parse "FETCH_HEAD:${self_overlay}")"; \
+    git -C "${self_source_dir}" show "FETCH_HEAD:${self_overlay}" > "/app/api/${self_overlay#api/}"; \
+    actual_blob="$(git hash-object "/app/api/${self_overlay#api/}")"; \
+    test "${actual_blob}" = "${expected_blob}"; \
+    chown user:user "/app/api/${self_overlay#api/}"; \
+    /app/api/.venv/bin/python -W error::SyntaxWarning -m py_compile "/app/api/${self_overlay#api/}"; \
+    printf 'Applied self API overlay %s@%s blob=%s\n' "${DIFY_SOURCE_REPO}" "${DIFY_SOURCE_MAIN_REF}" "${actual_blob}"; \
+    rm -rf "${self_source_dir}"
+
 # NEXT Agent v2 needs the maintained fork's backend and integrated shellctl.
 # Keep them in a dedicated virtualenv: current API main requires graphon 0.6,
 # while the fork Agent runtime requires graphon 0.5, so an in-place overlay of
