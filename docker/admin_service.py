@@ -1904,8 +1904,8 @@ def html_index(authenticated: bool) -> str:
       if (!writeEnabled) return;
       const file = byId("uploadFile").files[0];
       if (!file) return;
-      const base = byId("filePath").value.replace(/\/$/, "");
-      const path = `${base}/${file.name}`.replace(/^\/+/, "/");
+      const base = byId("filePath").value.replace(/\\/$/, "");
+      const path = `${base}/${file.name}`.replace(/^\\/+/, "/");
       const response = await fetch(`api/files/upload?path=${encodeURIComponent(path)}&overwrite=false`, {
         method: "POST",
         headers: {"X-Admin-CSRF": csrfToken, "Content-Type": "application/octet-stream"},
