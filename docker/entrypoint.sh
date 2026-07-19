@@ -393,32 +393,13 @@ stop_temp_redis() {
   redis_cli "${args[@]}" shutdown nosave >/data/logs/redis-init-stop.log 2>&1 || true
 }
 
-sandbox_python_lib_path_default() {
-  local arch
-  local triplet
-  arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
-  case "$arch" in
-    amd64|x86_64) triplet="x86_64-linux-gnu" ;;
-    arm64|aarch64) triplet="aarch64-linux-gnu" ;;
-    *)
-      log "Unsupported architecture for SANDBOX_PYTHON_LIB_PATH auto detection: ${arch}"
-      return 1
-      ;;
-  esac
-  printf '/usr/local/lib/python3.12,/usr/lib/%s,/lib/%s,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone' "$triplet" "$triplet"
-}
-
 render_sandbox_config() {
   source_runtime_env
   local api_key=${SANDBOX_API_KEY:-${CODE_EXECUTION_API_KEY:-}}
   local enable_network=${SANDBOX_ENABLE_NETWORK:-false}
   local python_path=${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}
   local nodejs_path=${SANDBOX_NODEJS_PATH:-/usr/bin/node}
-  local python_lib_paths=${SANDBOX_PYTHON_LIB_PATH:-}
   local debug=false
-  if [ -z "$python_lib_paths" ]; then
-    python_lib_paths=$(sandbox_python_lib_path_default)
-  fi
   if [ "${SANDBOX_GIN_MODE:-release}" != "release" ]; then
     debug=true
   fi
@@ -439,16 +420,6 @@ enable_network: ${enable_network}
 enable_preload: false
 log_path: "/data/logs"
 allowed_syscalls: []
-python_lib_path:
-EOF_SANDBOX
-  if [ -n "$python_lib_paths" ]; then
-    IFS=',' read -r -a lib_paths <<< "$python_lib_paths"
-    for lib_path in "${lib_paths[@]}"; do
-      [ -n "$lib_path" ] || continue
-      printf '  - "%s"\n' "$lib_path" >> /conf/config.yaml
-    done
-  fi
-  cat >> /conf/config.yaml <<EOF_SANDBOX
 proxy:
   socks5: ''
   http: '${SANDBOX_HTTP_PROXY:-}'
@@ -623,12 +594,71 @@ postgres_bucket_fallback_enabled() {
   esac
 }
 
+canonicalize_path() {
+  python3 - "$1" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+}
+
+paths_overlap() {
+  local first=$1
+  local second=$2
+  case "$first" in
+    "$second"|"$second"/*) return 0 ;;
+  esac
+  case "$second" in
+    "$first"|"$first"/*) return 0 ;;
+  esac
+  return 1
+}
+
+recreate_runtime_postgres_fallback_dir() {
+  local runtime_root=${RUNTIME_ROOT:-/tmp/dify-aio}
+  local persist_root=${PERSIST_ROOT:-/persist}
+  local runtime_pg="${runtime_root%/}/postgres"
+
+  if [ -L "$runtime_pg" ]; then
+    log "Cannot recreate PostgreSQL fallback: ${runtime_pg} must not be a symlink."
+    return 1
+  fi
+  if [ -e "$runtime_pg" ] && [ ! -d "$runtime_pg" ]; then
+    log "Cannot recreate PostgreSQL fallback: ${runtime_pg} exists and is not a directory."
+    return 1
+  fi
+
+  local canonical_runtime_root canonical_runtime_pg canonical_persist_root expected_runtime_pg
+  canonical_runtime_root=$(canonicalize_path "$runtime_root") || return 1
+  canonical_runtime_pg=$(canonicalize_path "$runtime_pg") || return 1
+  canonical_persist_root=$(canonicalize_path "$persist_root") || return 1
+  expected_runtime_pg="${canonical_runtime_root%/}/postgres"
+
+  if [ -z "$canonical_runtime_root" ] || [ "$canonical_runtime_root" = "/" ]; then
+    log "Cannot recreate PostgreSQL fallback: unsafe RUNTIME_ROOT=${runtime_root}."
+    return 1
+  fi
+  if [ "$canonical_runtime_pg" != "$expected_runtime_pg" ]; then
+    log "Cannot recreate PostgreSQL fallback: ${runtime_pg} resolved outside ${runtime_root}."
+    return 1
+  fi
+  if paths_overlap "$canonical_runtime_pg" "$canonical_persist_root"; then
+    log "Cannot recreate PostgreSQL fallback: ${runtime_pg} overlaps persistent storage ${persist_root}."
+    return 1
+  fi
+
+  log "Recreating runtime PostgreSQL fallback directory at ${runtime_pg}; persistent PGDATA remains untouched."
+  rm -rf -- "$runtime_pg"
+  install -d -m 700 "$runtime_pg"
+}
+
 switch_postgres_to_runtime_fallback() {
   source_runtime_env
-  local runtime_pg="${RUNTIME_ROOT:-/tmp/dify-aio}/postgres"
+  local runtime_root=${RUNTIME_ROOT:-/tmp/dify-aio}
+  local runtime_pg="${runtime_root%/}/postgres"
   log "Falling back to runtime PostgreSQL data directory at ${runtime_pg}; bucket dump backups remain under ${POSTGRES_BACKUP_DIR}."
-  mkdir -p "$runtime_pg"
-  chmod 700 "$runtime_pg" || true
+  recreate_runtime_postgres_fallback_dir || exit 1
   if [ -L /data/postgres ]; then
     rm -f /data/postgres
   elif [ -e /data/postgres ]; then
@@ -742,6 +772,16 @@ stop_temp_postgres() {
       if kill -0 "$pid" 2>/dev/null; then
         log "Temporary PostgreSQL PID ${pid} did not stop after TERM; sending KILL."
         kill -9 "$pid" 2>/dev/null || true
+        local kill_waited=0
+        while [ "$kill_waited" -lt 5 ]; do
+          kill -0 "$pid" 2>/dev/null || break
+          kill_waited=$((kill_waited + 1))
+          sleep 1
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+          log "Temporary PostgreSQL PID ${pid} is still alive after KILL; refusing to switch PGDATA."
+          return 1
+        fi
       fi
     fi
   fi
@@ -773,19 +813,19 @@ init_postgres() {
   clear_stale_postgres_runtime_files
   if ! start_temp_postgres; then
     if postgres_on_bucket_path && postgres_bucket_fallback_enabled; then
-      stop_temp_postgres
+      if ! stop_temp_postgres; then
+        log "Temporary PostgreSQL did not stop cleanly; refusing runtime fallback."
+        exit 1
+      fi
       switch_postgres_to_runtime_fallback
-      if [ ! -s /data/postgres/PG_VERSION ]; then
-        clear_uninitialized_postgres_runtime_files
-        log "Initializing fallback PostgreSQL data directory at /data/postgres"
-        if ! /usr/lib/postgresql/15/bin/initdb \
-          -D /data/postgres \
-          --encoding=UTF8 \
-          --locale=C.UTF-8 >/data/logs/postgres-initdb.log 2>&1; then
-          log "Fallback PostgreSQL initdb failed. Last postgres-initdb.log lines:"
-          tail -n 120 /data/logs/postgres-initdb.log || true
-          exit 1
-        fi
+      log "Initializing fresh fallback PostgreSQL data directory at /data/postgres"
+      if ! /usr/lib/postgresql/15/bin/initdb \
+        -D /data/postgres \
+        --encoding=UTF8 \
+        --locale=C.UTF-8 >/data/logs/postgres-initdb.log 2>&1; then
+        log "Fallback PostgreSQL initdb failed. Last postgres-initdb.log lines:"
+        tail -n 120 /data/logs/postgres-initdb.log || true
+        exit 1
       fi
       ensure_postgres_required_dirs
       configure_postgres_files
@@ -916,4 +956,6 @@ main() {
   exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

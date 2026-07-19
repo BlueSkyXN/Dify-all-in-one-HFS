@@ -77,7 +77,7 @@ docker/dify.env.demo
 | Secret | `PLUGIN_DIFY_INNER_API_KEY` | Plugin Daemon 访问 Dify inner API 的 key；`INNER_API_KEY_FOR_PLUGIN` 会由它派生 |
 | Secret | `CODE_EXECUTION_API_KEY` | Dify 调 Sandbox 的 key；`SANDBOX_API_KEY` 默认继承它 |
 | Variable | `PERSIST_MODE=bucket` | 初始化前建议使用，比默认 `auto` 更严格；`/persist` 缺失时直接失败 |
-| Variable | `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` | 当前 HF bucket 推荐值；bucket live PGDATA 启动超时时回退到 runtime PGDATA 并从 dump 恢复 |
+| Variable | `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` | 当前 HF bucket 推荐值；bucket live PGDATA 启动超时时重建 fresh runtime PGDATA 并从最近有效 dump 恢复 |
 
 不要上传以下派生值或同容器内部默认值，除非你明确要覆盖默认推导或改变部署拓扑：
 
@@ -188,14 +188,15 @@ DIFY_AGENT_SERVER_SECRET_KEY=<generated-in-/data/config/generated.env>
 | `DIFY_AGENT_ENABLED` | `true` | 是否启动本容器内 `dify-agent` FastAPI backend |
 | `DIFY_AGENT_HOST` | `127.0.0.1` | backend 监听地址；不要绑定公网 |
 | `DIFY_AGENT_PORT` | `5005` | backend 内部端口 |
-| `DIFY_AGENT_VIRTUAL_ENV` | `/opt/dify-agent/.venv` | 独立 Agent/shellctl Python 环境；不要改回 `/app/api/.venv`，两边 `graphon` 版本不兼容 |
+| `DIFY_AGENT_VIRTUAL_ENV` | `/opt/dify-agent/.venv` | 独立 Agent Python backend 环境；不要改回 `/app/api/.venv`，两边 `graphon` 版本不兼容 |
 | `DIFY_AGENT_STARTUP_DELAY_SECONDS` | `30` | core API health 通过后再启动 backend 的延迟，降低 HFS cpu-basic 启动期资源竞争 |
 | `AGENT_BACKEND_USE_FAKE` | `false` | API 侧 fake backend 开关，仅用于局部开发/测试 |
 | `AGENT_SHELL_ENABLED` | `true` | shell layer 开关；NEXT 默认由同容器 loopback `shellctl` 支撑，设为 `false` 时 `run-shellctl` 保持 idle |
+| `SHELLCTL_BINARY` | `/usr/local/bin/shellctl` | 从 `${DIFY_AGENT_SOURCE_REF}` 构建的 Go shellctl server；不再从 Python virtualenv 启动 |
 | `AGENT_DRIVE_MANIFEST_ENABLED` | `true` | drive manifest 开关；让 Agent runtime 接收 Skills & Files drive manifest 声明 |
 | `DIFY_AGENT_INNER_API_URL` | `http://127.0.0.1:5001` | Agent backend 调用同容器 Dify `/inner/api/...` 的 canonical base URL |
 | `DIFY_AGENT_STUB_API_BASE_URL` | `http://127.0.0.1:5005/agent-stub` | 注入 shell job 的同容器 Agent Stub API；只保持 loopback，不经 Nginx 暴露 |
-| `DIFY_AGENT_SHELL_PROVIDER` | `shellctl` | self fork 的 shell provider；HFS NEXT 使用同容器 Python shellctl，不启用 enterprise gateway |
+| `DIFY_AGENT_SHELL_PROVIDER` | `shellctl` | self fork 的 shell provider；HFS NEXT 使用同容器 Go shellctl，不启用 enterprise gateway |
 | `DIFY_AGENT_SHELLCTL_ENTRYPOINT` | `http://127.0.0.1:5004` | Agent shell layer 的内部 shellctl endpoint；只能保持 loopback，不要暴露到 Nginx 或公网 |
 | `DIFY_AGENT_REDIS_PREFIX` | `dify-agent-next` | Agent backend Redis key prefix |
 
@@ -224,7 +225,7 @@ CODE_EXECUTION_API_KEY=<fixed-demo-or-random-secret>
 | `RUNTIME_ROOT` | `/tmp/dify-aio` | 日志、run、cache、Redis 默认 scratch 根目录 |
 | `REDIS_PERSISTENCE` | `false` | `true` 时 `/data/redis` 映射到 `/persist/redis`；默认放 `/tmp` 节省 bucket |
 | `PLUGIN_CWD_PERSISTENCE` | `false` | `true` 时插件工作目录 `cwd` 也持久化；默认只持久化已安装插件和 assets |
-| `POSTGRES_BUCKET_FAILURE_MODE` | `fallback-to-runtime` | `/persist/postgres` 启动失败时切到 `${RUNTIME_ROOT}/postgres`；设为 `exit` 可强制失败并只保留诊断日志 |
+| `POSTGRES_BUCKET_FAILURE_MODE` | `fallback-to-runtime` | `/persist/postgres` 启动失败时重建并切到 fresh `${RUNTIME_ROOT}/postgres`；设为 `exit` 可强制失败并只保留诊断日志 |
 | `POSTGRES_BACKUP_ENABLED` | `auto` | bucket-lite 启用时自动启动 `pg_dumpall` 备份；可设 `true`/`false` |
 | `POSTGRES_BACKUP_DIR` | `${PERSIST_ROOT}/postgres-backups` | `latest.sql.gz` 和时间戳写入目录 |
 | `POSTGRES_BACKUP_INTERVAL_SECONDS` | `60` | 周期备份间隔，最小有效值 60 秒 |
@@ -251,7 +252,7 @@ bucket-lite 会保持上游程序看到的 `/data/...` 路径不变，但实际�
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/` 会保留 timestamped `YYYYmmddTHHMMSSZ.sql.gz` dump，并更新普通文件 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认 `tiered` 保留策略约等于：15 分钟内每分钟保留、2 小时内每 5 分钟保留、24 小时内每小时保留、7 天内每天保留，并受 `POSTGRES_BACKUP_RETAIN_COUNT` 上限约束；每次成功备份后才会清理旧备份。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器改用 `${RUNTIME_ROOT}/postgres` 保证服务启动，并在 dump 通过 `latest.sha256`、gzip 和非空校验后先恢复 dump；旧实例没有 `latest.sha256` 时会打印 warning 并只走 gzip/非空校验。
+`/persist/postgres` 会先作为 live PostgreSQL data directory 实测。启动已有 PGDATA 前会补建 object storage 可能丢失的 PostgreSQL 空目录；`/persist/postgres-backups/` 会保留 timestamped `YYYYmmddTHHMMSSZ.sql.gz` dump，并更新普通文件 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认 `tiered` 保留策略约等于：15 分钟内每分钟保留、2 小时内每 5 分钟保留、24 小时内每小时保留、7 天内每天保留，并受 `POSTGRES_BACKUP_RETAIN_COUNT` 上限约束；每次成功备份后才会清理旧备份。默认失败策略是 `fallback-to-runtime`：bucket PGDATA 起不来时，容器先确认旧 PostgreSQL 进程已停止，再只删除并重建 `${RUNTIME_ROOT}/postgres` scratch，绝不删除 `/persist/postgres`；随后在 dump 通过 `latest.sha256`、gzip 和非空校验后恢复。旧实例没有 `latest.sha256` 时会打印 warning 并只走 gzip/非空校验。恢复点最多只新到最近一次成功 dump，因此可能丢失之后已提交但尚未备份的事务。
 
 如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
@@ -377,6 +378,17 @@ Nginx 会把 `/openapi` 代理到内部 Dify API。`/openapi/v1/_health` 和 `/o
 | `STORAGE_TYPE` | `opendal` | Dify storage backend |
 | `OPENDAL_SCHEME` | `fs` | OpenDAL scheme |
 | `OPENDAL_FS_ROOT` | `/data/dify/storage` | 本地文件根目录 |
+
+默认配置下，Dify 通过 OpenDAL `fs` 后端把文件对象写入 `OPENDAL_FS_ROOT`。bucket-lite 激活时，程序仍看到 `/data/dify/storage`，实际落盘路径是 `/persist/dify/storage`。
+
+常见 Dify 文件对象 key 是相对 `OPENDAL_FS_ROOT` 的路径：
+
+```text
+upload_files/<tenant_id>/<file_id>.<ext>
+tools/<tenant_id>/<file_id>.<ext>
+```
+
+对应的数据库元数据主要在 `upload_files.key` 和 `tool_files.file_key`。因此清理 Hugging Face Storage Bucket 配额时，不要直接删除整个 `/persist/dify/storage` 或只按目录名判断；应先从数据库 key 生成候选清单，做 dry-run 和备份，再联动删除 storage object 与对应元数据。当前工程没有提供默认 retention job，workflow 上传和工具产物会持续占用 bucket，直到上游业务逻辑或管理员清理它们。
 
 ## Sandbox
 

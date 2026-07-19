@@ -233,7 +233,7 @@ version.sandbox.requirements.sha256
 version.sandbox.requirements.package_count
 ```
 
-这些字段用于判断 live 镜像使用的上游 image 来源和 Sandbox requirements 摘要。它们不替代 Docker build log，也不证明 Hugging Face runtime 已接管目标 commit；发布时仍需对照 `hf spaces info` 的 `runtime.raw.sha`。
+这些字段用于判断 live 镜像使用的上游 image 来源和 Sandbox requirements 摘要。`version.sandbox.requirements.package_count`、`sha256` 和 `packages` 只来自 `/dependencies/python-requirements.txt` 文件读取，不证明这些包已安装、已进入 `/var/sandbox/sandbox-python`，也不证明 Code Node 可 import。它们不替代 Docker build log、真实 Sandbox import smoke，也不证明 Hugging Face runtime 已接管目标 commit；发布时仍需对照 `hf spaces info` 的 `runtime.raw.sha`。
 
 ## 健康检查语义
 

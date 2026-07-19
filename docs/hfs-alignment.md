@@ -115,17 +115,17 @@ NEXT branch 默认值 pin 到当前可运行的 NEXT digest/source set：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c32b9aadb9231697eef850fae4ac79a
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:1625345656d367085adb258e9670f72ee359dcb434ad5d09f96fabe0cbcb423f
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:3b7e88620fa050b7f48bfa70dcb4bf40ec9f73922d0faf70d009a3e2cd4cb0db
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:71659a54291dfcc052a587a15970d98df46ba7ead0a2ede8acfbac2c509350bb
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
-DIFY_AGENT_SOURCE_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
-DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
+DIFY_SOURCE_MAIN_REF=928f29af54037fb0217163ee83b003b95700635b
+DIFY_AGENT_SOURCE_REF=928f29af54037fb0217163ee83b003b95700635b
+DIFY_UPSTREAM_MAIN_REF=2ec34b2cfbcf0ca1faabfff918b7e74d93aeffcf
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
 UV_VERSION=0.11.21
-DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-94b490d3d2801c78c0d94b5b06415b9a6f80065d
+DIFY_VERSION=BlueSkyXN-dify-main-928f29af54037fb0217163ee83b003b95700635b-upstream-images-2ec34b2cfbcf0ca1faabfff918b7e74d93aeffcf-agent-928f29af54037fb0217163ee83b003b95700635b
 ```
 
 这个 pin set 对 Web/API 指向 Docker Hub 当前 `main` digest，并从 self main source ref 精确覆盖 Agent observability service；Agent backend package 从 self Agent source ref 安装到独立 `/opt/dify-agent/.venv`；Sandbox 的 `/conf` 和 `/dependencies` 使用当前 `main` digest，server binary 仍来自 source-pinned HFS patch build。API image 与 self Agent package 的 `graphon` 约束不同，独立 virtualenv 是当前 co-pin contract 的一部分。Docker Hub 通常没有 fork merge commit 对应的 API/Web commit tag，所以 release note 必须区分 official image digest、targeted self API overlay 和 Agent package source ref。

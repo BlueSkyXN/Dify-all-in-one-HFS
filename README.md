@@ -189,7 +189,7 @@ docker exec -it dify-aio-hf supervisorctl status
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-`/persist/postgres-backups/` 会由 `postgres-backup` 进程定期生成 timestamped dump，并在校验通过后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认首次备份延迟 15 秒、后续间隔 60 秒，使用 `gzip -1` 快速压缩，并按 tiered retention 保留近端密、远端稀的恢复点；`/_admin/api/actions/force-postgres-backup` 可在部署或重启前手动生成一次 dump。`/_ops/persistence` 会只读显示 latest backup age、latest error 和 `safe_to_restart` 建议信号。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，然后把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并在有可用 dump 时先从 `latest.sql.gz` 恢复。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
+`/persist/postgres-backups/` 会由 `postgres-backup` 进程定期生成 timestamped dump，并在校验通过后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认首次备份延迟 15 秒、后续间隔 60 秒，使用 `gzip -1` 快速压缩，并按 tiered retention 保留近端密、远端稀的恢复点；`/_admin/api/actions/force-postgres-backup` 可在部署或重启前手动生成一次 dump。`/_ops/persistence` 会只读显示 latest backup age、latest error 和 `safe_to_restart` 建议信号。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，确认旧进程已停止后重建全新的 `/tmp/dify-aio/postgres` scratch PGDATA，再把 `/data/postgres` 切过去并在有可用 dump 时从 `latest.sql.gz` 恢复；不会删除或复用 `/persist/postgres`。恢复点最多只新到最近一次成功 dump，可能落后于故障前最后提交的事务。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
 
 如果需要强持久化数据库状态，设置 `EXTERNAL_POSTGRES_ENABLED=true` 并配置 `DB_HOST`、`DB_PORT`、`DB_USERNAME`、`DB_PASSWORD`、`DB_DATABASE`、`DB_PLUGIN_DATABASE` 和必要的 `DB_SSL_MODE`。外部 PostgreSQL 模式要求两个 database 已创建并可用 `pgvector`，本容器不会再把 `/data/postgres` 当权威数据库。
 

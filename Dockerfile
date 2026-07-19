@@ -15,16 +15,16 @@
 #     dify-all-in-one-hf-space:latest
 
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c32b9aadb9231697eef850fae4ac79a
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:1625345656d367085adb258e9670f72ee359dcb434ad5d09f96fabe0cbcb423f
-ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
+ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:3b7e88620fa050b7f48bfa70dcb4bf40ec9f73922d0faf70d009a3e2cd4cb0db
+ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:71659a54291dfcc052a587a15970d98df46ba7ead0a2ede8acfbac2c509350bb
+ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-ARG DIFY_SOURCE_MAIN_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
-ARG DIFY_AGENT_SOURCE_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
-ARG DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
+ARG DIFY_SOURCE_MAIN_REF=928f29af54037fb0217163ee83b003b95700635b
+ARG DIFY_AGENT_SOURCE_REF=928f29af54037fb0217163ee83b003b95700635b
+ARG DIFY_UPSTREAM_MAIN_REF=2ec34b2cfbcf0ca1faabfff918b7e74d93aeffcf
 ARG DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
-ARG DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-94b490d3d2801c78c0d94b5b06415b9a6f80065d
+ARG DIFY_VERSION=BlueSkyXN-dify-main-928f29af54037fb0217163ee83b003b95700635b-upstream-images-2ec34b2cfbcf0ca1faabfff918b7e74d93aeffcf-agent-928f29af54037fb0217163ee83b003b95700635b
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
@@ -81,6 +81,36 @@ RUN git apply --unidiff-zero /tmp/dify-sandbox-hfs-uidpool.patch \
     && CGO_ENABLED=1 GOOS=linux go build -o internal/core/runner/python/python.so -buildmode=c-shared -ldflags="-s -w" cmd/lib/python/main.go \
     && CGO_ENABLED=1 GOOS=linux go build -o internal/core/runner/nodejs/nodejs.so -buildmode=c-shared -ldflags="-s -w" cmd/lib/nodejs/main.go \
     && GOOS=linux go build -o main -ldflags="-s -w" cmd/server/main.go
+
+
+# -----------------------------
+# Build the source-pinned Go shellctl runtime and Agent CLI
+# -----------------------------
+FROM golang:1.26-bookworm AS agent-runtime-builder
+ARG DIFY_SOURCE_REPO
+ARG DIFY_AGENT_SOURCE_REF
+ARG TARGETARCH
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git init \
+    && git remote add origin "${DIFY_SOURCE_REPO}" \
+    && git fetch --depth 1 origin "${DIFY_AGENT_SOURCE_REF}" \
+    && git checkout --detach FETCH_HEAD
+WORKDIR /src/dify-agent-runtime
+RUN go mod download \
+    && case "${TARGETARCH:-amd64}" in \
+         amd64) export GOARCH=amd64 ;; \
+         arm64) export GOARCH=arm64 ;; \
+         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+       esac \
+    && mkdir -p /out \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/shellctl ./cmd/shellctl \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/shellctl-sanitize-pty ./cmd/sanitize-pty \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/shellctl-runner-exit ./cmd/runner-exit \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/shellctl-runner ./cmd/runner \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/dify-agent ./cmd/dify-agent-cli
 
 
 # -----------------------------
@@ -205,20 +235,28 @@ RUN set -eu; \
     printf 'Applied self API overlay %s@%s blob=%s\n' "${DIFY_SOURCE_REPO}" "${DIFY_SOURCE_MAIN_REF}" "${actual_blob}"; \
     rm -rf "${self_source_dir}"
 
-# NEXT Agent v2 needs the maintained fork's backend and integrated shellctl.
-# Keep them in a dedicated virtualenv: current API main requires graphon 0.6,
-# while the fork Agent runtime requires graphon 0.5, so an in-place overlay of
-# /app/api/.venv would make one of the two services dependency-inconsistent.
+# NEXT Agent v2 needs the maintained fork's Python backend plus the source-pinned
+# Go shellctl runtime. Keep the Python backend in a dedicated virtualenv: current
+# API main requires graphon 0.6, while the fork Agent backend requires graphon
+# 0.5, so an in-place overlay would make one of the two services inconsistent.
+COPY --from=agent-runtime-builder /out/shellctl /usr/local/bin/shellctl
+COPY --from=agent-runtime-builder /out/shellctl-sanitize-pty /usr/local/bin/shellctl-sanitize-pty
+COPY --from=agent-runtime-builder /out/shellctl-runner-exit /usr/local/bin/shellctl-runner-exit
+COPY --from=agent-runtime-builder /out/shellctl-runner /usr/local/bin/shellctl-runner
+COPY --from=agent-runtime-builder /out/dify-agent /usr/local/bin/dify-agent
 RUN set -eu; \
     uv venv --python /usr/local/bin/python3 /opt/dify-agent/.venv \
     && uv pip install --python /opt/dify-agent/.venv/bin/python --no-cache \
-      "dify-agent[grpc,server,shellctl-server] @ git+${DIFY_SOURCE_REPO}@${DIFY_AGENT_SOURCE_REF}#subdirectory=dify-agent" \
-    && /opt/dify-agent/.venv/bin/python -c "import dify_agent.server.app; import shellctl.server.api" \
+      "dify-agent[grpc,server] @ git+${DIFY_SOURCE_REPO}@${DIFY_AGENT_SOURCE_REF}#subdirectory=dify-agent" \
+    && /opt/dify-agent/.venv/bin/python -c "import dify_agent.server.app; import shellctl.client" \
     && /opt/dify-agent/.venv/bin/python -c 'import inspect; from dify_agent.adapters.llm import model; assert "\"\".join(item.data for item in content)" in inspect.getsource(model._normalize_prompt_content)' \
     && /opt/dify-agent/.venv/bin/python -c 'from importlib.metadata import version; assert version("graphon") == "0.5.2"' \
     && /app/api/.venv/bin/python -c 'from importlib.metadata import version; assert version("graphon") == "0.6.0"' \
-    && /opt/dify-agent/.venv/bin/shellctl --help >/dev/null \
-    && /opt/dify-agent/.venv/bin/shellctl serve --help >/dev/null \
+    && /usr/local/bin/shellctl serve --help >/dev/null \
+    && /usr/local/bin/dify-agent --help >/dev/null \
+    && test -x /usr/local/bin/shellctl-runner \
+    && test -x /usr/local/bin/shellctl-sanitize-pty \
+    && test -x /usr/local/bin/shellctl-runner-exit \
     && /opt/dify-agent/.venv/bin/dify-agent-stub-server --help >/dev/null \
     && uv pip check --python /opt/dify-agent/.venv/bin/python \
     && chown -R user:user /opt/dify-agent
