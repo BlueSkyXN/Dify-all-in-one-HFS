@@ -56,7 +56,7 @@ bucket-lite 模式下会持久化：
 
 如果显式设置 `PLUGIN_CWD_PERSISTENCE=true`，还会持久化 `/persist/plugin_daemon/cwd`。
 
-默认会先尝试把 `/persist/postgres` 当 live PostgreSQL data directory 使用。若 bucket mount 的文件系统语义导致 PostgreSQL 无法启动，`POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会让容器退回 `/tmp/dify-aio/postgres`，并继续把周期 dump 写到 `/persist/postgres-backups/`，校验后更新 `latest.sql.gz`。默认首次备份延迟 15 秒、后续间隔 60 秒，使用 `gzip -1` 快速压缩，并按 tiered retention 保留近端密、远端稀的恢复点；已开启 `/_admin` 时，可在部署或重启前调用 `/_admin/api/actions/force-postgres-backup` 强制生成一次 dump。`/_ops/persistence` 会只读显示 latest backup age、latest error 和 `safe_to_restart` 建议信号。
+默认会先尝试把 `/persist/postgres` 当 live PostgreSQL data directory 使用。若 bucket mount 的文件系统语义导致 PostgreSQL 无法启动，`POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会在确认旧 PostgreSQL 已停止后重建全新的 `/tmp/dify-aio/postgres` scratch PGDATA，再从最近的有效 dump 恢复；不会删除或复用 `/persist/postgres`。恢复点最多只新到最近一次成功 dump，可能落后于故障前最后提交的事务。容器会继续把周期 dump 写到 `/persist/postgres-backups/`，校验后更新 `latest.sql.gz`。默认首次备份延迟 15 秒、后续间隔 60 秒，使用 `gzip -1` 快速压缩，并按 tiered retention 保留近端密、远端稀的恢复点；已开启 `/_admin` 时，可在部署或重启前调用 `/_admin/api/actions/force-postgres-backup` 强制生成一次 dump。`/_ops/persistence` 会只读显示 latest backup age、latest error 和 `safe_to_restart` 建议信号。
 
 如果需要强持久化数据库状态，使用外部 PostgreSQL，并设置 `EXTERNAL_POSTGRES_ENABLED=true`、`DB_HOST`、`DB_PORT`、`DB_USERNAME`、`DB_PASSWORD`、`DB_DATABASE`、`DB_PLUGIN_DATABASE` 和必要的 `DB_SSL_MODE`。外部 PostgreSQL 模式要求两个 database 已创建并可用 `pgvector`，本容器不会再把本地 `/data/postgres` 当权威数据库。
 

@@ -319,12 +319,30 @@ require_grep '/app/api/\.venv/bin/python -W error::SyntaxWarning -m py_compile' 
   "Dockerfile must syntax-check the self API overlay with SyntaxWarning promoted to failure"
 require_grep 'uv venv --python /usr/local/bin/python3 /opt/dify-agent/\.venv' Dockerfile \
   "Dockerfile must isolate the self Agent runtime from the Dify API virtualenv"
-require_grep 'dify-agent\[grpc,server,shellctl-server\] @ git\+' Dockerfile \
-  "Dockerfile must install the self Agent backend and integrated shellctl extras"
+require_grep '^FROM golang:1\.26-bookworm AS agent-runtime-builder$' Dockerfile \
+  "Dockerfile must build the source-pinned Go Agent runtime"
+require_grep 'dify-agent\[grpc,server\] @ git\+' Dockerfile \
+  "Dockerfile must install the self Python Agent backend extras"
+require_grep 'import dify_agent\.server\.app; import shellctl\.client' Dockerfile \
+  "Dockerfile must verify the Python Agent backend and shellctl client imports"
+require_absent 'shellctl-server|shellctl\.server\.api' Dockerfile \
+  "Dockerfile must not depend on the removed Python shellctl server"
+require_line 'COPY --from=agent-runtime-builder /out/shellctl /usr/local/bin/shellctl' Dockerfile \
+  "Dockerfile must copy the Go shellctl server binary"
+require_line 'COPY --from=agent-runtime-builder /out/shellctl-sanitize-pty /usr/local/bin/shellctl-sanitize-pty' Dockerfile \
+  "Dockerfile must copy the Go shellctl PTY sanitizer"
+require_line 'COPY --from=agent-runtime-builder /out/shellctl-runner-exit /usr/local/bin/shellctl-runner-exit' Dockerfile \
+  "Dockerfile must copy the Go shellctl runner exit helper"
+require_line 'COPY --from=agent-runtime-builder /out/shellctl-runner /usr/local/bin/shellctl-runner' Dockerfile \
+  "Dockerfile must copy the Go shellctl runner"
+require_line 'COPY --from=agent-runtime-builder /out/dify-agent /usr/local/bin/dify-agent' Dockerfile \
+  "Dockerfile must copy the Go Agent CLI"
 require_absent 'uv pip install --python /app/api/\.venv/bin/python --no-cache --no-deps' Dockerfile \
   "Dockerfile must not overlay the self Agent package into the API virtualenv"
 require_line 'export DIFY_AGENT_VIRTUAL_ENV=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}' docker/dify.env.runtime \
-  "runtime defaults must point Agent and shellctl at the isolated virtualenv"
+  "runtime defaults must point the Python Agent backend at the isolated virtualenv"
+require_line 'export SHELLCTL_BINARY=${SHELLCTL_BINARY:-/usr/local/bin/shellctl}' docker/dify.env.runtime \
+  "runtime defaults must point shellctl at the source-pinned Go binary"
 require_grep 'DIFY_AGENT_INNER_API_URL' docker/with-dify-env \
   "Dify env wrapper must derive the canonical Agent inner API URL"
 require_grep 'DIFY_AGENT_INNER_API_KEY' docker/with-dify-env \
@@ -335,10 +353,12 @@ require_line 'agent_virtual_env=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}
   "Agent launcher must default to the isolated virtualenv"
 require_grep 'exec "\$VIRTUAL_ENV/bin/uvicorn"' docker/run-dify-agent \
   "Agent launcher must execute uvicorn from the isolated virtualenv"
-require_line 'agent_virtual_env=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}' docker/run-shellctl \
-  "shellctl launcher must default to the isolated virtualenv"
-require_grep 'exec "\${agent_virtual_env}/bin/shellctl"' docker/run-shellctl \
-  "shellctl launcher must execute from the isolated virtualenv"
+require_line 'shellctl_binary=${SHELLCTL_BINARY:-/usr/local/bin/shellctl}' docker/run-shellctl \
+  "shellctl launcher must default to the Go server binary"
+require_grep 'exec "\$shellctl_binary" serve' docker/run-shellctl \
+  "shellctl launcher must execute the source-pinned Go server"
+require_absent 'DIFY_AGENT_VIRTUAL_ENV|agent_virtual_env|runtime-dir' docker/run-shellctl \
+  "shellctl launcher must not depend on the Python virtualenv or removed Go flags"
 
 require_line \
   'export SERVER_CONSOLE_API_URL=${SERVER_CONSOLE_API_URL:-http://127.0.0.1:5001}' \
@@ -375,11 +395,12 @@ if ! env -i PATH="$PATH" bash -c '
   set -euo pipefail
   source docker/dify.env.runtime
   [ "$DIFY_AGENT_VIRTUAL_ENV" = "/opt/dify-agent/.venv" ]
+  [ "$SHELLCTL_BINARY" = "/usr/local/bin/shellctl" ]
   [ "$DIFY_AGENT_INNER_API_URL" = "http://127.0.0.1:5001" ]
   [ "$DIFY_AGENT_SHELL_PROVIDER" = "shellctl" ]
   [ "$DIFY_AGENT_STUB_API_BASE_URL" = "http://127.0.0.1:5005/agent-stub" ]
 '; then
-  fail "runtime Agent defaults must use canonical self-fork variables and the isolated virtualenv"
+  fail "runtime Agent defaults must use canonical self-fork variables, the isolated Python virtualenv, and the Go shellctl binary"
 fi
 
 if ! env -i \

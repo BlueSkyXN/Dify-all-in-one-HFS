@@ -71,17 +71,17 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:1625345656d367085adb258e9670f72ee359dcb434ad5d09f96fabe0cbcb423f
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:d0d6a28f7bbec140816f7e45f9b5b6cb2c32b9aadb9231697eef850fae4ac79a
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:3c694329357bc580b28bdec59321a981acd3279f8f69d1a3fb59a47cf7f770c3
+DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:71659a54291dfcc052a587a15970d98df46ba7ead0a2ede8acfbac2c509350bb
+DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:3b7e88620fa050b7f48bfa70dcb4bf40ec9f73922d0faf70d009a3e2cd4cb0db
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
-DIFY_AGENT_SOURCE_REF=94b490d3d2801c78c0d94b5b06415b9a6f80065d
-DIFY_UPSTREAM_MAIN_REF=abb9972e1960eea63041854cb6fbe15a7abe2bd6
+DIFY_SOURCE_MAIN_REF=928f29af54037fb0217163ee83b003b95700635b
+DIFY_AGENT_SOURCE_REF=928f29af54037fb0217163ee83b003b95700635b
+DIFY_UPSTREAM_MAIN_REF=2ec34b2cfbcf0ca1faabfff918b7e74d93aeffcf
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=BlueSkyXN-dify-main-94b490d3d2801c78c0d94b5b06415b9a6f80065d-upstream-images-abb9972e1960eea63041854cb6fbe15a7abe2bd6-agent-94b490d3d2801c78c0d94b5b06415b9a6f80065d
+DIFY_VERSION=BlueSkyXN-dify-main-928f29af54037fb0217163ee83b003b95700635b-upstream-images-2ec34b2cfbcf0ca1faabfff918b7e74d93aeffcf-agent-928f29af54037fb0217163ee83b003b95700635b
 UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
@@ -93,7 +93,7 @@ NEXT branch 默认值已 pin 到 Docker Hub 当前 `langgenius/dify-api:main` / 
 
 ## 与源码自建 main 的边界
 
-截至当前 NEXT pin 的 `BlueSkyXN/dify` self main `94b490d3d2801c78c0d94b5b06415b9a6f80065d`，fork 已选择性吸收最新上游安全、可靠性与 Agent DSL 变化，并保留 fork-specific Python shellctl/Agent Stub、Agent monitoring correctness 修复，以及默认/非精确 workflow 日志按 app 聚合的兼容修复。Web/API image 则明确记录来自 official upstream main `abb9972e1960eea63041854cb6fbe15a7abe2bd6`。当前 API image 要求 `graphon==0.6.0`，self `dify-agent` 要求 `graphon==0.5.2`，因此两者必须使用独立 virtualenv，不能继续把 Agent overlay 装进 `/app/api/.venv`。
+截至当前 NEXT pin 的 `BlueSkyXN/dify` self main `928f29af54037fb0217163ee83b003b95700635b`，fork 已完整合入 official upstream main `2ec34b2cfbcf0ca1faabfff918b7e74d93aeffcf`，并保留 fork-specific Agent monitoring correctness 修复，以及默认/非精确 workflow 日志按 app 聚合的兼容修复。Web/API image 同样明确记录来自该 official upstream main。当前 API image 要求 `graphon==0.6.0`，self `dify-agent` Python backend 要求 `graphon==0.5.2`，因此两者必须使用独立 virtualenv，不能继续把 Agent overlay 装进 `/app/api/.venv`；shellctl server 已跟随 upstream 迁移为 source-pinned Go binary。
 
 当前 HFS NEXT 没有把完整 `BlueSkyXN/dify` 源码工作区复制进本仓库，也没有在 Space 内执行 `pnpm build` 或 `uv sync`。它的真实运行来源是 digest-pinned API/Web `main` image，加上从 maintained fork main 精确覆盖的 Agent observability service，以及独立安装的 `dify-agent` package：
 
@@ -103,7 +103,7 @@ DIFY_WEB_IMAGE_REF
 DIFY_AGENT_SOURCE_REF
 ```
 
-因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只把 `api/services/agent/observability_service.py` 作为 source-pinned self overlay，并在 `/opt/dify-agent/.venv` 独立安装 self package 的 `server`、`grpc` 和 `shellctl-server` extras，API image venv 保持原样。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend、shell layer、Agent Stub 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
+因此，源码自建路线需要额外处理的 `api/`、`web/`、`dify-agent/`、`packages/`、`sdks/`、`pnpm-workspace.yaml`、`api/uv.lock`、`dify-agent/uv.lock` 和 `tool.uv.sources` Git source mirror，并不属于当前 HFS NEXT 镜像的构建输入。当前 NEXT 只把 `api/services/agent/observability_service.py` 作为 source-pinned self overlay，在 `/opt/dify-agent/.venv` 独立安装 self package 的 `server`、`grpc` extras，并从同一 `${DIFY_AGENT_SOURCE_REF}` 构建 `shellctl`、runner helpers 与 `dify-agent` Go CLI；API image venv 保持原样。NEXT branch 默认打开 Agent v2 前端 gate、Collaboration、`dify-agent` backend、shell layer、Agent Stub 和 Agent Drive manifest；完整 Agent App / Skills / workflow Agent node 验收仍必须进入真实 Console 做上传、列表、删除、slash mention 和运行链路检查，不能只凭 env 开关或 `/_ops/health` 下结论。
 
 ## 运行状态入口
 

@@ -12,25 +12,6 @@ elif [ -f /etc/dify/generated.env ]; then
   . /etc/dify/generated.env
 fi
 
-sandbox_python_lib_path_default() {
-  local arch
-  local triplet
-  arch=$(dpkg --print-architecture 2>/dev/null || uname -m)
-  case "$arch" in
-    amd64|x86_64) triplet="x86_64-linux-gnu" ;;
-    arm64|aarch64) triplet="aarch64-linux-gnu" ;;
-    *)
-      printf 'Unsupported architecture for SANDBOX_PYTHON_LIB_PATH auto detection: %s\n' "$arch" >&2
-      return 1
-      ;;
-  esac
-  printf '/usr/local/lib/python3.12,/usr/lib/%s,/lib/%s,/etc/ssl/certs/ca-certificates.crt,/etc/nsswitch.conf,/etc/hosts,/etc/resolv.conf,/run/systemd/resolve/stub-resolv.conf,/run/resolvconf/resolv.conf,/etc/localtime,/usr/share/zoneinfo,/etc/timezone' "$triplet" "$triplet"
-}
-
-if [ -z "${SANDBOX_PYTHON_LIB_PATH:-}" ]; then
-  SANDBOX_PYTHON_LIB_PATH=$(sandbox_python_lib_path_default)
-fi
-
 prepare_sandbox_python_wrapper() {
   local real_python=${SANDBOX_PYTHON_PATH:-/usr/local/bin/python3}
   local real_python_literal
@@ -92,7 +73,6 @@ export NODEJS_PATH="${SANDBOX_NODEJS_PATH:-/usr/bin/node}"
 export SANDBOX_UID_POOL_MIN="${SANDBOX_UID_POOL_MIN:-1000}"
 export SANDBOX_UID_POOL_MAX="${SANDBOX_UID_POOL_MAX:-1001}"
 export SANDBOX_RUN_GID="${SANDBOX_RUN_GID:-1000}"
-export PYTHON_LIB_PATH="${SANDBOX_PYTHON_LIB_PATH}"
 export PYTHON_DEPS_UPDATE_INTERVAL="${SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL:-876000h}"
 export HTTP_PROXY="${SANDBOX_HTTP_PROXY:-}"
 export HTTPS_PROXY="${SANDBOX_HTTPS_PROXY:-}"

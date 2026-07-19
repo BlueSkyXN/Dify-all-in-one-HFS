@@ -154,10 +154,14 @@ Sandbox Python 依赖清单。
 - 定义 Dify Workflow Code Node 常用 Python 包。
 - 在 `Dockerfile` build 阶段复制为 `/dependencies/python-requirements.txt`。
 - 配合 build-time `pip install` 和 `pip check`，让 demo runtime 不依赖现场下载这些包。
+- 作为本仓库维护的 Code Node Python 包预设入口；新增或删除预设包时优先改这个文件。
 
 修改注意：
 
 - 新增或升级包后，至少验证目标 Python 版本和 manylinux wheel 可下载。
+- `/_ops/version` 中的 requirements `package_count`、`sha256` 和 `packages` 只证明镜像内清单文件内容，不证明包已安装、已链入 Sandbox rootfs 或可被 Code Node import。
+- 功能验收应使用真实 Sandbox `/v1/sandbox/run` 路径执行 import smoke；不要只用 `pip check` 或 `package_count` 作为验收。
+- `requests`、`aiohttp`、`deep-translator` 等网络相关包即使可 import，默认仍受 `SANDBOX_ENABLE_NETWORK=false` 约束。
 - 依赖清单服务于 demo 便利性，不代表生产 Sandbox 依赖治理方案。
 
 ### `docker/entrypoint.sh`
@@ -295,7 +299,7 @@ NEXT Agent shell layer 启动脚本。
 职责：
 
 - `DIFY_AGENT_ENABLED=false` 或 `AGENT_SHELL_ENABLED=false` 时保持 supervisor program idle。
-- 开启时从独立 `/opt/dify-agent/.venv` 执行 `shellctl serve --listen 127.0.0.1:5004`，并把 SQLite/tmux runtime 放到 `${RUNTIME_ROOT}/shellctl`。
+- 开启时执行 `${SHELLCTL_BINARY:-/usr/local/bin/shellctl} serve --listen 127.0.0.1:5004`，并把 SQLite/tmux runtime 放到 `${RUNTIME_ROOT}/shellctl`；shellctl server 不再来自 Python virtualenv。
 - 只服务内部 loopback endpoint，不经 Nginx 暴露公网。
 
 ### `docker/with-plugin-env`
@@ -335,6 +339,7 @@ Sandbox 环境包装器。
 - 设置 Sandbox 期望的 `API_KEY`、`GIN_MODE`、`WORKER_TIMEOUT` 等变量。
 - 清理并重建 `/var/sandbox/sandbox-python`，避免 rootless 重启时残留只读文件导致初始化失败。
 - 默认把 `PYTHON_DEPS_UPDATE_INTERVAL` 设为长间隔，避免上游 Sandbox 周期刷新重复覆盖只读 rootfs 文件。
+- 当前上游 Sandbox 从 `PYTHON_PATH` 自动发现 Python stdlib 和 site-packages；旧的 `PYTHON_LIB_PATH` / `python_lib_path` 不是预设包可用性的验收依据。
 
 ### `docker/wait-for-core`
 

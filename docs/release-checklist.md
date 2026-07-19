@@ -113,6 +113,18 @@ python3 -m pip download --only-binary=:all: --python-version 3.12 --implementati
 python3 -m pip download --only-binary=:all: --python-version 3.14 --implementation cp --abi cp314 --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 -r docker/sandbox-python-requirements.txt
 ```
 
+构建并启动容器后，还要记录真实 Sandbox import smoke。`/_ops/version` 的 requirements `package_count` 只证明清单文件内容，不能替代这一步：
+
+```bash
+SANDBOX_KEY=your-configured-sandbox-key
+docker exec dify-aio-hf-demo curl -sS -X POST http://127.0.0.1:8194/v1/sandbox/run \
+  -H "X-Api-Key: ${SANDBOX_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"language":"python3","code":"import pandas,numpy,fitz,pdfplumber,openpyxl,lxml,bs4,requests\nfrom PIL import Image\nimport docx,pptx,yaml,dateutil\nprint(\"SANDBOX_IMPORT_OK\", pandas.__version__)"}'
+docker exec dify-aio-hf-demo sh -lc 'command -v pip3; readlink -f "$(command -v pip3)"'
+docker logs dify-aio-hf-demo 2>&1 | grep -iE "already satisfied|Downloading|installing python dependencies|failed to initialize python dependencies" || true
+```
+
 如果 NEXT Space 开启 `DIFY_AGENT_ENABLED=true`，额外记录：
 
 ```text
