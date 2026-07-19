@@ -281,6 +281,7 @@ ERROR_PATTERNS = [
 
 IGNORED_ERROR_PATTERNS = [
     "FATAL:  the database system is starting up",
+    "exit status 0; expected",
 ]
 
 
