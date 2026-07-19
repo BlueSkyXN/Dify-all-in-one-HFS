@@ -1297,6 +1297,11 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
     def test_matched_error_pattern_ignores_known_startup_noise(self):
         self.assertIsNone(ops_service.matched_error_pattern("FATAL:  the database system is starting up"))
+        self.assertIsNone(
+            ops_service.matched_error_pattern(
+                "2026-07-19 01:13:48,835 INFO exited: sandbox-selfcheck (exit status 0; expected)"
+            )
+        )
         self.assertEqual(ops_service.matched_error_pattern("worker Traceback happened"), "Traceback")
         self.assertEqual(ops_service.matched_error_pattern("nginx [error] connect() failed"), "connect() failed")
 
