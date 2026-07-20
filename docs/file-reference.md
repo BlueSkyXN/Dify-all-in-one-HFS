@@ -295,7 +295,7 @@ Agent backend 启动脚本。
 
 ### `docker/run-shellctl`
 
-NEXT Agent shell layer 启动脚本。
+Agent shell layer 启动脚本。
 
 职责：
 
@@ -433,7 +433,7 @@ env-file=docker/dify.env.demo
 - `OPS_TOKEN` 可选，用于检查 `/_ops`。
 - 设置 `OPS_TOKEN` 时会额外验证 query token 迁移到 cookie-backed dashboard，且 HTML 不再包含完整 token。
 - `ADMIN_TOKEN` + `SMOKE_ADMIN_ENABLED=true` 可选，用于检查已开启的 `/_admin`。
-- `SMOKE_OPENAPI_ENABLED=true` 可选，用于检查 NEXT OpenAPI `/_health` 和 `/_version`。
+- `SMOKE_OPENAPI_ENABLED=true` 可选，用于检查 OpenAPI `/_health` 和 `/_version`。
 - `SMOKE_RETRIES` 和 `SMOKE_DELAY` 控制重试。
 
 检查：

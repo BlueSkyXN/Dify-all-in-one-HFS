@@ -129,7 +129,7 @@ Reason if skipped:
 ```bash
 SMOKE_ADMIN_ENABLED=true \
 SMOKE_OPENAPI_ENABLED=true \
-scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one-next.hf.space
+scripts/hf-space-smoke.sh https://your-space.hf.space
 ```
 
 这只验证 admin UI 可达和未鉴权 API 返回 401，不验证 authenticated admin API 或写 action。需要完整 admin smoke 时仍必须设置 `ADMIN_TOKEN`。

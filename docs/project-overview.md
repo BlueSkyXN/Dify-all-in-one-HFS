@@ -30,7 +30,7 @@
 | Plugin 存储 | `/data/plugin_daemon`，插件包、已安装插件和 assets 指向 `/persist`，工作目录默认在 `/tmp/dify-aio` | 插件和 runtime relaunch 所需包保留，scratch/cache 不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认开启 | 便于 demo/plugin 验证；公开或稳定演示环境可按需关闭以减少外部依赖 |
-| NEXT Agent Runtime | `dify-agent` backend 与 loopback `shellctl` shell layer 在 NEXT 默认开启 | main 已把 Agent v2 / dify-agent 纳入主链路；本仓库提供 HFS 可观测的基础 backend 和 shell layer，不把它写成完整 Agent/Skills 验收完成态 |
+| Agent Runtime | `dify-agent` backend 与 loopback `shellctl` shell layer 默认开启 | main 已把 Agent v2 / dify-agent 纳入主链路；本仓库提供 HFS 可观测的基础 backend 和 shell layer，不把它写成完整 Agent/Skills 验收完成态 |
 | 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
 
 ## 目录结构
