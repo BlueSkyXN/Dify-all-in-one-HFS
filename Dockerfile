@@ -210,16 +210,17 @@ COPY --from=agent-runtime-image /usr/local/bin/shellctl-runner-exit /usr/local/b
 COPY --from=agent-runtime-image /usr/local/bin/shellctl-runner /usr/local/bin/shellctl-runner
 COPY --from=agent-runtime-image /usr/local/bin/dify-agent /usr/local/bin/dify-agent
 RUN set -eu; \
-    /opt/dify-agent/.venv/bin/python -c "import dify_agent.server.app; import shellctl.client" \
-    && /app/api/.venv/bin/python -c 'from importlib.metadata import version; print(version("graphon"))' \
-    && /opt/dify-agent/.venv/bin/python -c 'from importlib.metadata import version; print(version("graphon"))' \
-    && test "$(readlink -f /app/api/.venv/bin/python)" != "$(readlink -f /opt/dify-agent/.venv/bin/python)" \
+    /app/api/.venv/bin/python -c 'import flask; from importlib.metadata import version; assert version("graphon") == "0.6.0"' \
+    && /opt/dify-agent/.venv/bin/python -c 'import dify_agent.server.app; import shellctl.client; from importlib.metadata import version; assert version("graphon") == "0.5.2"' \
+    && /app/api/.venv/bin/python -c 'import sys; assert sys.prefix == "/app/api/.venv", sys.prefix' \
+    && /opt/dify-agent/.venv/bin/python -c 'import sys; assert sys.prefix == "/opt/dify-agent/.venv", sys.prefix' \
     && /usr/local/bin/shellctl serve --help >/dev/null \
     && /usr/local/bin/dify-agent --help >/dev/null \
     && test -x /usr/local/bin/shellctl-runner \
     && test -x /usr/local/bin/shellctl-sanitize-pty \
     && test -x /usr/local/bin/shellctl-runner-exit \
     && /opt/dify-agent/.venv/bin/python -m uvicorn --help >/dev/null \
+    && uv pip check --python /app/api/.venv/bin/python \
     && uv pip check --python /opt/dify-agent/.venv/bin/python \
     && chown -R user:user /opt/dify-agent
 

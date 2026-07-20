@@ -136,6 +136,10 @@ def main() -> int:
     checks.append(check("targeted API observability overlay is absent", "observability_service.py" not in dockerfile_text, "absent", "absent"))
     checks.append(check("Agent virtualenv is copied from agent-image", "COPY --from=agent-image --chown=user:user /app/api/.venv /opt/dify-agent/.venv" in dockerfile_text, "Dockerfile", "Agent venv copy"))
     checks.append(check("Agent Go binaries are copied from agent-runtime-image", "COPY --from=agent-runtime-image /usr/local/bin/shellctl /usr/local/bin/shellctl" in dockerfile_text, "Dockerfile", "Agent runtime binary copy"))
+    checks.append(check("API virtualenv validates its own sys.prefix", 'assert sys.prefix == "/app/api/.venv"' in dockerfile_text, "Dockerfile", "API sys.prefix assertion"))
+    checks.append(check("Agent virtualenv validates its own sys.prefix", 'assert sys.prefix == "/opt/dify-agent/.venv"' in dockerfile_text, "Dockerfile", "Agent sys.prefix assertion"))
+    checks.append(check("API virtualenv runs uv pip check", "uv pip check --python /app/api/.venv/bin/python" in dockerfile_text, "Dockerfile", "API uv pip check"))
+    checks.append(check("Agent virtualenv runs uv pip check", "uv pip check --python /opt/dify-agent/.venv/bin/python" in dockerfile_text, "Dockerfile", "Agent uv pip check"))
 
     manifest = tomllib.loads((repo_root / "hfs-dev.toml").read_text(encoding="utf-8"))
     manifest_pins = {item.get("name", "") for item in manifest.get("release_pins", [])}

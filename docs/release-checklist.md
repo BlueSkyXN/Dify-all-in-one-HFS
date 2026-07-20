@@ -116,6 +116,7 @@ docker logs dify-aio-hf-demo 2>&1 | grep -iE "already satisfied|Downloading|inst
 如果 Space 开启 `DIFY_AGENT_ENABLED=true`，额外记录：
 
 ```text
+API venv import / sys.prefix / uv pip check gate passed in Docker build? yes/no:
 dify-agent independent venv import / dual-graphon assertion / uv pip check gate passed in Docker build? yes/no:
 Known upstream uv pip check exceptions only? yes/no:
 /_ops/health.agent_backend.status:
