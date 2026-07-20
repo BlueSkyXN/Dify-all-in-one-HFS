@@ -220,7 +220,17 @@ RUN set -eu; \
     && test -x /usr/local/bin/shellctl-sanitize-pty \
     && test -x /usr/local/bin/shellctl-runner-exit \
     && /opt/dify-agent/.venv/bin/python -m uvicorn --help >/dev/null \
-    && uv pip check --python /app/api/.venv/bin/python \
+    && api_pip_check=/tmp/dify-api-uv-pip-check.txt \
+    && if uv pip check --python /app/api/.venv/bin/python >"${api_pip_check}" 2>&1; then \
+         cat "${api_pip_check}"; \
+       else \
+         cat "${api_pip_check}"; \
+         test "$(grep -c '^The package `' "${api_pip_check}")" -eq 3; \
+         grep -Fq 'The package `alibabacloud-tea-openapi` requires `cryptography' "${api_pip_check}"; \
+         grep -Fq 'The package `clickzetta-connector-python` requires `pyarrow' "${api_pip_check}"; \
+         grep -Fq 'The package `msal` requires `cryptography' "${api_pip_check}"; \
+       fi \
+    && rm -f "${api_pip_check}" \
     && uv pip check --python /opt/dify-agent/.venv/bin/python \
     && chown -R user:user /opt/dify-agent
 

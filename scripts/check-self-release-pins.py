@@ -140,6 +140,18 @@ def main() -> int:
     checks.append(check("Agent virtualenv validates its own sys.prefix", 'assert sys.prefix == "/opt/dify-agent/.venv"' in dockerfile_text, "Dockerfile", "Agent sys.prefix assertion"))
     checks.append(check("API virtualenv runs uv pip check", "uv pip check --python /app/api/.venv/bin/python" in dockerfile_text, "Dockerfile", "API uv pip check"))
     checks.append(check("Agent virtualenv runs uv pip check", "uv pip check --python /opt/dify-agent/.venv/bin/python" in dockerfile_text, "Dockerfile", "Agent uv pip check"))
+    checks.append(
+        check(
+            "API uv pip check allowlist remains limited to three known upstream packages",
+            dockerfile_text.count("grep -Fq 'The package `") == 3
+            and all(
+                package in dockerfile_text
+                for package in ("alibabacloud-tea-openapi", "clickzetta-connector-python", "msal")
+            ),
+            str(dockerfile_text.count("grep -Fq 'The package `")),
+            "3 known package checks",
+        )
+    )
 
     manifest = tomllib.loads((repo_root / "hfs-dev.toml").read_text(encoding="utf-8"))
     manifest_pins = {item.get("name", "") for item in manifest.get("release_pins", [])}

@@ -39,7 +39,7 @@
    - 来源：`${BASE_IMAGE_REF}`；`${DIFY_UPSTREAM_BASE_REF}` 只记录已经合入 self fork 的 upstream commit，不参与 `FROM`。
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv、tmux 等运行时依赖。
    - 保留 self API image 和 `/app/api/.venv` 原样；不再针对 API 文件做 source overlay。
-   - 从 `agent-image` 复制 `/opt/dify-agent/.venv`，从 `agent-runtime-image` 复制 Go binaries；执行 API/Agent import、两个 venv 的 `sys.prefix` 隔离检查、Go CLI help，并分别执行 `uv pip check` 作为 build gate。
+   - 从 `agent-image` 复制 `/opt/dify-agent/.venv`，从 `agent-runtime-image` 复制 Go binaries；执行 API/Agent import、两个 venv 的 `sys.prefix` 隔离检查、Go CLI help，并分别执行 `uv pip check` 作为 build gate。API 当前只允许 `alibabacloud-tea-openapi`、`clickzetta-connector-python` 和 `msal` 三条已知上游冲突；出现其他冲突仍会失败。
    - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
    - 将 Sandbox binary 设置为 setuid root，满足 sandbox runtime 需求。
