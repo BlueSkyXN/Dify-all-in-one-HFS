@@ -7,12 +7,12 @@
 `Dockerfile` 使用多阶段构建，组装 self GHCR release 与固定的外部 runtime assets：
 
 1. `web-builder`
-   - 来源：`${DIFY_WEB_IMAGE_REF}`，使用待替换的 image-specific GHCR digest。
+   - 来源：`${DIFY_WEB_IMAGE_REF}`，使用已验证的 image-specific GHCR digest。
    - 验证 `/app/targets/next`、`/app/targets/vinext` 和 `/app/entrypoint.sh` 存在。
    - 最终复制 `/app/targets/` 和 `/app/entrypoint.sh` 到 runtime。
 
 2. `api-image`
-   - 来源：`${DIFY_API_IMAGE_REF}`，使用待替换的 image-specific GHCR digest。
+   - 来源：`${DIFY_API_IMAGE_REF}`，使用已验证的 image-specific GHCR digest。
    - 验证 `/app/api/.venv/bin/flask` 和 `/app/api/docker/entrypoint.sh` 存在。
    - 最终复制 `/app/api` 到 runtime。
 
@@ -58,20 +58,20 @@ Sandbox Python 包预设链路：
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
 DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=0000000000000000000000000000000000000000
+DIFY_SOURCE_MAIN_REF=4d010cc912753e4a0443cc01721e24d0752bce46
 DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
-DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
-DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
-DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
-DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:17c5a57c432e24179b42c210a5ea48a5c79f4f9844c6944f6bf33a5d0cdb9054
+DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:ff5cfc41d95fb28abf13854c0c215d0680a611d53390bd012a6b83191ae68ad9
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:45938ec2584eaf43a4d0ca6502874ac5c84dc960c60cd6067d79117aea7b58df
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:f88faab3f5cc8aa24ca07d1cc45750aaa531c6147fd504d690bae3d6e922e93b
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
-DIFY_VERSION=self-release-pending-digest-replacement
+DIFY_VERSION=BlueSkyXN-dify-main-4d010cc912753e4a0443cc01721e24d0752bce46
 UV_VERSION=0.11.21
 ```
 
-零 source SHA/digest 仅用于让本仓库的 self release contract 可审计；取得最终 self commit 和 GHCR digests 后应原子替换 source ref 与全部 self image refs，再完成 build、smoke 和 runtime readback。`DIFY_VERSION` 只作为 build/runtime metadata，不参与 `FROM` 镜像选择。
+self source SHA 与四个 GHCR digest 已按同一次 release 原子固定；后续升级必须继续保持共同 revision，并重新完成 artifact、build、smoke 和 runtime readback。`DIFY_VERSION` 只作为 build/runtime metadata，不参与 `FROM` 镜像选择。
 
 ## Container Entry Point
 

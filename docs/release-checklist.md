@@ -37,7 +37,7 @@ Files:
 ```bash
 git status --short --branch
 scripts/static-check.sh
-scripts/check-self-release-pins.py
+python3 scripts/check-self-release-pins.py --require-final-digest
 git diff --check
 ```
 
@@ -71,7 +71,9 @@ All image refs use digest? yes/no:
 Mutable defaults used? yes/no + reason:
 ```
 
-当前 self runtime 的 source ref 和 GHCR images 使用明确的零占位值：`scripts/check-self-release-pins.py` 会拒绝把它们当作 release-ready；必须在 self commit、GHCR artifact digest、OCI revision 和 runtime version readback 都确认后，原子替换 source ref 与全部 image-specific digest。`DIFY_UPSTREAM_BASE_REF` 只记录已合入 fork 的 upstream commit；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据；runtime 不再使用 targeted self API overlay。
+当前 self runtime 的 source ref 和四个 GHCR image-specific digest 已由同一次 release artifact 验证；`scripts/check-self-release-pins.py --require-final-digest` 会拒绝 placeholder 或非 digest pin。后续升级必须在 self commit、GHCR artifact digest、OCI revision 和 runtime version readback 都确认后，原子替换 source ref 与全部 image-specific digest。`DIFY_UPSTREAM_BASE_REF` 只记录已合入 fork 的 upstream commit；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据；runtime 不再使用 targeted self API overlay。
+
+取得 workflow digest JSON artifact 后，增加 `--artifact-dir <downloaded-artifact-root>`，让同一 checker 核对四个 artifact 的 `digest`、`commit_sha` 和 `oci_revision`。
 
 `scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
 

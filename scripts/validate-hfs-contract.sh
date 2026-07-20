@@ -295,8 +295,8 @@ require_grep '^ARG SANDBOX_IMAGE_REF=' Dockerfile \
   "Dockerfile must expose SANDBOX_IMAGE_REF build input"
 require_grep '^ARG DIFY_SANDBOX_SOURCE_REF=' Dockerfile \
   "Dockerfile must expose DIFY_SANDBOX_SOURCE_REF build input"
-require_grep '^# TODO\(root\): Replace the source SHA and every zero digest below with the$' Dockerfile \
-  "Dockerfile must centrally mark self release placeholders for the root task"
+require_grep '^# Verified self release\. Keep the source SHA and image-specific digests atomic;$' Dockerfile \
+  "Dockerfile must centrally mark the atomic self release boundary"
 require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
   "Dockerfile must select web image from DIFY_WEB_IMAGE_REF"
 require_grep '^FROM \${DIFY_API_IMAGE_REF} AS api-image$' Dockerfile \
@@ -360,7 +360,7 @@ require_grep 'exec "\$shellctl_binary" serve' docker/run-shellctl \
 require_absent 'DIFY_AGENT_VIRTUAL_ENV|agent_virtual_env|runtime-dir' docker/run-shellctl \
   "shellctl launcher must not depend on the Python virtualenv or removed Go flags"
 
-python3 scripts/check-self-release-pins.py
+python3 scripts/check-self-release-pins.py --require-final-digest
 
 require_line \
   'export SERVER_CONSOLE_API_URL=${SERVER_CONSOLE_API_URL:-http://127.0.0.1:5001}' \

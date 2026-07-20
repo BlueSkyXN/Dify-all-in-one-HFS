@@ -14,21 +14,20 @@
 #     --env-file docker/dify.env.demo \
 #     dify-all-in-one-hf-space:latest
 
-# TODO(root): Replace the source SHA and every zero digest below with the
-# verified self release values before a build or deployment. Do not reuse one
-# image digest for another image.
+# Verified self release. Keep the source SHA and image-specific digests atomic;
+# never reuse one image digest for another image.
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
 ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-ARG DIFY_SOURCE_MAIN_REF=0000000000000000000000000000000000000000
+ARG DIFY_SOURCE_MAIN_REF=4d010cc912753e4a0443cc01721e24d0752bce46
 ARG DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
-ARG DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ARG DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:17c5a57c432e24179b42c210a5ea48a5c79f4f9844c6944f6bf33a5d0cdb9054
+ARG DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:ff5cfc41d95fb28abf13854c0c215d0680a611d53390bd012a6b83191ae68ad9
+ARG DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:45938ec2584eaf43a4d0ca6502874ac5c84dc960c60cd6067d79117aea7b58df
+ARG DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:f88faab3f5cc8aa24ca07d1cc45750aaa531c6147fd504d690bae3d6e922e93b
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 ARG DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
-ARG DIFY_VERSION=self-release-pending-digest-replacement
+ARG DIFY_VERSION=BlueSkyXN-dify-main-4d010cc912753e4a0443cc01721e24d0752bce46
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
