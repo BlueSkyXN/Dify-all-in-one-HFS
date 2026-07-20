@@ -30,6 +30,7 @@
 | Plugin 存储 | `/data/plugin_daemon`，插件包、已安装插件和 assets 指向 `/persist`，工作目录默认在 `/tmp/dify-aio` | 插件和 runtime relaunch 所需包保留，scratch/cache 不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认开启 | 便于 demo/plugin 验证；公开或稳定演示环境可按需关闭以减少外部依赖 |
+| NEXT Agent Runtime | `dify-agent` backend 与 loopback `shellctl` shell layer 在 NEXT 默认开启 | main 已把 Agent v2 / dify-agent 纳入主链路；本仓库提供 HFS 可观测的基础 backend 和 shell layer，不把它写成完整 Agent/Skills 验收完成态 |
 | 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
 
 ## 目录结构
@@ -50,6 +51,7 @@
 |   |-- nginx.conf             # 外部路由和 access log
 |   |-- ops_service.py         # 只读运维诊断 HTTP 服务
 |   |-- admin_service.py       # 默认关闭的受控管理 HTTP 服务
+|   |-- run-postgres           # 本地/外部 PostgreSQL 模式包装器
 |   |-- postgres-backup-loop   # bucket-lite PostgreSQL dump 备份循环
 |   |-- with-dify-env          # Dify API/Web/Worker 环境包装器
 |   |-- with-plugin-env        # Plugin Daemon 环境包装器
@@ -69,18 +71,21 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=1.15.0
-UV_VERSION=latest
+DIFY_UPSTREAM_BASE_REF=ghcr.io/blueskyxn/dify-upstream-base@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
+DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+DIFY_VERSION=self-release-pending-digest-replacement
+UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-Web/API 默认值固定为经过兼容性确认的 `1.15.0` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍保留现有开发默认值。发布或长期演示仍应记录全部 image ref 并固定剩余可移动输入。`DIFY_VERSION=1.15.0` 只作为 metadata 描述该 Web/API pair，真实镜像内容始终以两个 digest ref 为准。
+API、Web、Agent Python venv 与 Agent Go runtime 均来自同一 self GHCR release 的各自 image digest。零 digest 只是主线程待替换的合同占位值，不能据此执行 build 或部署；完成 artifact checksum 和 runtime readback 后必须原子替换全部 image-specific digest。Agent venv 保持在 `/opt/dify-agent/.venv`，不修改 `/app/api/.venv`；runtime 不再对 API 做 targeted source overlay。`DIFY_VERSION` 仅是运行时 metadata。
 
 ## 运行状态入口
 

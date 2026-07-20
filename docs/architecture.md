@@ -12,9 +12,10 @@
 
 | 类别 | 引入方式 | 组件 |
 | --- | --- | --- |
-| Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 4 个 build stage，由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` / `PLUGIN_DAEMON_IMAGE_REF` / `SANDBOX_IMAGE_REF` 选择镜像；发布态使用 digest ref | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon` 的 `/app`；`langgenius/dify-sandbox` 的 `main` + `conf` + `dependencies` |
-| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv` |
-| 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
+| Dify 官方镜像资产（多阶段 `COPY --from`） | `Dockerfile` 顶部 image stages，由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` / `PLUGIN_DAEMON_IMAGE_REF` / `SANDBOX_IMAGE_REF` 选择镜像；发布态使用 digest ref | `langgenius/dify-web` 的 `/app/targets` + `entrypoint.sh`；`langgenius/dify-api` 的 `/app/api` + `.venv`；`langgenius/dify-plugin-daemon` 的 `/app`；`langgenius/dify-sandbox` 的 `conf` + `dependencies` |
+| NEXT Sandbox binary patch | `sandbox-builder` 从 `DIFY_SANDBOX_SOURCE_REF` 拉取上游 `dify-sandbox` source 并应用 `docker/patches/dify-sandbox-hfs-uidpool.patch` | 只替换 `/opt/dify/sandbox/main`，用于 HFS rootless UID/GID 兼容；仍保留 upstream chroot/seccomp 路径 |
+| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv`、`tmux`、`util-linux/flock`、`shellctl` |
+| 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`run-postgres`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
 
 ## 总体拓扑
 
@@ -29,6 +30,8 @@ flowchart TD
     api --> postgres["PostgreSQL 15 + pgvector :5432"]
     api --> redis["Redis :6379"]
     api --> sandbox["Sandbox :8194"]
+    api --> agent["dify-agent :5005"]
+    agent --> shellctl["shellctl :5004"]
     api --> plugin
     worker["Dify Worker"] --> postgres
     worker --> redis
@@ -64,7 +67,7 @@ flowchart TD
     router --> errors["/errors"]
 
     health --> cmd_checks["command checks: pg_isready, redis-cli"]
-    health --> tcp_checks["TCP checks: plugin-daemon, sandbox"]
+    health --> tcp_checks["TCP checks: plugin-daemon, sandbox, optional shellctl"]
     health --> http_checks["HTTP checks: API, Web, Nginx, setup/init"]
     health --> extra_checks["optional extra checks from env JSON"]
     status --> supervisor_status["Supervisor XML-RPC over unix socket"]
@@ -78,15 +81,17 @@ flowchart TD
 
 ## 容器内进程
 
-容器以 `/usr/bin/tini --` 作为 PID 1，包裹 `docker/entrypoint.sh`；初始化完成后由 `supervisord` 接管所有长期运行进程（详见 `runtime-lifecycle.md`）。镜像内创建 UID `1000` 的 `user` 与 UID `65537` 的 `sandbox` 两个非 root 账号，匹配 Hugging Face Docker Space 的非 root 约束；除了 `/opt/dify/sandbox/main`（setuid root，sandbox runtime 需要）以外，全部 program 均以 `user` 运行。
+容器以 `/usr/bin/tini --` 作为 PID 1，包裹 `docker/entrypoint.sh`；初始化完成后由 `supervisord` 接管所有长期运行进程（详见 `runtime-lifecycle.md`）。镜像内创建 UID `1000` 的 `user` 与 UID `65537` 的 `sandbox` 两个非 root 账号，匹配 Hugging Face Docker Space 的非 root 约束；除了 `/opt/dify/sandbox/main`（setuid root，sandbox runtime 需要，HFS 默认执行 UID/GID 为 `1000`）以外，全部 program 均以 `user` 运行。
 
 | program | 端口 | 作用 | 日志 |
 | --- | --- | --- | --- |
-| `postgres` | `127.0.0.1:5432` | Dify 主库、plugin 库、pgvector | `/data/logs/postgres.log`, `/data/logs/postgres.err` |
+| `postgres` | `127.0.0.1:5432` | Dify 主库、plugin 库、pgvector；`EXTERNAL_POSTGRES_ENABLED=true` 时 `run-postgres` 保持 idle，实际 DB 由 `DB_HOST` 指向外部 PostgreSQL | `/data/logs/postgres.log`, `/data/logs/postgres.err` |
 | `redis` | `127.0.0.1:6379` | Celery broker/cache/plugin 协调 | `/data/logs/redis.log`, `/data/logs/redis.err` |
-| `postgres-backup` | none | 常驻进程：`POSTGRES_BACKUP_ENABLED=auto` 时仅在 bucket-lite 激活后定期 `pg_dumpall` 到 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验后更新 `latest.sql.gz` / `latest.created_at` / `latest.sha256`；其余状态 `exec sleep infinity` 空闲。默认 60s 首跑、3600s 间隔、保留 5 份，可由 `POSTGRES_BACKUP_INITIAL_DELAY_SECONDS` / `POSTGRES_BACKUP_INTERVAL_SECONDS` / `POSTGRES_BACKUP_RETAIN_COUNT` 覆盖 | `/data/logs/postgres-backup.log`, `/data/logs/postgres-backup.err` |
+| `postgres-backup` | none | 常驻进程：`POSTGRES_BACKUP_ENABLED=auto` 时仅在 bucket-lite 激活后定期 `pg_dumpall` 到 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验后更新 `latest.sql.gz` / `latest.created_at` / `latest.sha256`；其余状态 `exec sleep infinity` 空闲。默认 15s 首跑、60s 间隔、`gzip -1` 快速压缩、加锁串行执行，并用 tiered retention 最多保留 65 个 timestamped dump；可由 `POSTGRES_BACKUP_*` 覆盖 | `/data/logs/postgres-backup.log`, `/data/logs/postgres-backup.err` |
 | `plugin-daemon` | `0.0.0.0:5002`, `0.0.0.0:5003` | Dify plugin runtime 和 remote install | `/data/logs/plugin-daemon.log`, `/data/logs/plugin-daemon.err` |
 | `sandbox` | `127.0.0.1:8194` | Code execution sandbox | stdout/stderr |
+| `shellctl` | `127.0.0.1:5004` | Agent shell layer controller；仅在 `DIFY_AGENT_ENABLED=true` 且 `AGENT_SHELL_ENABLED=true` 时实际服务 | `/data/logs/shellctl.log`, `/data/logs/shellctl.err` |
+| `dify-agent` | `127.0.0.1:5005` | Agent v2 backend；shell layer 开启时等待 shellctl ready | `/data/logs/dify-agent.log`, `/data/logs/dify-agent.err` |
 | `dify-api` | `0.0.0.0:5001` | Dify API server | `/data/logs/dify-api.log`, `/data/logs/dify-api.err` |
 | `dify-worker` | none | Celery worker | `/data/logs/dify-worker.log`, `/data/logs/dify-worker.err` |
 | `dify-beat` | none | Celery beat scheduler | `/data/logs/dify-beat.log`, `/data/logs/dify-beat.err` |
@@ -147,13 +152,13 @@ flowchart TD
 
 长期运行阶段的依赖由 `docker/wait-for-core` 控制，每个 program 在 `command=` 里把自己依赖的探针名传给它，未达成时按 1s 间隔轮询，达成后 `exec` 真正的服务进程：
 
-- `plugin-daemon` 等待 `postgres`、`redis`：`pg_isready -h $DB_HOST` + `redis-cli ping` 返回 `PONG`。
+- `plugin-daemon` 等待 `postgres`、`redis`：`pg_isready -h $DB_HOST` + `redis-cli ping` 返回 `PONG`；外部 PostgreSQL 模式下这里检查的是远端 `DB_HOST`。
 - `dify-api`、`dify-worker`、`dify-beat` 等待 `postgres`、`redis`：同上。
 - `dify-web` 等待 `api`：`curl http://127.0.0.1:5001/health` 200。
 
 ## 数据库布局
 
-`entrypoint.sh` 会创建两个 PostgreSQL database：
+默认本地 PostgreSQL 模式下，`entrypoint.sh` 会创建两个 PostgreSQL database；`EXTERNAL_POSTGRES_ENABLED=true` 时需要在外部 PostgreSQL 中预先创建并授权：
 
 | database | 默认值 | 用途 |
 | --- | --- | --- |
@@ -254,9 +259,10 @@ ADMIN_TOKEN=<separate-token>
 restart-service
 reload-nginx
 run-health-checks
+force-postgres-backup
 ```
 
-Browser cookie session 的写 action 需要 CSRF header；CLI header token auth 显式跳过 CSRF，但仍需要白名单 action 和 `confirm=true`。登录失败、重启、reload 和 health check action 都写入 `ADMIN_AUDIT_LOG`；请求不能传任意 shell command。
+Browser cookie session 的写 action 需要 CSRF header；CLI header token auth 显式跳过 CSRF，但仍需要白名单 action 和 `confirm=true`。登录失败、重启、reload、health check 和 force backup action 都写入 `ADMIN_AUDIT_LOG`；请求不能传任意 shell command。
 
 File manager 也挂在 `/_admin/api/files/*`，默认 `ADMIN_FILES_ENABLED=false`，写入能力还需要 `ADMIN_FILES_WRITE_ENABLED=true`，rename/delete 还要 `ADMIN_FILES_DESTRUCTIVE_ENABLED=true`。所有 path 都解析到 `ADMIN_FILES_ROOT` 内，默认保护 `generated.env`、key、pem、secret、token 类路径。
 

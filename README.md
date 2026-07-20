@@ -127,6 +127,7 @@ https://${SPACE_HOST}
 ```text
 CONSOLE_WEB_URL
 CONSOLE_API_URL
+SERVER_CONSOLE_API_URL
 APP_WEB_URL
 APP_API_URL
 FILES_URL
@@ -188,7 +189,9 @@ docker exec -it dify-aio-hf supervisorctl status
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-`/persist/postgres-backups/` 会由 `postgres-backup` 进程定期生成 timestamped dump，并在校验通过后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，然后把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并在有可用 dump 时先从 `latest.sql.gz` 恢复。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
+`/persist/postgres-backups/` 会由 `postgres-backup` 进程定期生成 timestamped dump，并在校验通过后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`。默认首次备份延迟 15 秒、后续间隔 60 秒，使用 `gzip -1` 快速压缩，并按 tiered retention 保留近端密、远端稀的恢复点；`/_admin/api/actions/force-postgres-backup` 可在部署或重启前手动生成一次 dump。`/_ops/persistence` 会只读显示 latest backup age、latest error 和 `safe_to_restart` 建议信号。默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime`：如果 `/persist/postgres` 在重启后无法作为 live PGDATA 启动，入口脚本会打印 PostgreSQL 失败上下文，确认旧进程已停止后重建全新的 `/tmp/dify-aio/postgres` scratch PGDATA，再把 `/data/postgres` 切过去并在有可用 dump 时从 `latest.sql.gz` 恢复；不会删除或复用 `/persist/postgres`。恢复点最多只新到最近一次成功 dump，可能落后于故障前最后提交的事务。若没有挂载 `/persist`，容器回退到旧的 `/data` 布局。
+
+如果需要强持久化数据库状态，设置 `EXTERNAL_POSTGRES_ENABLED=true` 并配置 `DB_HOST`、`DB_PORT`、`DB_USERNAME`、`DB_PASSWORD`、`DB_DATABASE`、`DB_PLUGIN_DATABASE` 和必要的 `DB_SSL_MODE`。外部 PostgreSQL 模式要求两个 database 已创建并可用 `pgvector`，本容器不会再把 `/data/postgres` 当权威数据库。
 
 bucket-lite 下 Plugin Daemon 默认直接以 `/persist/plugin_daemon` 作为 `PLUGIN_STORAGE_LOCAL_ROOT`，避免启动时从 `/data/plugin_daemon/plugin` 这个 symlink root 枚举 installed 插件失败。`/data/plugin_daemon/*` 仍作为兼容访问路径保留。
 
@@ -248,7 +251,11 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_ops/metrics          Prometheus-style text metrics
 ```
 
-`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 包括 restart service、reload nginx、run health checks、ensure app API token、restore plugin installed package from cache，以及 dry-run-first provider model `read_timeout` patch；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
+`/_ops/health` 会包含 `sandbox_exec` 字段。它来自容器启动后一次性内部调用 `POST /v1/sandbox/run` 的结果，用来确认 Sandbox 不只是端口存活，而是真能执行 `python3` code；判定条件包括 HTTP 200、sandbox JSON envelope 成功、`exit_code=0`、`error=""`，以及 stdout 命中 marker。默认失败只标记 degraded，不把 demo Space 直接拉挂；受控验证可设置 `SANDBOX_SELFCHECK_STRICT=true`。
+
+Sandbox server binary 使用 `DIFY_SANDBOX_SOURCE_REF` 指向的 upstream source 加一处 HFS UID/GID 兼容 patch 构建；`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`。`/_ops/version` 会同时展示 image ref、source ref 和当前 `SANDBOX_UID_POOL_*` / `SANDBOX_RUN_GID` 配置。
+
+`/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 包括 restart service、reload nginx、run health checks、force postgres backup、ensure app API token、restore plugin installed package from cache，以及 dry-run-first provider model `read_timeout` patch；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
 
 Nginx access log 使用 JSON 格式写到 Nginx stdout；当前 `supervisord` 会把 Nginx stdout 收进 `/data/logs/nginx.log`，可通过 `/_ops/logs?service=nginx` 查看。字段包含 `time`、`request_id`、`remote_addr`、`method`、`uri`、`status`、`request_time`、`upstream_addr`、`upstream_status`、`upstream_response_time` 和 `host`，便于区分 Web/API/Plugin/Ops 的上游问题。
 

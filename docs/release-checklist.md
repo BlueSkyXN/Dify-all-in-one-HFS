@@ -37,6 +37,7 @@ Files:
 ```bash
 git status --short --branch
 scripts/static-check.sh
+scripts/check-self-release-pins.py
 git diff --check
 ```
 
@@ -53,18 +54,21 @@ HFS contract check: scripts/validate-hfs-contract.sh
 发布态 build inputs 记录：
 
 ```text
-BASE_IMAGE_REF:
+DIFY_UPSTREAM_BASE_REF:
 DIFY_API_IMAGE_REF:
 DIFY_WEB_IMAGE_REF:
+DIFY_AGENT_IMAGE_REF:
+DIFY_AGENT_RUNTIME_IMAGE_REF:
 PLUGIN_DAEMON_IMAGE_REF:
 SANDBOX_IMAGE_REF:
+DIFY_SANDBOX_SOURCE_REF:
 UV_VERSION:
 DIFY_VERSION metadata:
 All image refs use digest? yes/no:
 Mutable defaults used? yes/no + reason:
 ```
 
-当前 Dify Web/API 默认已固定为兼容的 `1.15.0` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍可能使用现有可移动开发默认值。发布或长期演示必须记录并固定全部输入；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据。
+当前 self runtime 的 GHCR images 各自使用明确的零 digest 占位值：`scripts/check-self-release-pins.py` 会拒绝把它们当作 release-ready，主线程必须在 GHCR artifact digest、下载 checksum 和 runtime version readback 都确认后，原子替换全部 image-specific digest。`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据；runtime 不再使用 targeted self API overlay。
 
 `scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
 
@@ -91,6 +95,41 @@ ALLOW_DEMO_OPS_TOKEN=true OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.s
 python3 -m pip download --only-binary=:all: --python-version 3.12 --implementation cp --abi cp312 --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 -r docker/sandbox-python-requirements.txt
 python3 -m pip download --only-binary=:all: --python-version 3.14 --implementation cp --abi cp314 --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 -r docker/sandbox-python-requirements.txt
 ```
+
+构建并启动容器后，还要记录真实 Sandbox import smoke。`/_ops/version` 的 requirements `package_count` 只证明清单文件内容，不能替代这一步：
+
+```bash
+SANDBOX_KEY=your-configured-sandbox-key
+docker exec dify-aio-hf-demo curl -sS -X POST http://127.0.0.1:8194/v1/sandbox/run \
+  -H "X-Api-Key: ${SANDBOX_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"language":"python3","code":"import pandas,numpy,fitz,pdfplumber,openpyxl,lxml,bs4,requests\nfrom PIL import Image\nimport docx,pptx,yaml,dateutil\nprint(\"SANDBOX_IMPORT_OK\", pandas.__version__)"}'
+docker exec dify-aio-hf-demo sh -lc 'command -v pip3; readlink -f "$(command -v pip3)"'
+docker logs dify-aio-hf-demo 2>&1 | grep -iE "already satisfied|Downloading|installing python dependencies|failed to initialize python dependencies" || true
+```
+
+如果 Space 开启 `DIFY_AGENT_ENABLED=true`，额外记录：
+
+```text
+dify-agent independent venv import / dual-graphon assertion / uv pip check gate passed in Docker build? yes/no:
+Known upstream uv pip check exceptions only? yes/no:
+/_ops/health.agent_backend.status:
+/_ops/health.shellctl.status:
+Agent App or workflow Agent node smoke:
+Reason if skipped:
+```
+
+`agent_backend.status=ok` 和 `shellctl.status=ok` 只能证明内部 `dify-agent` backend 与 shell layer controller 可达；真实 Agent v2 / Skills 发布验收需要再跑 Agent App 或 workflow Agent node，最好包含一次 plugin tool 或 skill 引用。
+
+如果 Space 开启 `ADMIN_ENABLED=true` 但本轮不提供 `ADMIN_TOKEN`，可以用：
+
+```bash
+SMOKE_ADMIN_ENABLED=true \
+SMOKE_OPENAPI_ENABLED=true \
+scripts/hf-space-smoke.sh https://blueskyxn-dify-all-in-one-next.hf.space
+```
+
+这只验证 admin UI 可达和未鉴权 API 返回 401，不验证 authenticated admin API 或写 action。需要完整 admin smoke 时仍必须设置 `ADMIN_TOKEN`。
 
 ## 合并到 GitHub main
 

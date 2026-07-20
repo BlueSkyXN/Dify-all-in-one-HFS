@@ -17,11 +17,11 @@ required_files = [
 ]
 
 [[release_pins]]
-name = "BASE_IMAGE_REF"
+name = "DIFY_UPSTREAM_BASE_REF"
 type = "image_ref"
 source = "Dockerfile ARG"
 required_for_release = true
-dev_mutable_default_allowed = true
+dev_mutable_default_allowed = false
 release_requires_digest = true
 
 [[release_pins]]
@@ -34,6 +34,22 @@ release_requires_digest = true
 
 [[release_pins]]
 name = "DIFY_WEB_IMAGE_REF"
+type = "image_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = false
+release_requires_digest = true
+
+[[release_pins]]
+name = "DIFY_AGENT_IMAGE_REF"
+type = "image_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = false
+release_requires_digest = true
+
+[[release_pins]]
+name = "DIFY_AGENT_RUNTIME_IMAGE_REF"
 type = "image_ref"
 source = "Dockerfile ARG"
 required_for_release = true
@@ -55,6 +71,13 @@ source = "Dockerfile ARG"
 required_for_release = true
 dev_mutable_default_allowed = true
 release_requires_digest = true
+
+[[release_pins]]
+name = "DIFY_SANDBOX_SOURCE_REF"
+type = "source_revision"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
 
 [[release_pins]]
 name = "UV_VERSION"

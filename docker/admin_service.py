@@ -371,6 +371,12 @@ def actions_payload() -> dict[str, Any]:
                 "requires_confirm": True,
             },
             {
+                "id": "force-postgres-backup",
+                "method": "POST",
+                "path": "/_admin/api/actions/force-postgres-backup",
+                "requires_confirm": True,
+            },
+            {
                 "id": "ensure-app-api-token",
                 "method": "POST",
                 "path": "/_admin/api/actions/ensure-app-api-token",
@@ -568,6 +574,21 @@ def run_health_checks(payload: dict[str, Any], auth: AuthContext) -> dict[str, A
     audit_event("run-health-checks", result["ok"], auth.kind, "healthcheck", {"action_id": action_id})
     return response
 
+
+def force_postgres_backup(payload: dict[str, Any], auth: AuthContext) -> dict[str, Any]:
+    if not confirmed(payload):
+        raise AdminError(400, "confirm=true is required")
+    action_id = new_action_id("force-postgres-backup")
+    result = run_cmd(["/usr/local/bin/postgres-backup-loop", "--once"], timeout=300.0)
+    response = {"ok": result["ok"], "action_id": action_id, "action": "force-postgres-backup", "result": result}
+    audit_event(
+        "force-postgres-backup",
+        result["ok"],
+        auth.kind,
+        "postgres",
+        {"action_id": action_id, "returncode": result["returncode"]},
+    )
+    return response
 
 def sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
@@ -1503,6 +1524,7 @@ def html_index(authenticated: bool) -> str:
           <div class="row" style="margin-top: 8px;">
             <button id="reloadNginxButton" type="button" data-i18n="reloadNginx">Reload Nginx</button>
             <button id="healthButton" type="button" data-i18n="runHealthChecks">Run Health Checks</button>
+            <button id="postgresBackupButton" type="button" data-i18n="backUpPostgres">Back Up Postgres</button>
           </div>
           <pre id="actionOutput" data-i18n="noActionYet">No action yet.</pre>
         </section>
@@ -1551,6 +1573,7 @@ def html_index(authenticated: bool) -> str:
         restart: "Restart",
         reloadNginx: "Reload Nginx",
         runHealthChecks: "Run Health Checks",
+        backUpPostgres: "Back Up Postgres",
         noActionYet: "No action yet.",
         supervisor: "Supervisor",
         audit: "Audit",
@@ -1609,6 +1632,7 @@ def html_index(authenticated: bool) -> str:
         restart: "重启",
         reloadNginx: "重载 Nginx",
         runHealthChecks: "运行健康检查",
+        backUpPostgres: "备份 Postgres",
         noActionYet: "还没有执行操作。",
         supervisor: "Supervisor 进程",
         audit: "审计",
@@ -1905,6 +1929,7 @@ def html_index(authenticated: bool) -> str:
     byId("restartButton").addEventListener("click", () => runAction("api/actions/restart-service", {service: byId("serviceSelect").value}));
     byId("reloadNginxButton").addEventListener("click", () => runAction("api/actions/reload-nginx", {}));
     byId("healthButton").addEventListener("click", () => runAction("api/actions/run-health-checks", {}));
+    byId("postgresBackupButton").addEventListener("click", () => runAction("api/actions/force-postgres-backup", {}));
     byId("loadAuditButton").addEventListener("click", loadAudit);
     byId("listFilesButton").addEventListener("click", listFiles);
     byId("newDirButton").addEventListener("click", makeDir);
@@ -2190,6 +2215,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(reload_nginx(payload, auth))
             elif path == "/api/actions/run-health-checks":
                 self.send_json(run_health_checks(payload, auth))
+            elif path == "/api/actions/force-postgres-backup":
+                self.send_json(force_postgres_backup(payload, auth))
             elif path == "/api/actions/ensure-app-api-token":
                 self.send_json(ensure_app_api_token(payload, auth))
             elif path == "/api/actions/ensure-plugin-installed-from-cache":

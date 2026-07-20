@@ -76,25 +76,190 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             content = ops_service.tail_file(path, 10)
             self.assertEqual(content, "a" * 32)
 
-    def test_version_payload_reports_digest_capable_image_refs(self):
+    def test_version_payload_reports_self_release_image_refs(self):
         os.environ.update(
             {
-                "DIFY_AIO_BUILD_BASE_IMAGE_REF": "python:3.12-slim-bookworm@sha256:base",
-                "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF": "langgenius/dify-api@sha256:api",
-                "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF": "langgenius/dify-web@sha256:web",
+                "DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF": "ghcr.io/blueskyxn/dify-upstream-base@sha256:base",
+                "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF": "ghcr.io/blueskyxn/dify-api@sha256:api",
+                "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF": "ghcr.io/blueskyxn/dify-web@sha256:web",
+                "DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent@sha256:agent",
+                "DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent-runtime@sha256:runtime",
                 "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF": "langgenius/dify-plugin-daemon@sha256:plugin",
                 "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF": "langgenius/dify-sandbox@sha256:sandbox",
+                "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF": "44cdbd5",
+                "SANDBOX_UID_POOL_MIN": "1000",
+                "SANDBOX_UID_POOL_MAX": "1001",
+                "SANDBOX_RUN_GID": "1000",
             }
         )
 
         build = ops_service.version_payload()["build"]
+        sandbox = ops_service.version_payload()["sandbox"]
 
-        self.assertEqual(build["base_image_ref"], "python:3.12-slim-bookworm@sha256:base")
-        self.assertEqual(build["dify_api_image_ref"], "langgenius/dify-api@sha256:api")
-        self.assertEqual(build["dify_web_image_ref"], "langgenius/dify-web@sha256:web")
+        self.assertEqual(build["upstream_base_ref"], "ghcr.io/blueskyxn/dify-upstream-base@sha256:base")
+        self.assertEqual(build["dify_api_image_ref"], "ghcr.io/blueskyxn/dify-api@sha256:api")
+        self.assertEqual(build["dify_web_image_ref"], "ghcr.io/blueskyxn/dify-web@sha256:web")
+        self.assertEqual(build["dify_agent_image_ref"], "ghcr.io/blueskyxn/dify-agent@sha256:agent")
+        self.assertEqual(build["dify_agent_runtime_image_ref"], "ghcr.io/blueskyxn/dify-agent-runtime@sha256:runtime")
         self.assertEqual(build["plugin_daemon_image_ref"], "langgenius/dify-plugin-daemon@sha256:plugin")
         self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
+        self.assertEqual(build["sandbox_source_ref"], "44cdbd5")
         self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
+        self.assertEqual(sandbox["uid_pool_min"], "1000")
+        self.assertEqual(sandbox["uid_pool_max"], "1001")
+        self.assertEqual(sandbox["run_gid"], "1000")
+
+    def test_sandbox_selfcheck_payload_reads_sanitized_result(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result_path = Path(tmpdir) / "sandbox-selfcheck.json"
+            result_path.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "status": "ok",
+                        "strict": False,
+                        "duration_ms": 123,
+                        "health_status": 200,
+                        "run_status": 200,
+                        "contains_marker": True,
+                        "response_sample": "dify-aio-sandbox-selfcheck",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            os.environ["SANDBOX_SELFCHECK_RESULT_PATH"] = str(result_path)
+
+            payload = ops_service.sandbox_selfcheck_payload()
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["run_status"], 200)
+        self.assertNotIn("response_sample", payload)
+
+    def test_sandbox_selfcheck_failure_degrades_without_failing_default_health(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result_path = Path(tmpdir) / "sandbox-selfcheck.json"
+            result_path.write_text(
+                json.dumps({"ok": False, "status": "failed", "error": "marker missing"}),
+                encoding="utf-8",
+            )
+            os.environ["SANDBOX_SELFCHECK_RESULT_PATH"] = str(result_path)
+            os.environ["SANDBOX_SELFCHECK_STRICT"] = "false"
+            payload = {"ok": True, "checks": [{"name": "sandbox-tcp", "ok": True}]}
+
+            ops_service.enrich_health_with_sandbox_selfcheck(payload)
+
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["degraded"])
+        self.assertEqual(payload["sandbox_exec"]["status"], "failed")
+
+    def test_sandbox_selfcheck_strict_failure_fails_health(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result_path = Path(tmpdir) / "sandbox-selfcheck.json"
+            result_path.write_text(
+                json.dumps({"ok": False, "status": "failed", "error": "marker missing"}),
+                encoding="utf-8",
+            )
+            os.environ["SANDBOX_SELFCHECK_RESULT_PATH"] = str(result_path)
+            os.environ["SANDBOX_SELFCHECK_STRICT"] = "true"
+            payload = {"ok": True, "checks": [{"name": "sandbox-tcp", "ok": True}]}
+
+            ops_service.enrich_health_with_sandbox_selfcheck(payload)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["checks"][-1]["name"], "sandbox-exec-selfcheck")
+
+    def test_agent_backend_disabled_is_non_degrading(self):
+        os.environ["DIFY_AGENT_ENABLED"] = "false"
+        payload = {"ok": True, "checks": []}
+
+        ops_service.enrich_health_with_agent_backend(payload)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["agent_backend"]["status"], "disabled")
+        self.assertNotIn("degraded", payload)
+
+    def test_agent_backend_enabled_failure_fails_health(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            return {"name": name, "ok": False, "duration_ms": 1, "error": "connection refused"}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["DIFY_AGENT_PORT"] = "5005"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["degraded"])
+        self.assertEqual(payload["agent_backend"]["status"], "failed")
+        self.assertEqual(payload["checks"][-1]["name"], "agent-backend")
+
+    def test_shellctl_disabled_is_non_degrading(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            return {"name": name, "ok": True, "duration_ms": 1}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["AGENT_SHELL_ENABLED"] = "false"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["shellctl"]["status"], "disabled")
+        self.assertNotIn("degraded", payload)
+
+    def test_shellctl_enabled_failure_fails_health(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            if name == "shellctl-tcp":
+                return {"name": name, "ok": False, "duration_ms": 1, "error": "connection refused"}
+            return {"name": name, "ok": True, "duration_ms": 1}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["AGENT_SHELL_ENABLED"] = "true"
+        os.environ["DIFY_AGENT_SHELLCTL_ENTRYPOINT"] = "http://127.0.0.1:5004"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["degraded"])
+        self.assertEqual(payload["shellctl"]["status"], "failed")
+        self.assertEqual(payload["checks"][-1]["name"], "shellctl")
+
+    def test_shellctl_rejects_non_loopback_endpoint(self):
+        original_tcp_check = ops_service.tcp_check
+
+        def fake_tcp_check(name, host, port, timeout=1.0):
+            return {"name": name, "ok": True, "duration_ms": 1}
+
+        os.environ["DIFY_AGENT_ENABLED"] = "true"
+        os.environ["AGENT_SHELL_ENABLED"] = "true"
+        os.environ["DIFY_AGENT_SHELLCTL_ENTRYPOINT"] = "http://shellctl.example:5004"
+        payload = {"ok": True, "checks": []}
+        try:
+            ops_service.tcp_check = fake_tcp_check
+            ops_service.enrich_health_with_agent_backend(payload)
+        finally:
+            ops_service.tcp_check = original_tcp_check
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["shellctl"]["status"], "invalid")
+        self.assertIn("loopback", payload["shellctl"]["error"])
 
     def test_plugin_storage_paths_resolve_relative_cache_under_root(self):
         os.environ.update(
@@ -282,6 +447,62 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertEqual(summary["states"][0]["node_id"], "node-a")
         self.assertEqual(summary["states"][0]["status"], "active")
         self.assertNotIn("logs", summary["states"][0])
+
+    def test_postgres_backup_status_reports_fresh_latest_backup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            backup_dir = Path(tmpdir)
+            active_file = backup_dir / "persist-active"
+            latest = backup_dir / "latest.sql.gz"
+            timestamped = backup_dir / "20260625T100000Z.sql.gz"
+            active_file.write_text("bucket\n", encoding="utf-8")
+            latest.write_bytes(b"backup")
+            timestamped.write_bytes(b"backup")
+            (backup_dir / "latest.created_at").write_text("20260625T100000Z\n", encoding="utf-8")
+            os.environ["POSTGRES_BACKUP_DIR"] = str(backup_dir)
+            os.environ["PERSIST_ACTIVE_FILE"] = str(active_file)
+            os.environ["POSTGRES_BACKUP_ENABLED"] = "auto"
+            os.environ["POSTGRES_BACKUP_INTERVAL_SECONDS"] = "60"
+            os.environ["POSTGRES_BACKUP_RETENTION_POLICY"] = "tiered"
+            os.environ["POSTGRES_BACKUP_RETAIN_COUNT"] = "65"
+            os.environ["POSTGRES_BACKUP_COMPRESSION_LEVEL"] = "1"
+
+            status = ops_service.postgres_backup_status()
+
+        self.assertTrue(status["managed_by_app"])
+        self.assertTrue(status["safe_to_restart"])
+        self.assertEqual(status["safe_to_restart_reason"], "latest-backup-fresh")
+        self.assertEqual(status["latest_created_at"], "20260625T100000Z")
+        self.assertEqual(status["timestamped_count"], 1)
+        self.assertEqual(status["retention_policy"], "tiered")
+        self.assertEqual(status["compression_level"], 1)
+
+    def test_postgres_backup_status_flags_latest_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            backup_dir = Path(tmpdir)
+            active_file = backup_dir / "persist-active"
+            active_file.write_text("bucket\n", encoding="utf-8")
+            (backup_dir / "latest.sql.gz").write_bytes(b"backup")
+            (backup_dir / "latest.err").write_text("pg_dumpall failed\n", encoding="utf-8")
+            os.environ["POSTGRES_BACKUP_DIR"] = str(backup_dir)
+            os.environ["PERSIST_ACTIVE_FILE"] = str(active_file)
+            os.environ["POSTGRES_BACKUP_ENABLED"] = "auto"
+
+            status = ops_service.postgres_backup_status()
+
+        self.assertFalse(status["safe_to_restart"])
+        self.assertEqual(status["safe_to_restart_reason"], "latest-backup-error-present")
+        self.assertEqual(status["latest_error"], "pg_dumpall failed")
+
+    def test_postgres_backup_status_auto_without_bucket_is_unmanaged(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["POSTGRES_BACKUP_DIR"] = tmpdir
+            os.environ["POSTGRES_BACKUP_ENABLED"] = "auto"
+
+            status = ops_service.postgres_backup_status()
+
+        self.assertFalse(status["managed_by_app"])
+        self.assertTrue(status["safe_to_restart"])
+        self.assertEqual(status["safe_to_restart_reason"], "postgres-backup-disabled")
 
     def test_persistence_payload_flags_missing_runtime_state(self):
         identifier = "langgenius/openai_api_compatible:0.0.49@abc123"
@@ -534,6 +755,30 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertNotIn("-a", captured["args"])
         self.assertEqual(captured["extra_env"], {"REDISCLI_AUTH": "test-password"})
+
+    def test_postgres_check_uses_password_and_ssl_env(self):
+        captured = {}
+        original_run_cmd = ops_service.run_cmd
+
+        def fake_run_cmd(args, timeout=2.0, extra_env=None):
+            captured["args"] = args
+            captured["extra_env"] = extra_env
+            return {"ok": True, "returncode": 0, "stdout": "accepting connections", "stderr": "", "duration_ms": 1}
+
+        try:
+            os.environ["DB_HOST"] = "pg.example.internal"
+            os.environ["DB_PORT"] = "6543"
+            os.environ["DB_USERNAME"] = "dify_user"
+            os.environ["DB_PASSWORD"] = "test-db-password"
+            os.environ["DB_SSL_MODE"] = "require"
+            ops_service.run_cmd = fake_run_cmd
+            result = ops_service.postgres_check()
+        finally:
+            ops_service.run_cmd = original_run_cmd
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(captured["args"], ["pg_isready", "-h", "pg.example.internal", "-p", "6543", "-U", "dify_user"])
+        self.assertEqual(captured["extra_env"], {"PGPASSWORD": "test-db-password", "PGSSLMODE": "require"})
 
     def test_process_env_summary_returns_only_safe_values(self):
         values = ops_service.parse_environ_bytes(
@@ -1048,6 +1293,11 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
     def test_matched_error_pattern_ignores_known_startup_noise(self):
         self.assertIsNone(ops_service.matched_error_pattern("FATAL:  the database system is starting up"))
+        self.assertIsNone(
+            ops_service.matched_error_pattern(
+                "2026-07-19 01:13:48,835 INFO exited: sandbox-selfcheck (exit status 0; expected)"
+            )
+        )
         self.assertEqual(ops_service.matched_error_pattern("worker Traceback happened"), "Traceback")
         self.assertEqual(ops_service.matched_error_pattern("nginx [error] connect() failed"), "connect() failed")
 

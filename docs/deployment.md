@@ -98,6 +98,8 @@ ops-healthz
 admin-disabled
 setup-api
 init-api
+openapi-health    # 仅 SMOKE_OPENAPI_ENABLED=true 时
+openapi-version   # 仅 SMOKE_OPENAPI_ENABLED=true 时
 ops-health
 ops-system
 ops-persistence
@@ -107,7 +109,9 @@ ops-errors
 
 `ops-persistence` 不只检查 HTTP 200，还会断言 `/_ops/persistence` 的 `ok=true`，并要求 `missing_package_files`、`missing_installed_files`、`missing_runtime_states` 和 `plugin_storage_layout_issues` 为空；bucket-lite 下还会确认 Plugin Daemon 看到的 storage root 是真实 `/persist/...` 目录而不是 `/data/plugin_daemon/*` symlink root。
 
-如果目标实例已显式开启 admin，可额外设置 `SMOKE_ADMIN_ENABLED=true` 和 `ADMIN_TOKEN=<admin-token>`，脚本会检查 `/_admin/api/status`、`/_admin/api/actions` 与 `/_admin/api/audit`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`。Web terminal / WebSSH 已移除，不再属于 smoke 范围。
+如果目标实例已显式开启 admin，可设置 `SMOKE_ADMIN_ENABLED=true`。未提供 `ADMIN_TOKEN` 时，脚本只验证 `/_admin/` 返回 200、`/_admin/api/status` 未鉴权返回 401，用于受保护 Space 的无 secret 远程边界检查。提供 `ADMIN_TOKEN=<admin-token>` 后，脚本会继续检查 `/_admin/api/status`、`/_admin/api/actions` 与 `/_admin/api/audit`。默认不会触发 admin action；只有 `SMOKE_ADMIN_ACTIONS=true` 时才会调用 `run-health-checks`，且此时必须提供 `ADMIN_TOKEN`。Web terminal / WebSSH 已移除，不再属于 smoke 范围。
+
+如果目标实例已设置 `OPENAPI_ENABLED=true`、`ENABLE_OAUTH_BEARER=true`，可额外设置 `SMOKE_OPENAPI_ENABLED=true`，脚本会检查 `/openapi/v1/_health` 和 `/openapi/v1/_version`。这只验证 OpenAPI route 和服务端版本探针；`difyctl auth login` 仍需要人工在 `/device` 页面批准，属于单独的半自动验收。
 
 默认重试：
 
@@ -146,6 +150,8 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
 curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://your-space.hf.space/_ops/errors
 ```
+
+开启 `DIFY_AGENT_ENABLED=true` 时，还要检查 `/_ops/health` 里的 `agent_backend` 字段；如果同时开启 `AGENT_SHELL_ENABLED=true`，还要检查 `shellctl.status=ok` 且 `shellctl.enabled=true`。这些只说明内部 backend 和 shell layer 进程可达；完整 Agent v2 / Skills 验收仍需要在 Console 里跑真实 Agent App 或 workflow Agent node。
 
 浏览器：
 

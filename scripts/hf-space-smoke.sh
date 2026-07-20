@@ -7,6 +7,8 @@ OPS_TOKEN=${OPS_TOKEN:-}
 ADMIN_TOKEN=${ADMIN_TOKEN:-}
 SMOKE_ADMIN_ENABLED=${SMOKE_ADMIN_ENABLED:-${ADMIN_ENABLED:-false}}
 SMOKE_ADMIN_ACTIONS=${SMOKE_ADMIN_ACTIONS:-false}
+SMOKE_OPENAPI_ENABLED=${SMOKE_OPENAPI_ENABLED:-false}
+SMOKE_SANDBOX_EXEC_ENABLED=${SMOKE_SANDBOX_EXEC_ENABLED:-true}
 SMOKE_RETRIES=${SMOKE_RETRIES:-30}
 SMOKE_DELAY=${SMOKE_DELAY:-5}
 
@@ -130,6 +132,131 @@ PY
   exit 1
 }
 
+check_ops_sandbox_exec() {
+  local label="ops-sandbox-exec"
+  local path="/_ops/health"
+  local status
+  local attempt
+
+  if [ "$SMOKE_SANDBOX_EXEC_ENABLED" != "true" ]; then
+    printf 'SKIP %s: SMOKE_SANDBOX_EXEC_ENABLED is not true\n' "$label"
+    return
+  fi
+  if [ -z "$OPS_TOKEN" ]; then
+    printf 'SKIP %s: OPS_TOKEN is not set\n' "$label"
+    return
+  fi
+
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+      -H "X-Ops-Token: $OPS_TOKEN" \
+      "$BASE_URL$path" || true)
+    if [ "$status" = "200" ] && python3 - "$tmp_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = json.load(fh)
+
+sandbox_exec = payload.get("sandbox_exec") or {}
+if sandbox_exec.get("ok") is True and sandbox_exec.get("status") == "ok":
+    sys.exit(0)
+
+print(
+    "sandbox_exec is not ok: "
+    + json.dumps(
+        {
+            "ok": sandbox_exec.get("ok"),
+            "status": sandbox_exec.get("status"),
+            "run_status": sandbox_exec.get("run_status"),
+            "health_status": sandbox_exec.get("health_status"),
+            "exit_code": sandbox_exec.get("exit_code"),
+            "sandbox_error": sandbox_exec.get("sandbox_error"),
+            "error": sandbox_exec.get("error"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    ),
+    file=sys.stderr,
+)
+sys.exit(1)
+PY
+    then
+      printf 'PASS %s: sandbox execution selfcheck is ok\n' "$label"
+      return
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected sandbox_exec ok, got HTTP %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
+  printf 'FAIL %s: sandbox execution selfcheck did not become ok\n' "$label" >&2
+  sed -n '1,160p' "$tmp_body" >&2 || true
+  exit 1
+}
+
+check_ops_shellctl() {
+  local label="ops-shellctl"
+  local path="/_ops/health"
+  local status
+  local attempt
+
+  if [ -z "$OPS_TOKEN" ]; then
+    printf 'SKIP %s: OPS_TOKEN is not set\n' "$label"
+    return
+  fi
+
+  for attempt in $(seq 1 "$SMOKE_RETRIES"); do
+    status=$(curl -sS -o "$tmp_body" -w '%{http_code}' --max-time 30 \
+      -H "X-Ops-Token: $OPS_TOKEN" \
+      "$BASE_URL$path" || true)
+    if [ "$status" = "200" ] && python3 - "$tmp_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = json.load(fh)
+
+shellctl = payload.get("shellctl") or {}
+if shellctl.get("enabled") is not True:
+    print("shellctl is not enabled", file=sys.stderr)
+    sys.exit(1)
+if shellctl.get("ok") is True and shellctl.get("status") == "ok":
+    sys.exit(0)
+
+print(
+    "shellctl is not ok: "
+    + json.dumps(
+        {
+            "enabled": shellctl.get("enabled"),
+            "ok": shellctl.get("ok"),
+            "status": shellctl.get("status"),
+            "endpoint": shellctl.get("endpoint"),
+            "error": shellctl.get("error"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    ),
+    file=sys.stderr,
+)
+sys.exit(1)
+PY
+    then
+      printf 'PASS %s: shellctl is enabled and reachable\n' "$label"
+      return
+    fi
+    if [ "$attempt" != "$SMOKE_RETRIES" ]; then
+      printf 'WAIT %s: expected shellctl ok, got HTTP %s (%s/%s)\n' "$label" "$status" "$attempt" "$SMOKE_RETRIES" >&2
+      sleep "$SMOKE_DELAY"
+    fi
+  done
+
+  printf 'FAIL %s: shellctl did not become ok\n' "$label" >&2
+  sed -n '1,160p' "$tmp_body" >&2 || true
+  exit 1
+}
+
 check_ops_cookie_migration() {
   local status
   if [ -z "$OPS_TOKEN" ]; then
@@ -190,6 +317,17 @@ check_admin() {
   printf 'FAIL %s: expected HTTP 200, got %s\n' "$label" "$status" >&2
   sed -n '1,80p' "$tmp_body" >&2 || true
   exit 1
+}
+
+check_admin_enabled_without_token() {
+  if [ "$SMOKE_ADMIN_ACTIONS" = "true" ]; then
+    printf 'FAIL admin-tokenless-actions: ADMIN_TOKEN is required when SMOKE_ADMIN_ACTIONS=true\n' >&2
+    exit 1
+  fi
+
+  check_status "admin-root" "$BASE_URL/_admin/" "200"
+  check_status "admin-status-unauthorized" "$BASE_URL/_admin/api/status" "401"
+  printf 'SKIP admin-token-authenticated: ADMIN_TOKEN is not set; verified enabled unauthenticated boundary only\n'
 }
 
 check_admin_action() {
@@ -286,17 +424,30 @@ check_space_frame_headers
 check_status "nginx-health" "$BASE_URL/nginx-health" "200"
 check_status "ops-healthz" "$BASE_URL/healthz" "200"
 if [ "$SMOKE_ADMIN_ENABLED" = "true" ]; then
-  check_status "admin-root" "$BASE_URL/_admin/" "200"
-  check_admin "admin-status" "/_admin/api/status"
-  check_admin "admin-actions" "/_admin/api/actions"
-  check_admin "admin-audit" "/_admin/api/audit?limit=5"
-  check_admin_action
+  if [ -z "$ADMIN_TOKEN" ]; then
+    check_admin_enabled_without_token
+  else
+    check_status "admin-root" "$BASE_URL/_admin/" "200"
+    check_admin "admin-status" "/_admin/api/status"
+    check_admin "admin-actions" "/_admin/api/actions"
+    check_admin "admin-audit" "/_admin/api/audit?limit=5"
+    check_admin_action
+  fi
 else
   check_status "admin-disabled" "$BASE_URL/_admin/" "404"
 fi
 check_status "setup-api" "$BASE_URL/console/api/setup" "200"
 check_status "init-api" "$BASE_URL/console/api/init" "200"
+if [ "$SMOKE_OPENAPI_ENABLED" = "true" ]; then
+  check_status "openapi-health" "$BASE_URL/openapi/v1/_health" "200"
+  check_status "openapi-version" "$BASE_URL/openapi/v1/_version" "200"
+else
+  printf 'SKIP openapi-health: SMOKE_OPENAPI_ENABLED is not true\n'
+  printf 'SKIP openapi-version: SMOKE_OPENAPI_ENABLED is not true\n'
+fi
 check_ops "ops-health" "/_ops/health"
+check_ops_sandbox_exec
+check_ops_shellctl
 check_ops "ops-system" "/_ops/system"
 check_ops_persistence
 check_ops "ops-metrics" "/_ops/metrics"

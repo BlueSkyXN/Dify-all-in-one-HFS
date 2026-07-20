@@ -51,7 +51,7 @@ cat docker/AGENTS.md
 | Command | Purpose | Scope | Sandbox notes |
 | --- | --- | --- | --- |
 | `scripts/static-check.sh` | 聚合轻量静态检查：shell 语法、Python 语法和 diff whitespace | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
-| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/hf-space-smoke.sh scripts/validate-hfs-contract.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
+| `bash -n docker/entrypoint.sh docker/with-dify-env docker/with-plugin-env docker/with-sandbox-env docker/run-dify-agent docker/run-shellctl docker/wait-for-core docker/healthcheck.sh docker/postgres-backup-loop scripts/build.sh scripts/run-demo.sh scripts/admin-smoke.sh scripts/hf-space-smoke.sh scripts/validate-hfs-contract.sh scripts/static-check.sh` | 检查所有 runtime/helper shell 脚本语法 | `docker/`, `scripts/` | 本地 shell 可跑；不需要 Docker 或网络 |
 | `scripts/validate-hfs-contract.sh` | 检查 Pattern A / image-assembly HFS 结构契约：manifest、metadata、端口一致性、glue 位置、secret/build context、smoke 覆盖 | repo | 本地 shell/Python 可跑；不需要 Docker 或网络 |
 | `python3 -m py_compile docker/ops_service.py docker/admin_service.py` | 检查 ops/admin Python 服务语法 | `docker/ops_service.py`, `docker/admin_service.py` | 需要 Python 3 |
 | `git diff --check` | 检查 diff whitespace 问题 | repo | 只读；如果有无关 dirty diff，使用 path-limited 形式 |
@@ -151,6 +151,8 @@ bash -n \
   docker/with-dify-env \
   docker/with-plugin-env \
   docker/with-sandbox-env \
+  docker/run-dify-agent \
+  docker/run-shellctl \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \

@@ -27,8 +27,28 @@ is_true() {
   esac
 }
 
+parse_uint() {
+  local value=${1:-}
+  local default=$2
+  local min=$3
+  local max=$4
+  if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+    value=$default
+  fi
+  if [ "$value" -lt "$min" ]; then
+    value=$min
+  fi
+  if [ "$value" -gt "$max" ]; then
+    value=$max
+  fi
+  printf '%s\n' "$value"
+}
+
 backup_enabled() {
   source_env
+  if is_true "${EXTERNAL_POSTGRES_ENABLED:-false}"; then
+    return 1
+  fi
   case "${POSTGRES_BACKUP_ENABLED:-auto}" in
     auto)
       [ -f "${PERSIST_ACTIVE_FILE:-${RUNTIME_ROOT:-/tmp/dify-aio}/persist-active}" ]
@@ -49,18 +69,35 @@ wait_for_postgres() {
   done
 }
 
-backup_retain_count() {
-  local retain=${POSTGRES_BACKUP_RETAIN_COUNT:-5}
-  if ! [[ "$retain" =~ ^[0-9]+$ ]] || [ "$retain" -lt 1 ]; then
-    retain=5
-  fi
-  if [ "$retain" -gt 50 ]; then
-    retain=50
-  fi
-  printf '%s\n' "$retain"
+postgres_ready_now() {
+  source_env
+  pg_isready -h /data/run/postgresql -p "${DB_PORT:-5432}" -U user -d postgres >/dev/null 2>&1
 }
 
-prune_old_backups() {
+backup_retain_count() {
+  parse_uint "${POSTGRES_BACKUP_RETAIN_COUNT:-65}" 65 2 200
+}
+
+backup_compression_level() {
+  parse_uint "${POSTGRES_BACKUP_COMPRESSION_LEVEL:-1}" 1 1 9
+}
+
+backup_retention_policy() {
+  case "${POSTGRES_BACKUP_RETENTION_POLICY:-tiered}" in
+    count|COUNT) printf 'count\n' ;;
+    tiered|TIERED|gfs|GFS) printf 'tiered\n' ;;
+    *) printf 'tiered\n' ;;
+  esac
+}
+
+backup_epoch() {
+  local backup=$1
+  local stamp
+  stamp=$(basename "$backup" .sql.gz)
+  date -u -d "${stamp:0:4}-${stamp:4:2}-${stamp:6:2} ${stamp:9:2}:${stamp:11:2}:${stamp:13:2} UTC" +%s 2>/dev/null || true
+}
+
+prune_count_backups() {
   local retain=$1
   local -a backups=()
   local backup
@@ -73,25 +110,114 @@ prune_old_backups() {
   done
 }
 
-run_backup_once() {
+retention_bucket_for_backup() {
+  local backup=$1
+  local now=$2
+  local epoch age
+  epoch=$(backup_epoch "$backup")
+  if [ -z "$epoch" ]; then
+    return 1
+  fi
+  age=$((now - epoch))
+  if [ "$age" -lt 0 ]; then
+    age=0
+  fi
+  if [ "$age" -le 900 ]; then
+    printf 'recent:%s\n' "$(basename "$backup")"
+  elif [ "$age" -le 7200 ]; then
+    printf 'five-minute:%s\n' "$((epoch / 300))"
+  elif [ "$age" -le 86400 ]; then
+    printf 'hourly:%s\n' "$((epoch / 3600))"
+  elif [ "$age" -le 604800 ]; then
+    printf 'daily:%s\n' "$((epoch / 86400))"
+  else
+    return 1
+  fi
+}
+
+prune_old_backups() {
+  local retain=$1
+  local policy
+  policy=$(backup_retention_policy)
+  if [ "$policy" = "count" ]; then
+    prune_count_backups "$retain"
+    return
+  fi
+
+  local -a backups=()
+  local -a keep_list=()
+  local backup bucket now
+  declare -A keep=()
+  declare -A seen_bucket=()
+
+  mapfile -t backups < <(find "${POSTGRES_BACKUP_DIR}" -maxdepth 1 -type f -name '[0-9]*T[0-9]*Z.sql.gz' | sort -r)
+  if [ "${#backups[@]}" -le 2 ]; then
+    return
+  fi
+  now=$(date -u +%s)
+
+  mark_keep() {
+    local path=$1
+    if [ -z "${keep[$path]+x}" ]; then
+      keep["$path"]=1
+      keep_list+=("$path")
+    fi
+  }
+
+  local index=0
+  for backup in "${backups[@]}"; do
+    if [ "$index" -lt 2 ]; then
+      mark_keep "$backup"
+      index=$((index + 1))
+      continue
+    fi
+    bucket=$(retention_bucket_for_backup "$backup" "$now" || true)
+    if [ -n "$bucket" ] && [ -z "${seen_bucket[$bucket]+x}" ]; then
+      seen_bucket["$bucket"]=1
+      mark_keep "$backup"
+    fi
+    index=$((index + 1))
+  done
+
+  if [ "${#keep_list[@]}" -gt "$retain" ]; then
+    for backup in "${keep_list[@]:$retain}"; do
+      unset "keep[$backup]"
+    done
+  fi
+
+  for backup in "${backups[@]}"; do
+    if [ -z "${keep[$backup]+x}" ]; then
+      rm -f "$backup" "${backup%.sql.gz}.sha256" "${backup%.sql.gz}.err"
+    fi
+  done
+}
+
+run_backup_once_unlocked() {
   source_env
   mkdir -p "${POSTGRES_BACKUP_DIR}"
   local retain
   retain=$(backup_retain_count)
+  local compression_level
+  compression_level=$(backup_compression_level)
   local stamp
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   local target="${POSTGRES_BACKUP_DIR}/${stamp}.sql.gz"
+  if [ -e "$target" ]; then
+    sleep 1
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    target="${POSTGRES_BACKUP_DIR}/${stamp}.sql.gz"
+  fi
   local tmp="${target}.tmp"
   local err="${POSTGRES_BACKUP_DIR}/${stamp}.err"
 
-  log "Writing PostgreSQL dump to ${target}"
+  log "Writing PostgreSQL dump to ${target} with gzip -${compression_level}"
   if ! pg_dumpall \
     -h /data/run/postgresql \
     -p "${DB_PORT:-5432}" \
     -U user \
     --no-role-passwords \
     2>"$err" \
-    | gzip -c > "$tmp"; then
+    | gzip "-${compression_level}" -c > "$tmp"; then
     cp "$err" "${POSTGRES_BACKUP_DIR}/latest.err"
     rm -f "$tmp"
     return 1
@@ -114,21 +240,70 @@ run_backup_once() {
   prune_old_backups "$retain"
 }
 
+run_backup_once() {
+  source_env
+  mkdir -p "${POSTGRES_BACKUP_DIR}"
+  local lock_file="${POSTGRES_BACKUP_DIR}/.backup.lock"
+  exec 9>"$lock_file"
+  log "Waiting for PostgreSQL backup lock ${lock_file}"
+  flock 9
+  local status
+  set +e
+  run_backup_once_unlocked
+  status=$?
+  set -e
+  flock -u 9 || true
+  exec 9>&-
+  return "$status"
+}
+
+shutdown_requested=0
+
+handle_shutdown() {
+  local signal=$1
+  if [ "$shutdown_requested" -eq 1 ]; then
+    exit 0
+  fi
+  shutdown_requested=1
+  log "Received ${signal}; attempting final PostgreSQL backup before exit."
+  if backup_enabled && postgres_ready_now; then
+    if ! run_backup_once; then
+      log "Final PostgreSQL backup failed during shutdown."
+    fi
+  else
+    log "Skipping final PostgreSQL backup because backup is disabled or PostgreSQL is not ready."
+  fi
+  exit 0
+}
+
 main() {
   source_env
+  if [ "${1:-}" = "--once" ]; then
+    if ! backup_enabled; then
+      log "PostgreSQL backup is disabled."
+      return 1
+    fi
+    wait_for_postgres
+    run_backup_once
+    return $?
+  fi
+
   if ! backup_enabled; then
     log "PostgreSQL backup loop disabled."
     exec sleep infinity
   fi
 
+  trap 'handle_shutdown TERM' TERM
+  trap 'handle_shutdown INT' INT
+
   wait_for_postgres
-  local initial_delay=${POSTGRES_BACKUP_INITIAL_DELAY_SECONDS:-60}
-  local interval=${POSTGRES_BACKUP_INTERVAL_SECONDS:-3600}
+  local initial_delay=${POSTGRES_BACKUP_INITIAL_DELAY_SECONDS:-15}
+  local interval=${POSTGRES_BACKUP_INTERVAL_SECONDS:-60}
   if ! [[ "$initial_delay" =~ ^[0-9]+$ ]]; then
-    initial_delay=600
+    initial_delay=15
   fi
   if ! [[ "$interval" =~ ^[0-9]+$ ]] || [ "$interval" -lt 60 ]; then
-    interval=3600
+    interval=60
   fi
 
   log "PostgreSQL backup loop enabled; first backup in ${initial_delay}s, interval ${interval}s."

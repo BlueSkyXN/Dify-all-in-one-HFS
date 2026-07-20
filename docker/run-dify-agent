@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if ! is_true "${DIFY_AGENT_ENABLED:-false}"; then
+  printf '[dify-agent] DIFY_AGENT_ENABLED is false; keeping supervisor program idle.\n'
+  exec sleep infinity
+fi
+
+host=${DIFY_AGENT_HOST:-127.0.0.1}
+port=${DIFY_AGENT_PORT:-5005}
+agent_virtual_env=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}
+if [ ! -x "${agent_virtual_env}/bin/python" ]; then
+  printf '[dify-agent] Python is missing from DIFY_AGENT_VIRTUAL_ENV: %s\n' "$agent_virtual_env" >&2
+  exit 1
+fi
+export VIRTUAL_ENV="$agent_virtual_env"
+export PATH="${agent_virtual_env}/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+startup_delay=${DIFY_AGENT_STARTUP_DELAY_SECONDS:-30}
+case "$startup_delay" in
+  ''|*[!0-9]*) startup_delay=30 ;;
+esac
+
+wait_targets=(redis plugin-daemon api)
+if is_true "${AGENT_SHELL_ENABLED:-false}"; then
+  wait_targets+=(shellctl)
+fi
+
+exec /usr/local/bin/wait-for-core "${wait_targets[@]}" -- bash -c \
+  'delay=$1; host=$2; port=$3
+   if [ "$delay" -gt 0 ]; then
+     printf "[dify-agent] core services are ready; delaying startup for %ss.\\n" "$delay"
+     sleep "$delay"
+   fi
+   cd /app/api && exec "$VIRTUAL_ENV/bin/python" -m uvicorn dify_agent.server.app:app --host "$host" --port "$port"' \
+  _ "$startup_delay" "$host" "$port"

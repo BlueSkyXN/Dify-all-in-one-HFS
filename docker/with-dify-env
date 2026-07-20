@@ -17,4 +17,30 @@ case ":${PATH:-}:" in
   *":${VIRTUAL_ENV}/bin:"*) ;;
   *) export PATH="${VIRTUAL_ENV}/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}" ;;
 esac
+
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if is_true "${DIFY_AGENT_ENABLED:-false}"; then
+  export AGENT_BACKEND_BASE_URL=${AGENT_BACKEND_BASE_URL:-http://${DIFY_AGENT_HOST:-127.0.0.1}:${DIFY_AGENT_PORT:-5005}}
+  if [ -z "${DIFY_AGENT_REDIS_URL:-}" ]; then
+    redis_password_encoded=$(
+      /usr/bin/python3 -c 'from urllib.parse import quote; import os; print(quote(os.environ.get("REDIS_PASSWORD", ""), safe=""))'
+    )
+    export DIFY_AGENT_REDIS_URL="redis://:${redis_password_encoded}@127.0.0.1:6379/2"
+  fi
+  export DIFY_AGENT_PLUGIN_DAEMON_API_KEY=${DIFY_AGENT_PLUGIN_DAEMON_API_KEY:-${PLUGIN_DAEMON_KEY:-}}
+  export DIFY_AGENT_INNER_API_URL=${DIFY_AGENT_INNER_API_URL:-${DIFY_AGENT_DIFY_API_BASE_URL:-http://127.0.0.1:5001}}
+  if [ -z "${DIFY_AGENT_INNER_API_KEY:-}" ]; then
+    export DIFY_AGENT_INNER_API_KEY=${DIFY_AGENT_DIFY_API_INNER_API_KEY:-${INNER_API_KEY_FOR_PLUGIN:-${PLUGIN_DIFY_INNER_API_KEY:-}}}
+  fi
+  export DIFY_AGENT_DIFY_API_BASE_URL=${DIFY_AGENT_DIFY_API_BASE_URL:-${DIFY_AGENT_INNER_API_URL}}
+  export DIFY_AGENT_DIFY_API_INNER_API_KEY=${DIFY_AGENT_DIFY_API_INNER_API_KEY:-${DIFY_AGENT_INNER_API_KEY}}
+  export DIFY_AGENT_STUB_API_BASE_URL=${DIFY_AGENT_STUB_API_BASE_URL:-${DIFY_AGENT_STUB_URL:-http://127.0.0.1:5005/agent-stub}}
+  export DIFY_AGENT_STUB_URL=${DIFY_AGENT_STUB_URL:-${DIFY_AGENT_STUB_API_BASE_URL}}
+fi
 exec "$@"

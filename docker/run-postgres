@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+set -a
+# shellcheck disable=SC1091
+. /etc/dify/dify.env.runtime
+if [ -f /data/config/generated.env ]; then
+  # shellcheck disable=SC1091
+  . /data/config/generated.env
+elif [ -f /etc/dify/generated.env ]; then
+  # legacy fallback
+  # shellcheck disable=SC1091
+  . /etc/dify/generated.env
+fi
+set +a
+
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if is_true "${EXTERNAL_POSTGRES_ENABLED:-false}"; then
+  printf '[postgres] EXTERNAL_POSTGRES_ENABLED=true; local PostgreSQL is disabled.\n'
+  exec sleep infinity
+fi
+
+exec /usr/lib/postgresql/15/bin/postgres -D /data/postgres

@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Run one real Dify Sandbox execution and persist a read-only status file."""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+
+MARKER = "dify-aio-sandbox-selfcheck"
+MAX_SAMPLE_CHARS = 2048
+
+
+def env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def parse_bool(value: str, default: bool = False) -> bool:
+    if value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_float(value: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return min(max(parsed, minimum), maximum)
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def result_path() -> Path:
+    runtime_root = env("RUNTIME_ROOT", "/tmp/dify-aio")
+    return Path(env("SANDBOX_SELFCHECK_RESULT_PATH", f"{runtime_root}/sandbox-selfcheck.json"))
+
+
+def truncate(value: str, limit: int = MAX_SAMPLE_CHARS) -> str:
+    if len(value) <= limit:
+        return value
+    return value[:limit] + "...<truncated>"
+
+
+def write_result(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def request_text(
+    url: str,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    body: bytes | None = None,
+    timeout: float = 2.0,
+) -> tuple[int | None, str, str]:
+    request = urllib.request.Request(url, data=body, method=method, headers=headers or {})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            return response.status, response.read(MAX_SAMPLE_CHARS).decode("utf-8", errors="replace"), ""
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(MAX_SAMPLE_CHARS).decode("utf-8", errors="replace"), ""
+    except Exception as exc:
+        return None, "", str(exc)
+
+
+def wait_for_sandbox_health(base_url: str, deadline: float, timeout: float) -> tuple[int | None, str]:
+    health_url = f"{base_url}/health"
+    last_status: int | None = None
+    last_error = ""
+    while time.time() < deadline:
+        status, _, error = request_text(health_url, timeout=min(timeout, 5.0))
+        last_status = status
+        last_error = error
+        if status == 200:
+            return status, ""
+        time.sleep(1.0)
+    return last_status, last_error or "sandbox health did not become ready before timeout"
+
+
+def run_sandbox_probe(base_url: str, api_key: str, timeout: float) -> tuple[int | None, str, str]:
+    body = json.dumps(
+        {
+            "language": "python3",
+            "code": f"print({MARKER!r})",
+            "enable_network": False,
+            "preload": "",
+        }
+    ).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "dify-aio-sandbox-selfcheck/1.0",
+        "X-Api-Key": api_key,
+    }
+    return request_text(
+        f"{base_url}/v1/sandbox/run",
+        method="POST",
+        headers=headers,
+        body=body,
+        timeout=timeout,
+    )
+
+
+def parse_run_response(response_text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(response_text)
+    except Exception as exc:
+        return {
+            "json_ok": False,
+            "contains_marker": MARKER in response_text,
+            "error": f"invalid sandbox JSON response: {exc}",
+        }
+
+    if not isinstance(payload, dict):
+        return {
+            "json_ok": False,
+            "contains_marker": MARKER in response_text,
+            "error": "sandbox JSON response is not an object",
+        }
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return {
+            "json_ok": True,
+            "outer_code": payload.get("code"),
+            "outer_message": payload.get("message"),
+            "contains_marker": MARKER in response_text,
+            "error": "sandbox JSON response does not include object data",
+        }
+
+    stdout = data.get("stdout")
+    sandbox_error = data.get("error")
+    exit_code = data.get("exit_code")
+    contains_marker = isinstance(stdout, str) and MARKER in stdout
+    parsed = {
+        "json_ok": True,
+        "outer_code": payload.get("code"),
+        "outer_message": payload.get("message"),
+        "exit_code": exit_code,
+        "contains_marker": contains_marker,
+        "sandbox_error": sandbox_error if isinstance(sandbox_error, str) else "",
+        "stderr_present": bool(data.get("stderr")),
+    }
+    if payload.get("code") != 0:
+        parsed["error"] = f"sandbox outer response code is {payload.get('code')!r}"
+    elif exit_code != 0:
+        parsed["error"] = f"sandbox process exit_code is {exit_code!r}"
+    elif parsed["sandbox_error"]:
+        parsed["error"] = "sandbox process reported execution error"
+    elif not contains_marker:
+        parsed["error"] = "sandbox stdout did not include selfcheck marker"
+    return parsed
+
+
+def result(
+    *,
+    ok: bool,
+    status: str,
+    started_at: str,
+    started_monotonic: float,
+    strict: bool,
+    **extra: Any,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "ok": ok,
+        "status": status,
+        "strict": strict,
+        "started_at": started_at,
+        "completed_at": utc_now(),
+        "duration_ms": round((time.time() - started_monotonic) * 1000),
+        "marker": MARKER,
+    }
+    payload.update(extra)
+    return payload
+
+
+def main() -> int:
+    started_at = utc_now()
+    started_monotonic = time.time()
+    path = result_path()
+    strict = parse_bool(env("SANDBOX_SELFCHECK_STRICT", "false"), default=False)
+
+    if not parse_bool(env("SANDBOX_SELFCHECK_ENABLED", "true"), default=True):
+        payload = result(
+            ok=True,
+            status="disabled",
+            started_at=started_at,
+            started_monotonic=started_monotonic,
+            strict=strict,
+        )
+        write_result(path, payload)
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
+        return 0
+
+    api_key = env("SANDBOX_API_KEY") or env("CODE_EXECUTION_API_KEY")
+    timeout = parse_float(env("SANDBOX_SELFCHECK_TIMEOUT_SECONDS", "30"), 30.0, minimum=3.0, maximum=300.0)
+    request_timeout = min(max(timeout / 3.0, 2.0), 30.0)
+    sandbox_port = env("SANDBOX_PORT", "8194")
+    base_url = f"http://127.0.0.1:{sandbox_port}"
+
+    if not api_key:
+        payload = result(
+            ok=False,
+            status="failed",
+            started_at=started_at,
+            started_monotonic=started_monotonic,
+            strict=strict,
+            error="missing sandbox api key",
+        )
+        write_result(path, payload)
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
+        return 1 if strict else 0
+
+    health_status, health_error = wait_for_sandbox_health(base_url, time.time() + timeout, request_timeout)
+    if health_status != 200:
+        payload = result(
+            ok=False,
+            status="failed",
+            started_at=started_at,
+            started_monotonic=started_monotonic,
+            strict=strict,
+            health_status=health_status,
+            error=health_error,
+        )
+        write_result(path, payload)
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
+        return 1 if strict else 0
+
+    run_status, response_text, run_error = run_sandbox_probe(base_url, api_key, request_timeout)
+    parsed_response = parse_run_response(response_text)
+    ok = (
+        run_status == 200
+        and parsed_response.get("json_ok") is True
+        and parsed_response.get("outer_code") == 0
+        and parsed_response.get("exit_code") == 0
+        and parsed_response.get("sandbox_error") == ""
+        and parsed_response.get("contains_marker") is True
+    )
+    payload = result(
+        ok=ok,
+        status="ok" if ok else "failed",
+        started_at=started_at,
+        started_monotonic=started_monotonic,
+        strict=strict,
+        health_status=health_status,
+        run_status=run_status,
+        json_ok=parsed_response.get("json_ok"),
+        outer_code=parsed_response.get("outer_code"),
+        exit_code=parsed_response.get("exit_code"),
+        contains_marker=parsed_response.get("contains_marker"),
+        sandbox_error=truncate(str(parsed_response.get("sandbox_error") or ""), 512),
+        stderr_present=parsed_response.get("stderr_present"),
+        response_sample=truncate(response_text),
+    )
+    if run_error:
+        payload["error"] = run_error
+    elif parsed_response.get("error"):
+        payload["error"] = parsed_response.get("error")
+
+    write_result(path, payload)
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True), flush=True)
+    return 0 if ok or not strict else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -99,37 +99,34 @@ cloud/hfs/Dockerfile
 所有上游镜像选择都通过完整 image ref 输入完成：
 
 ```text
-BASE_IMAGE_REF
+DIFY_UPSTREAM_BASE_REF
 DIFY_WEB_IMAGE_REF
 DIFY_API_IMAGE_REF
+DIFY_AGENT_IMAGE_REF
+DIFY_AGENT_RUNTIME_IMAGE_REF
 PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
+DIFY_SANDBOX_SOURCE_REF
 ```
 
-当前 Web/API 默认值固定为兼容的 `1.15.0` digest pair；其他上游输入保留现有开发默认值：
+当前 self runtime contract 使用集中标记的 GHCR image-specific digest 占位符：
 
 ```text
-BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-UV_VERSION=latest
-DIFY_VERSION=1.15.0
+DIFY_UPSTREAM_BASE_REF=ghcr.io/blueskyxn/dify-upstream-base@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
+DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+UV_VERSION=0.11.21
+DIFY_VERSION=self-release-pending-digest-replacement
 ```
 
-Web/API 默认选择已经可复现，但完整发布仍必须记录全部输入，并把其余 image ref 与 uv 固定后再构建：
+在主线程验证 GHCR release、下载 artifact digest 和 runtime readback 前，零 digest 不是可构建或可部署的 pin。更新时必须同时替换每个 self image 的对应 digest，使 base、API、Web、Agent venv 和 Agent Go runtime 保持同一 release 边界。Sandbox 的 `/conf` 和 `/dependencies` 仍来自 `SANDBOX_IMAGE_REF`，server binary 仍来自 source-pinned HFS patch build；Agent 的两个 venv 必须保持隔离。
 
-```text
-BASE_IMAGE_REF=python:3.12-slim-bookworm@sha256:...
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:...
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:...
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:...
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:...
-UV_VERSION=<pinned-version>
-```
-
-`DIFY_VERSION=1.15.0` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源，两个 digest ref 才是事实源。
+`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改它不会改变 self GHCR artifacts。Sandbox server binary 来自 `DIFY_SANDBOX_SOURCE_REF` 加本仓库 patch，`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`，并且必须通过启动期 `sandbox_exec` 真实执行自检后才能进入可送审状态。这个自检不只看 marker，还要求 sandbox response 的 `exit_code=0` 且 `error=""`。
 
 ## 对其他 HFS 项目的迁移规则
 

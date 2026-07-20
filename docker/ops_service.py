@@ -35,6 +35,7 @@ DEMO_OPS_TOKEN = "dify_ops_demo_token"
 OPS_SESSION_COOKIE = "dify_ops_session"
 OPS_CACHE: dict[str, tuple[float, Any]] = {}
 OPS_CACHE_LOCK = RLock()
+EXPECTED_EXITED_PROGRAMS = {"sandbox-selfcheck"}
 
 DEFAULT_SERVICE_LOGS = {
     "supervisord": "supervisord.log",
@@ -46,8 +47,14 @@ DEFAULT_SERVICE_LOGS = {
     "postgres-backup.err": "postgres-backup.err",
     "plugin-daemon": "plugin-daemon.log",
     "plugin-daemon.err": "plugin-daemon.err",
+    "shellctl": "shellctl.log",
+    "shellctl.err": "shellctl.err",
+    "sandbox-selfcheck": "sandbox-selfcheck.log",
+    "sandbox-selfcheck.err": "sandbox-selfcheck.err",
     "dify-api": "dify-api.log",
     "dify-api.err": "dify-api.err",
+    "dify-agent": "dify-agent.log",
+    "dify-agent.err": "dify-agent.err",
     "dify-worker": "dify-worker.log",
     "dify-worker.err": "dify-worker.err",
     "dify-beat": "dify-beat.log",
@@ -59,11 +66,14 @@ SAFE_CONFIG_KEYS = [
     "DIFY_VERSION",
     "DIFY_AIO_BUILD_DIFY_VERSION",
     "DIFY_AIO_BUILD_UV_VERSION",
-    "DIFY_AIO_BUILD_BASE_IMAGE_REF",
+    "DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF",
     "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF",
     "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF",
+    "DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF",
+    "DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF",
     "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF",
     "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF",
+    "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF",
     "DIFY_AIO_BUILD_DIFY_API_IMAGE",
     "DIFY_AIO_BUILD_DIFY_WEB_IMAGE",
     "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE",
@@ -82,10 +92,38 @@ SAFE_CONFIG_KEYS = [
     "POSTGRES_BACKUP_DIR",
     "POSTGRES_BACKUP_INTERVAL_SECONDS",
     "POSTGRES_BACKUP_INITIAL_DELAY_SECONDS",
+    "POSTGRES_BACKUP_RETENTION_POLICY",
     "POSTGRES_BACKUP_RETAIN_COUNT",
+    "POSTGRES_BACKUP_COMPRESSION_LEVEL",
     "MARKETPLACE_ENABLED",
     "FORCE_VERIFYING_SIGNATURE",
     "SANDBOX_ENABLE_NETWORK",
+    "SANDBOX_UID_POOL_MIN",
+    "SANDBOX_UID_POOL_MAX",
+    "SANDBOX_RUN_GID",
+    "SANDBOX_SELFCHECK_ENABLED",
+    "SANDBOX_SELFCHECK_STRICT",
+    "SANDBOX_SELFCHECK_RESULT_PATH",
+    "SANDBOX_SELFCHECK_TIMEOUT_SECONDS",
+    "DIFY_AGENT_ENABLED",
+    "DIFY_AGENT_HOST",
+    "DIFY_AGENT_PORT",
+    "DIFY_AGENT_VIRTUAL_ENV",
+    "SHELLCTL_BINARY",
+    "AGENT_BACKEND_BASE_URL",
+    "AGENT_BACKEND_USE_FAKE",
+    "AGENT_BACKEND_FAKE_SCENARIO",
+    "AGENT_SHELL_ENABLED",
+    "AGENT_DRIVE_MANIFEST_ENABLED",
+    "DIFY_AGENT_SHELLCTL_ENTRYPOINT",
+    "DIFY_AGENT_REDIS_PREFIX",
+    "DIFY_AGENT_PLUGIN_DAEMON_URL",
+    "DIFY_AGENT_INNER_API_URL",
+    "DIFY_AGENT_DIFY_API_BASE_URL",
+    "DIFY_AGENT_SHELL_PROVIDER",
+    "DIFY_AGENT_STUB_API_BASE_URL",
+    "DIFY_AGENT_STUB_URL",
+    "DIFY_AGENT_STUB_GRPC_BIND_ADDRESS",
     "VECTOR_STORE",
     "STORAGE_TYPE",
     "DB_TYPE",
@@ -98,6 +136,7 @@ SAFE_CONFIG_KEYS = [
     "REDIS_KEY_PREFIX",
     "PLUGIN_DAEMON_URL",
     "PLUGIN_MAX_REQUEST_TIMEOUT",
+    "PLUGIN_UV_CACHE_DIR",
     "MAX_REQUEST_TIMEOUT",
     "CODE_EXECUTION_ENDPOINT",
     "OPS_PORT",
@@ -136,6 +175,11 @@ SECRET_KEYS = [
     "INNER_API_KEY_FOR_PLUGIN",
     "CODE_EXECUTION_API_KEY",
     "SANDBOX_API_KEY",
+    "DIFY_AGENT_PLUGIN_DAEMON_API_KEY",
+    "DIFY_AGENT_INNER_API_KEY",
+    "DIFY_AGENT_DIFY_API_INNER_API_KEY",
+    "DIFY_AGENT_SHELLCTL_AUTH_TOKEN",
+    "DIFY_AGENT_SERVER_SECRET_KEY",
     "OPS_TOKEN",
     "ADMIN_TOKEN",
     "ADMIN_CSRF_KEY",
@@ -235,6 +279,7 @@ ERROR_PATTERNS = [
 
 IGNORED_ERROR_PATTERNS = [
     "FATAL:  the database system is starting up",
+    "exit status 0; expected",
 ]
 
 
@@ -649,12 +694,15 @@ def supervisor_status() -> dict[str, Any]:
         state = str(item.get("statename", "UNKNOWN"))
         name = str(item.get("name", ""))
         group = str(item.get("group", ""))
+        exitstatus = item.get("exitstatus")
+        ok = state == "RUNNING" or (name in EXPECTED_EXITED_PROGRAMS and state == "EXITED" and exitstatus == 0)
         programs.append(
             {
                 "name": f"{group}:{name}" if group and group != name else name,
                 "state": state,
+                "exitstatus": exitstatus,
                 "description": str(item.get("description", "")),
-                "ok": state == "RUNNING",
+                "ok": ok,
             }
         )
     return {
@@ -693,7 +741,8 @@ def postgres_check() -> dict[str, Any]:
         "-U",
         env("DB_USERNAME", "dify"),
     ]
-    result = run_cmd(args, timeout=2.0)
+    extra_env = {"PGPASSWORD": env("DB_PASSWORD"), "PGSSLMODE": env("DB_SSL_MODE", "disable")}
+    result = run_cmd(args, timeout=2.0, extra_env=extra_env)
     return {"name": "postgres", **result}
 
 
@@ -714,10 +763,185 @@ def collect_checks(checks_to_run: list[Any]) -> list[dict[str, Any]]:
 
 def health_payload(public: bool = False) -> dict[str, Any]:
     payload = dict(cached_payload("health:checks", _health_checks_payload))
+    enrich_health_with_sandbox_selfcheck(payload)
+    enrich_health_with_agent_backend(payload)
     if not public:
         payload["supervisor"] = supervisor_payload()
         payload["version"] = version_payload()
     return payload
+
+
+def sandbox_selfcheck_result_path() -> Path:
+    runtime_root = env("RUNTIME_ROOT", "/tmp/dify-aio")
+    return Path(env("SANDBOX_SELFCHECK_RESULT_PATH", f"{runtime_root}/sandbox-selfcheck.json"))
+
+
+def sandbox_selfcheck_payload() -> dict[str, Any]:
+    if not parse_bool(env("SANDBOX_SELFCHECK_ENABLED", "true"), default=True):
+        return {"ok": True, "status": "disabled"}
+
+    path = sandbox_selfcheck_result_path()
+    if not path.exists():
+        return {"ok": False, "status": "pending", "path": str(path)}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception as exc:
+        return {"ok": False, "status": "invalid", "path": str(path), "error": str(exc)}
+    if not isinstance(data, dict):
+        return {"ok": False, "status": "invalid", "path": str(path), "error": "result is not an object"}
+
+    allowed = {
+        "ok",
+        "status",
+        "strict",
+        "started_at",
+        "completed_at",
+        "duration_ms",
+        "health_status",
+        "run_status",
+        "json_ok",
+        "outer_code",
+        "exit_code",
+        "contains_marker",
+        "sandbox_error",
+        "stderr_present",
+        "error",
+    }
+    payload = {key: data.get(key) for key in allowed if key in data}
+    payload["ok"] = bool(data.get("ok"))
+    payload["status"] = str(data.get("status") or ("ok" if payload["ok"] else "failed"))
+    payload["path"] = str(path)
+    return payload
+
+
+def enrich_health_with_sandbox_selfcheck(payload: dict[str, Any]) -> None:
+    sandbox_exec = sandbox_selfcheck_payload()
+    payload["sandbox_exec"] = sandbox_exec
+
+    warnings = list(payload.get("warnings") or [])
+    status = sandbox_exec.get("status")
+    sandbox_ok = sandbox_exec.get("ok") is True
+    strict = parse_bool(env("SANDBOX_SELFCHECK_STRICT", "false"), default=False)
+
+    if not sandbox_ok and status != "pending":
+        payload["degraded"] = True
+        warnings.append(f"sandbox selfcheck {status or 'failed'}")
+    else:
+        payload["degraded"] = bool(payload.get("degraded", False))
+
+    if strict and not sandbox_ok:
+        payload["ok"] = False
+        checks = list(payload.get("checks") or [])
+        checks.append({"name": "sandbox-exec-selfcheck", "ok": False, "status": status})
+        payload["checks"] = checks
+
+    if warnings:
+        payload["warnings"] = warnings
+
+
+def agent_backend_payload() -> dict[str, Any]:
+    enabled = parse_bool(env("DIFY_AGENT_ENABLED", "false"), default=False)
+    port = parse_int(env("DIFY_AGENT_PORT", "5005"), 5005, minimum=1, maximum=65535)
+    base_url = env("AGENT_BACKEND_BASE_URL") or f"http://127.0.0.1:{port}"
+    payload: dict[str, Any] = {
+        "enabled": enabled,
+        "base_url": base_url,
+        "host": env("DIFY_AGENT_HOST", "127.0.0.1"),
+        "port": port,
+    }
+    if not enabled:
+        payload.update({"ok": True, "status": "disabled"})
+        return payload
+
+    check = tcp_check("agent-backend-tcp", "127.0.0.1", port)
+    payload.update(
+        {
+            "ok": check.get("ok") is True,
+            "status": "ok" if check.get("ok") is True else "failed",
+            "duration_ms": check.get("duration_ms"),
+        }
+    )
+    if check.get("error"):
+        payload["error"] = check["error"]
+    return payload
+
+
+def shellctl_enabled() -> bool:
+    agent_enabled = parse_bool(env("DIFY_AGENT_ENABLED", "false"), default=False)
+    shell_enabled = parse_bool(env("AGENT_SHELL_ENABLED", "false"), default=False)
+    return agent_enabled and shell_enabled
+
+
+def shellctl_endpoint_parts() -> tuple[str, str, int]:
+    endpoint = env("DIFY_AGENT_SHELLCTL_ENTRYPOINT", "http://127.0.0.1:5004")
+    parsed = urllib.parse.urlparse(endpoint)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 5004
+    return endpoint, host, port
+
+
+def shellctl_payload() -> dict[str, Any]:
+    endpoint, host, port = shellctl_endpoint_parts()
+    enabled = shellctl_enabled()
+    payload: dict[str, Any] = {
+        "enabled": enabled,
+        "endpoint": endpoint,
+        "host": host,
+        "port": port,
+    }
+    if not enabled:
+        payload.update({"ok": True, "status": "disabled"})
+        return payload
+
+    if host not in {"127.0.0.1", "localhost"}:
+        payload.update({"ok": False, "status": "invalid", "error": "shellctl endpoint must stay loopback"})
+        return payload
+
+    check = tcp_check("shellctl-tcp", host, port)
+    payload.update(
+        {
+            "ok": check.get("ok") is True,
+            "status": "ok" if check.get("ok") is True else "failed",
+            "duration_ms": check.get("duration_ms"),
+        }
+    )
+    if check.get("error"):
+        payload["error"] = check["error"]
+    return payload
+
+
+def enrich_health_with_agent_backend(payload: dict[str, Any]) -> None:
+    agent_backend = agent_backend_payload()
+    payload["agent_backend"] = agent_backend
+    shellctl = shellctl_payload()
+    payload["shellctl"] = shellctl
+
+    failures = []
+    if agent_backend.get("enabled") and agent_backend.get("ok") is not True:
+        failures.append(("agent backend", agent_backend))
+    if shellctl.get("enabled") and shellctl.get("ok") is not True:
+        failures.append(("shellctl", shellctl))
+
+    if not failures:
+        return
+
+    payload["ok"] = False
+    payload["degraded"] = True
+    warnings = list(payload.get("warnings") or [])
+    checks = list(payload.get("checks") or [])
+    for label, details in failures:
+        warnings.append(f"{label} {details.get('status') or 'failed'}")
+        checks.append(
+            {
+                "name": label.replace(" ", "-"),
+                "ok": False,
+                "status": details.get("status"),
+                "error": details.get("error"),
+            }
+        )
+    payload["warnings"] = warnings
+    payload["checks"] = checks
 
 
 def _health_checks_payload() -> dict[str, Any]:
@@ -736,6 +960,9 @@ def _health_checks_payload() -> dict[str, Any]:
                 partial(http_check, "dify-init", "http://127.0.0.1:5001/console/api/init"),
             ]
         )
+        if shellctl_enabled():
+            _, shellctl_host, shellctl_port = shellctl_endpoint_parts()
+            checks_to_run.append(partial(tcp_check, "shellctl-tcp", shellctl_host, shellctl_port))
     checks_to_run.extend(extra_http_checks())
     checks_to_run.extend(extra_tcp_checks())
     checks = collect_checks(checks_to_run)
@@ -759,7 +986,7 @@ def _status_payload() -> dict[str, Any]:
 
 
 def version_payload() -> dict[str, Any]:
-    base_image_ref = env("DIFY_AIO_BUILD_BASE_IMAGE_REF")
+    upstream_base_ref = env("DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF")
     dify_api_image_ref = env("DIFY_AIO_BUILD_DIFY_API_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_API_IMAGE")
     dify_web_image_ref = env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE")
     plugin_daemon_image_ref = env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF") or env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE")
@@ -775,11 +1002,14 @@ def version_payload() -> dict[str, Any]:
         "build": {
             "dify_version": env("DIFY_AIO_BUILD_DIFY_VERSION"),
             "uv_version": env("DIFY_AIO_BUILD_UV_VERSION"),
-            "base_image_ref": base_image_ref,
+            "upstream_base_ref": upstream_base_ref,
             "dify_api_image_ref": dify_api_image_ref,
             "dify_web_image_ref": dify_web_image_ref,
+            "dify_agent_image_ref": env("DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF"),
+            "dify_agent_runtime_image_ref": env("DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF"),
             "plugin_daemon_image_ref": plugin_daemon_image_ref,
             "sandbox_image_ref": sandbox_image_ref,
+            "sandbox_source_ref": env("DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF"),
             "dify_api_image": dify_api_image_ref,
             "dify_web_image": dify_web_image_ref,
             "plugin_daemon_image": plugin_daemon_image_ref,
@@ -789,6 +1019,9 @@ def version_payload() -> dict[str, Any]:
             "python_path": env("SANDBOX_PYTHON_PATH"),
             "nodejs_path": env("SANDBOX_NODEJS_PATH"),
             "enable_network": env("SANDBOX_ENABLE_NETWORK"),
+            "uid_pool_min": env("SANDBOX_UID_POOL_MIN"),
+            "uid_pool_max": env("SANDBOX_UID_POOL_MAX"),
+            "run_gid": env("SANDBOX_RUN_GID"),
             "python_deps_update_interval": env("SANDBOX_PYTHON_DEPS_UPDATE_INTERVAL"),
             "requirements": requirements_summary(SANDBOX_REQUIREMENTS_PATH),
         },
@@ -1294,6 +1527,87 @@ def path_summary(path: Path) -> dict[str, Any]:
     except OSError as exc:
         payload["error"] = str(exc)
     return payload
+
+
+def postgres_backup_status() -> dict[str, Any]:
+    backup_dir = Path(env("POSTGRES_BACKUP_DIR", f"{env('PERSIST_ROOT', '/persist')}/postgres-backups"))
+    latest = backup_dir / "latest.sql.gz"
+    latest_err = backup_dir / "latest.err"
+    latest_created_at = read_small_text(backup_dir / "latest.created_at").strip()
+    persist_active = read_small_text(Path(env("PERSIST_ACTIVE_FILE", "/tmp/dify-aio/persist-active"))).strip()
+    external_postgres = parse_bool(env("EXTERNAL_POSTGRES_ENABLED", "false"))
+    backup_enabled = env("POSTGRES_BACKUP_ENABLED", "auto").strip().lower()
+    interval_seconds = parse_int(env("POSTGRES_BACKUP_INTERVAL_SECONDS", "60"), 60, minimum=60, maximum=86400)
+    allowed_age_seconds = max(interval_seconds * 3, 300)
+    postgres_path = Path("/data/postgres")
+    postgres_summary = path_summary(postgres_path)
+    runtime_root = env("RUNTIME_ROOT", "/tmp/dify-aio")
+    real_path = postgres_summary.get("real_path", "")
+    runtime_fallback = bool(real_path and real_path.startswith(runtime_root))
+    latest_summary = path_summary(latest)
+    latest_age_seconds: int | None = None
+    latest_size_bytes: int | None = None
+    try:
+        if latest.exists():
+            stat = latest.stat()
+            latest_age_seconds = max(int(time.time() - stat.st_mtime), 0)
+            latest_size_bytes = stat.st_size
+    except OSError as exc:
+        latest_summary["error"] = str(exc)
+
+    timestamped_backups: list[Path] = []
+    try:
+        timestamped_backups = sorted(backup_dir.glob("[0-9]*T[0-9]*Z.sql.gz"), reverse=True)
+    except OSError:
+        timestamped_backups = []
+
+    err_text = read_small_text(latest_err, max_bytes=8192).strip()
+    backup_forced_on = backup_enabled in {"1", "true", "yes", "on"}
+    backup_auto_active = backup_enabled == "auto" and persist_active == "bucket"
+    managed_by_app = not external_postgres and (backup_forced_on or backup_auto_active)
+    if external_postgres:
+        safe_to_restart = True
+        reason = "external-postgres-managed"
+    elif not managed_by_app:
+        safe_to_restart = True
+        reason = "postgres-backup-disabled"
+    elif not latest_summary.get("exists"):
+        safe_to_restart = False
+        reason = "missing-latest-backup"
+    elif err_text:
+        safe_to_restart = False
+        reason = "latest-backup-error-present"
+    elif latest_age_seconds is not None and latest_age_seconds > allowed_age_seconds:
+        safe_to_restart = False
+        reason = "latest-backup-stale"
+    else:
+        safe_to_restart = True
+        reason = "latest-backup-fresh"
+
+    return {
+        "backup_dir": str(backup_dir),
+        "enabled": backup_enabled,
+        "managed_by_app": managed_by_app,
+        "persist_active": persist_active,
+        "external_postgres": external_postgres,
+        "retention_policy": env("POSTGRES_BACKUP_RETENTION_POLICY", "tiered"),
+        "retain_count": parse_int(env("POSTGRES_BACKUP_RETAIN_COUNT", "65"), 65, minimum=2, maximum=200),
+        "compression_level": parse_int(env("POSTGRES_BACKUP_COMPRESSION_LEVEL", "1"), 1, minimum=1, maximum=9),
+        "interval_seconds": interval_seconds,
+        "allowed_age_seconds": allowed_age_seconds,
+        "runtime_fallback": runtime_fallback,
+        "postgres_path": postgres_summary,
+        "latest": latest_summary,
+        "latest_created_at": latest_created_at,
+        "latest_age_seconds": latest_age_seconds,
+        "latest_size_bytes": latest_size_bytes,
+        "latest_error": err_text,
+        "timestamped_count": len(timestamped_backups),
+        "newest_timestamped": timestamped_backups[0].name if timestamped_backups else "",
+        "oldest_timestamped": timestamped_backups[-1].name if timestamped_backups else "",
+        "safe_to_restart": safe_to_restart,
+        "safe_to_restart_reason": reason,
+    }
 
 
 def resolve_plugin_storage_path(root: Path, configured: str) -> Path:
@@ -2501,6 +2815,7 @@ def persistence_payload() -> dict[str, Any]:
     orphan_installed = sorted(installed_entries - expected_packages)
     runtime_state = redis_hash_scan_candidates("plugin_state")
     runtime_state_fields = runtime_state.get("fields", {}) if runtime_state.get("ok") else {}
+    postgres_backup = postgres_backup_status()
     runtime_identifiers = [
         {
             **runtime_state_summary(item["plugin_unique_identifier"], runtime_state_fields),
@@ -2549,6 +2864,7 @@ def persistence_payload() -> dict[str, Any]:
         "persist_active": persist_active,
         "plugin_storage_type": env("PLUGIN_STORAGE_TYPE", "local"),
         "paths": core_paths,
+        "postgres_backup": postgres_backup,
         "plugin_storage_layout_issues": layout_issues,
         "plugin_packages": packages,
         "plugin_installed": installed,
@@ -2576,6 +2892,7 @@ def persistence_payload() -> dict[str, Any]:
             "A missing package or installed file with an existing plugin DB/API reference means configuration can remain visible while local plugin runtime cannot be rebuilt.",
             "plugin_runtime_state summarizes Redis plugin_state plus plugin-daemon local-runtime log evidence; in single-container local mode the in-process runtime can be ready even when the Redis cluster hash is empty.",
             "plugin_storage_layout_issues flags bucket-lite layouts where plugin-daemon would see installed/package directories through a symlink root instead of the real /persist storage root.",
+            "postgres_backup.safe_to_restart is advisory and checks the app-managed dump freshness for internal PostgreSQL; it is not a write or restore action.",
         ],
     }
 
