@@ -17,12 +17,33 @@ required_files = [
 ]
 
 [[release_pins]]
-name = "DIFY_UPSTREAM_BASE_REF"
+name = "BASE_IMAGE_REF"
 type = "image_ref"
 source = "Dockerfile ARG"
 required_for_release = true
-dev_mutable_default_allowed = false
+dev_mutable_default_allowed = true
 release_requires_digest = true
+
+[[release_pins]]
+name = "DIFY_SOURCE_REPO"
+type = "source_repo"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+
+[[release_pins]]
+name = "DIFY_SOURCE_MAIN_REF"
+type = "source_revision"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = false
+
+[[release_pins]]
+name = "DIFY_UPSTREAM_BASE_REF"
+type = "source_revision"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = false
 
 [[release_pins]]
 name = "DIFY_API_IMAGE_REF"

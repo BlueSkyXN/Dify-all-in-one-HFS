@@ -55,6 +55,9 @@ Docker Space 构建入口。
 关键 build args：
 
 ```text
+BASE_IMAGE_REF
+DIFY_SOURCE_REPO
+DIFY_SOURCE_MAIN_REF
 DIFY_UPSTREAM_BASE_REF
 DIFY_API_IMAGE_REF
 DIFY_WEB_IMAGE_REF
@@ -67,7 +70,7 @@ UV_VERSION
 DIFY_VERSION
 ```
 
-`DIFY_UPSTREAM_BASE_REF`、Dify API/Web/Agent/Agent runtime 的 `*_IMAGE_REF` 是真实 `FROM` selector。它们各自使用同一个明确的零 digest 占位值；主线程完成 GHCR release readback 后必须原子替换为对应 image-specific digest。Agent Python venv 与 Go runtime 分别从独立 self image 复制，不能对 API 做 targeted source overlay。`DIFY_SANDBOX_SOURCE_REF` 仅选择带 HFS patch 的 Sandbox server build source。`DIFY_VERSION` 只作为 metadata，不决定镜像来源。
+`BASE_IMAGE_REF` 与 Dify API/Web/Agent/Agent runtime 的 `*_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_REPO` / `DIFY_SOURCE_MAIN_REF` 标识四个 self image 的共同源码，`DIFY_UPSTREAM_BASE_REF` 只记录 fork intake 的 upstream commit。零 source SHA/digest 完成 GHCR release readback 后必须原子替换。Agent Python venv 与 Go runtime 分别从独立 self image 复制，不能对 API 做 targeted source overlay。`DIFY_SANDBOX_SOURCE_REF` 仅选择带 HFS patch 的 Sandbox server build source。`DIFY_VERSION` 只作为 metadata，不决定镜像来源。
 
 ### `.dockerignore`
 
@@ -387,6 +390,9 @@ dify-all-in-one-hf-space:latest
 脚本会白名单透传当前 shell 中已设置的 build args：
 
 ```text
+BASE_IMAGE_REF
+DIFY_SOURCE_REPO
+DIFY_SOURCE_MAIN_REF
 DIFY_UPSTREAM_BASE_REF
 DIFY_API_IMAGE_REF
 DIFY_WEB_IMAGE_REF
@@ -397,6 +403,7 @@ SANDBOX_IMAGE_REF
 DIFY_SANDBOX_SOURCE_REF
 DIFY_VERSION
 UV_VERSION
+```
 ```
 
 ### `scripts/run-demo.sh`
@@ -465,7 +472,7 @@ HFS 范式结构契约检查脚本。
 
 - 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
-- 检查 Dockerfile 暴露 self GHCR `*_IMAGE_REF` / `DIFY_UPSTREAM_BASE_REF`、集中标记的 image-specific placeholder digest 与 `DIFY_VERSION` metadata，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 Dockerfile 暴露 self source refs、GHCR `*_IMAGE_REF`、集中标记的 release placeholders 与 `DIFY_VERSION` metadata，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
 - 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。

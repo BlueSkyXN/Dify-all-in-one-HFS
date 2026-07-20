@@ -32,11 +32,11 @@
    - 仍使用 upstream chroot/seccomp 代码路径；HFS 默认 `SANDBOX_UID_POOL_MIN=1000`、`SANDBOX_UID_POOL_MAX=1001`、`SANDBOX_RUN_GID=1000` 会让 code execution 串行化到单 UID。
 
 6. `agent-image` 与 `agent-runtime-image`
-   - `${DIFY_AGENT_IMAGE_REF}` 提供独立 `/opt/dify-agent/.venv`；`${DIFY_AGENT_RUNTIME_IMAGE_REF}` 提供 Go `shellctl`、`shellctl-sanitize-pty`、`shellctl-runner-exit`、`shellctl-runner` 和 `dify-agent` CLI。
+   - `${DIFY_AGENT_IMAGE_REF}` 提供 `/app/api/.venv`，runtime 将其复制为独立 `/opt/dify-agent/.venv`；`${DIFY_AGENT_RUNTIME_IMAGE_REF}` 提供 Go `shellctl`、`shellctl-sanitize-pty`、`shellctl-runner-exit`、`shellctl-runner` 和 `dify-agent` CLI。
    - Go shellctl server 取代已从 upstream Python package 移除的 `shellctl-server` extra；`run-shellctl` 只使用 loopback `127.0.0.1:5004` 和 `${RUNTIME_ROOT}/shellctl` state directory。
 
 7. `runtime`
-   - 来源：`${DIFY_UPSTREAM_BASE_REF}`，使用待替换的 image-specific GHCR digest。
+   - 来源：`${BASE_IMAGE_REF}`；`${DIFY_UPSTREAM_BASE_REF}` 只记录已经合入 self fork 的 upstream commit，不参与 `FROM`。
    - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv、tmux 等运行时依赖。
    - 保留 self API image 和 `/app/api/.venv` 原样；不再针对 API 文件做 source overlay。
    - 从 `agent-image` 复制 `/opt/dify-agent/.venv`，从 `agent-runtime-image` 复制 Go binaries；执行 Agent/server 与 shellctl client import、两个 venv 的独立路径检查、Go CLI help 和 Agent venv `uv pip check` 作为 build gate。
@@ -56,11 +56,14 @@ Sandbox Python 包预设链路：
 默认 build args：
 
 ```text
-DIFY_UPSTREAM_BASE_REF=ghcr.io/blueskyxn/dify-upstream-base@sha256:0000000000000000000000000000000000000000000000000000000000000000
+BASE_IMAGE_REF=python:3.12-slim-bookworm
+DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+DIFY_SOURCE_MAIN_REF=0000000000000000000000000000000000000000
+DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
 DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
 DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
-DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
-DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
@@ -68,7 +71,7 @@ DIFY_VERSION=self-release-pending-digest-replacement
 UV_VERSION=0.11.21
 ```
 
-零 digest 仅用于让本仓库的 self release contract 可审计；主线程在取得最终 GHCR digests 后应原子替换全部 self image refs，再完成 build、smoke 和 runtime readback。`DIFY_VERSION` 只作为 build/runtime metadata，不参与 `FROM` 镜像选择。
+零 source SHA/digest 仅用于让本仓库的 self release contract 可审计；取得最终 self commit 和 GHCR digests 后应原子替换 source ref 与全部 self image refs，再完成 build、smoke 和 runtime readback。`DIFY_VERSION` 只作为 build/runtime metadata，不参与 `FROM` 镜像选择。
 
 ## Container Entry Point
 

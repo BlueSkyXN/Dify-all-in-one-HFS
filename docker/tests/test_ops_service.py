@@ -79,11 +79,14 @@ class OpsServicePureFunctionTests(unittest.TestCase):
     def test_version_payload_reports_self_release_image_refs(self):
         os.environ.update(
             {
-                "DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF": "ghcr.io/blueskyxn/dify-upstream-base@sha256:base",
+                "DIFY_AIO_BUILD_BASE_IMAGE_REF": "python:3.12-slim-bookworm",
+                "DIFY_AIO_BUILD_DIFY_SOURCE_REPO": "https://github.com/BlueSkyXN/dify.git",
+                "DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF": "self-sha",
+                "DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF": "upstream-sha",
                 "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF": "ghcr.io/blueskyxn/dify-api@sha256:api",
                 "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF": "ghcr.io/blueskyxn/dify-web@sha256:web",
-                "DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent@sha256:agent",
-                "DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent-runtime@sha256:runtime",
+                "DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent-backend@sha256:agent",
+                "DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:runtime",
                 "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF": "langgenius/dify-plugin-daemon@sha256:plugin",
                 "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF": "langgenius/dify-sandbox@sha256:sandbox",
                 "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF": "44cdbd5",
@@ -96,11 +99,17 @@ class OpsServicePureFunctionTests(unittest.TestCase):
         build = ops_service.version_payload()["build"]
         sandbox = ops_service.version_payload()["sandbox"]
 
-        self.assertEqual(build["upstream_base_ref"], "ghcr.io/blueskyxn/dify-upstream-base@sha256:base")
+        self.assertEqual(build["base_image_ref"], "python:3.12-slim-bookworm")
+        self.assertEqual(build["dify_source_repo"], "https://github.com/BlueSkyXN/dify.git")
+        self.assertEqual(build["dify_source_main_ref"], "self-sha")
+        self.assertEqual(build["upstream_base_ref"], "upstream-sha")
         self.assertEqual(build["dify_api_image_ref"], "ghcr.io/blueskyxn/dify-api@sha256:api")
         self.assertEqual(build["dify_web_image_ref"], "ghcr.io/blueskyxn/dify-web@sha256:web")
-        self.assertEqual(build["dify_agent_image_ref"], "ghcr.io/blueskyxn/dify-agent@sha256:agent")
-        self.assertEqual(build["dify_agent_runtime_image_ref"], "ghcr.io/blueskyxn/dify-agent-runtime@sha256:runtime")
+        self.assertEqual(build["dify_agent_image_ref"], "ghcr.io/blueskyxn/dify-agent-backend@sha256:agent")
+        self.assertEqual(
+            build["dify_agent_runtime_image_ref"],
+            "ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:runtime",
+        )
         self.assertEqual(build["plugin_daemon_image_ref"], "langgenius/dify-plugin-daemon@sha256:plugin")
         self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
         self.assertEqual(build["sandbox_source_ref"], "44cdbd5")

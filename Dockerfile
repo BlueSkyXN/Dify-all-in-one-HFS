@@ -14,13 +14,17 @@
 #     --env-file docker/dify.env.demo \
 #     dify-all-in-one-hf-space:latest
 
-# TODO(root): Replace every zero digest below with its verified, image-specific
-# GHCR artifact digest before a build or deployment. Do not reuse one digest.
-ARG DIFY_UPSTREAM_BASE_REF=ghcr.io/blueskyxn/dify-upstream-base@sha256:0000000000000000000000000000000000000000000000000000000000000000
+# TODO(root): Replace the source SHA and every zero digest below with the
+# verified self release values before a build or deployment. Do not reuse one
+# image digest for another image.
+ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
+ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+ARG DIFY_SOURCE_MAIN_REF=0000000000000000000000000000000000000000
+ARG DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
 ARG DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
 ARG DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ARG DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ARG DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 ARG DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
@@ -28,9 +32,11 @@ ARG DIFY_VERSION=self-release-pending-digest-replacement
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
-# Use official prebuilt Dify Web assets
+# Use the prebuilt maintained-fork Dify Web assets
 # -----------------------------
 FROM ${DIFY_WEB_IMAGE_REF} AS web-builder
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
 RUN test -d /app/targets/next \
     && test -d /app/targets/vinext \
     && test -x /app/entrypoint.sh
@@ -38,9 +44,11 @@ RUN touch /tmp/web-builder.done
 
 
 # -----------------------------
-# Use official prebuilt Dify API source and virtualenv
+# Use the prebuilt maintained-fork Dify API source and virtualenv
 # -----------------------------
 FROM ${DIFY_API_IMAGE_REF} AS api-image
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
 COPY --from=web-builder /tmp/web-builder.done /tmp/web-builder.done
 RUN test -d /app/api/.venv \
     && test -x /app/api/.venv/bin/flask \
@@ -54,7 +62,11 @@ RUN touch /tmp/api-builder.done
 FROM ${PLUGIN_DAEMON_IMAGE_REF} AS plugin-daemon-image
 FROM ${SANDBOX_IMAGE_REF} AS sandbox-image
 FROM ${DIFY_AGENT_IMAGE_REF} AS agent-image
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
 FROM ${DIFY_AGENT_RUNTIME_IMAGE_REF} AS agent-runtime-image
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
 
 
 # -----------------------------
@@ -88,9 +100,12 @@ RUN git apply --unidiff-zero /tmp/dify-sandbox-hfs-uidpool.patch \
 # -----------------------------
 # Final runtime image
 # -----------------------------
-FROM ${DIFY_UPSTREAM_BASE_REF} AS runtime
+FROM ${BASE_IMAGE_REF} AS runtime
 COPY --from=api-image /tmp/api-builder.done /tmp/api-builder.done
 
+ARG BASE_IMAGE_REF
+ARG DIFY_SOURCE_REPO
+ARG DIFY_SOURCE_MAIN_REF
 ARG DIFY_UPSTREAM_BASE_REF
 ARG DIFY_WEB_IMAGE_REF
 ARG DIFY_API_IMAGE_REF
@@ -106,6 +121,9 @@ ARG TARGETARCH
 ENV DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_UV_VERSION=${UV_VERSION}
+ENV DIFY_AIO_BUILD_BASE_IMAGE_REF=${BASE_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_SOURCE_REPO=${DIFY_SOURCE_REPO}
+ENV DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF=${DIFY_SOURCE_MAIN_REF}
 ENV DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF=${DIFY_UPSTREAM_BASE_REF}
 ENV DIFY_AIO_BUILD_DIFY_API_IMAGE_REF=${DIFY_API_IMAGE_REF}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF=${DIFY_WEB_IMAGE_REF}
@@ -186,7 +204,7 @@ COPY --from=api-image --chown=user:user /app/api /app/api
 
 # The self release supplies the Agent Python environment and its Go runtime as
 # independent, digest-pinned artifacts. Do not overlay individual API files.
-COPY --from=agent-image --chown=user:user /opt/dify-agent/.venv /opt/dify-agent/.venv
+COPY --from=agent-image --chown=user:user /app/api/.venv /opt/dify-agent/.venv
 COPY --from=agent-runtime-image /usr/local/bin/shellctl /usr/local/bin/shellctl
 COPY --from=agent-runtime-image /usr/local/bin/shellctl-sanitize-pty /usr/local/bin/shellctl-sanitize-pty
 COPY --from=agent-runtime-image /usr/local/bin/shellctl-runner-exit /usr/local/bin/shellctl-runner-exit
@@ -202,7 +220,7 @@ RUN set -eu; \
     && test -x /usr/local/bin/shellctl-runner \
     && test -x /usr/local/bin/shellctl-sanitize-pty \
     && test -x /usr/local/bin/shellctl-runner-exit \
-    && /opt/dify-agent/.venv/bin/dify-agent-stub-server --help >/dev/null \
+    && /opt/dify-agent/.venv/bin/python -m uvicorn --help >/dev/null \
     && uv pip check --python /opt/dify-agent/.venv/bin/python \
     && chown -R user:user /opt/dify-agent
 

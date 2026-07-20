@@ -71,11 +71,14 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_UPSTREAM_BASE_REF=ghcr.io/blueskyxn/dify-upstream-base@sha256:0000000000000000000000000000000000000000000000000000000000000000
+BASE_IMAGE_REF=python:3.12-slim-bookworm
+DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+DIFY_SOURCE_MAIN_REF=0000000000000000000000000000000000000000
+DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
 DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
 DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
-DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
-DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:0000000000000000000000000000000000000000000000000000000000000000
 PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
@@ -85,7 +88,7 @@ PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-API、Web、Agent Python venv 与 Agent Go runtime 均来自同一 self GHCR release 的各自 image digest。零 digest 只是主线程待替换的合同占位值，不能据此执行 build 或部署；完成 artifact checksum 和 runtime readback 后必须原子替换全部 image-specific digest。Agent venv 保持在 `/opt/dify-agent/.venv`，不修改 `/app/api/.venv`；runtime 不再对 API 做 targeted source overlay。`DIFY_VERSION` 仅是运行时 metadata。
+API、Web、Agent Python venv 与 Agent Go runtime 均来自 `DIFY_SOURCE_REPO@DIFY_SOURCE_MAIN_REF` 构建的同一 self GHCR release。零 source SHA/digest 只是待替换的合同占位值，不能据此执行 build 或部署；完成 artifact digest 和 revision readback 后必须原子替换。Agent venv 从 Agent image 的 `/app/api/.venv` 复制到 `/opt/dify-agent/.venv`，不修改 Dify API 的 `/app/api/.venv`；runtime 不再对 API 做 targeted source overlay。`DIFY_UPSTREAM_BASE_REF` 只记录已合入 self fork 的 upstream commit，`DIFY_VERSION` 仅是运行时 metadata。
 
 ## 运行状态入口
 

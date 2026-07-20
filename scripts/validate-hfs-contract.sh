@@ -108,11 +108,26 @@ if "release_pin_surfaces" in manifest:
 
 release_pins = manifest.get("release_pins")
 expected_pins = {
-    "DIFY_UPSTREAM_BASE_REF": {
+    "BASE_IMAGE_REF": {
         "type": "image_ref",
         "required_for_release": True,
-        "dev_mutable_default_allowed": False,
+        "dev_mutable_default_allowed": True,
         "release_requires_digest": True,
+    },
+    "DIFY_SOURCE_REPO": {
+        "type": "source_repo",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": True,
+    },
+    "DIFY_SOURCE_MAIN_REF": {
+        "type": "source_revision",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": False,
+    },
+    "DIFY_UPSTREAM_BASE_REF": {
+        "type": "source_revision",
+        "required_for_release": True,
+        "dev_mutable_default_allowed": False,
     },
     "DIFY_API_IMAGE_REF": {
         "type": "image_ref",
@@ -258,6 +273,12 @@ require_grep '^ARG DIFY_VERSION=' Dockerfile \
   "Dockerfile must expose DIFY_VERSION build input"
 require_grep '^ARG UV_VERSION=' Dockerfile \
   "Dockerfile must expose UV_VERSION build input"
+require_grep '^ARG BASE_IMAGE_REF=' Dockerfile \
+  "Dockerfile must expose BASE_IMAGE_REF build input"
+require_grep '^ARG DIFY_SOURCE_REPO=' Dockerfile \
+  "Dockerfile must expose DIFY_SOURCE_REPO build input"
+require_grep '^ARG DIFY_SOURCE_MAIN_REF=' Dockerfile \
+  "Dockerfile must expose DIFY_SOURCE_MAIN_REF build input"
 require_grep '^ARG DIFY_UPSTREAM_BASE_REF=' Dockerfile \
   "Dockerfile must expose DIFY_UPSTREAM_BASE_REF build input"
 require_grep '^ARG DIFY_API_IMAGE_REF=' Dockerfile \
@@ -274,8 +295,8 @@ require_grep '^ARG SANDBOX_IMAGE_REF=' Dockerfile \
   "Dockerfile must expose SANDBOX_IMAGE_REF build input"
 require_grep '^ARG DIFY_SANDBOX_SOURCE_REF=' Dockerfile \
   "Dockerfile must expose DIFY_SANDBOX_SOURCE_REF build input"
-require_grep '^# TODO\(root\): Replace every zero digest below with its verified, image-specific$' Dockerfile \
-  "Dockerfile must centrally mark image-specific GHCR digest placeholders for the root task"
+require_grep '^# TODO\(root\): Replace the source SHA and every zero digest below with the$' Dockerfile \
+  "Dockerfile must centrally mark self release placeholders for the root task"
 require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
   "Dockerfile must select web image from DIFY_WEB_IMAGE_REF"
 require_grep '^FROM \${DIFY_API_IMAGE_REF} AS api-image$' Dockerfile \
@@ -284,8 +305,8 @@ require_grep '^FROM \${PLUGIN_DAEMON_IMAGE_REF} AS plugin-daemon-image$' Dockerf
   "Dockerfile must select Plugin Daemon image from PLUGIN_DAEMON_IMAGE_REF"
 require_grep '^FROM \${SANDBOX_IMAGE_REF} AS sandbox-image$' Dockerfile \
   "Dockerfile must select Sandbox image from SANDBOX_IMAGE_REF"
-require_grep '^FROM \${DIFY_UPSTREAM_BASE_REF} AS runtime$' Dockerfile \
-  "Dockerfile must select the self upstream base runtime image"
+require_grep '^FROM \${BASE_IMAGE_REF} AS runtime$' Dockerfile \
+  "Dockerfile must select the base runtime image from BASE_IMAGE_REF"
 require_absent '^ARG DIFY_API_IMAGE=' Dockerfile \
   "Dockerfile must not expose legacy DIFY_API_IMAGE selector"
 require_absent '^ARG DIFY_WEB_IMAGE=' Dockerfile \
@@ -298,9 +319,9 @@ require_absent '^FROM \${DIFY_WEB_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build web image refs by image:version concatenation"
 require_absent '^FROM \${DIFY_API_IMAGE}:\${DIFY_VERSION}' Dockerfile \
   "Dockerfile must not build API image refs by image:version concatenation"
-require_absent 'observability_service\.py|agent-runtime-builder|DIFY_SOURCE_MAIN_REF|DIFY_AGENT_SOURCE_REF' Dockerfile \
+require_absent 'observability_service\.py|agent-runtime-builder|DIFY_AGENT_SOURCE_REF' Dockerfile \
   "Dockerfile must not retain targeted API overlays or branch-specific Agent source build logic"
-require_line 'COPY --from=agent-image --chown=user:user /opt/dify-agent/.venv /opt/dify-agent/.venv' Dockerfile \
+require_line 'COPY --from=agent-image --chown=user:user /app/api/.venv /opt/dify-agent/.venv' Dockerfile \
   "Dockerfile must copy the isolated Agent venv from the self Agent image"
 require_grep 'import dify_agent\.server\.app; import shellctl\.client' Dockerfile \
   "Dockerfile must verify the copied Python Agent backend and shellctl client imports"

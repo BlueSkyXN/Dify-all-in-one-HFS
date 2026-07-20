@@ -66,6 +66,9 @@ SAFE_CONFIG_KEYS = [
     "DIFY_VERSION",
     "DIFY_AIO_BUILD_DIFY_VERSION",
     "DIFY_AIO_BUILD_UV_VERSION",
+    "DIFY_AIO_BUILD_BASE_IMAGE_REF",
+    "DIFY_AIO_BUILD_DIFY_SOURCE_REPO",
+    "DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF",
     "DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF",
     "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF",
     "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF",
@@ -986,6 +989,9 @@ def _status_payload() -> dict[str, Any]:
 
 
 def version_payload() -> dict[str, Any]:
+    base_image_ref = env("DIFY_AIO_BUILD_BASE_IMAGE_REF")
+    dify_source_repo = env("DIFY_AIO_BUILD_DIFY_SOURCE_REPO")
+    dify_source_main_ref = env("DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF")
     upstream_base_ref = env("DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF")
     dify_api_image_ref = env("DIFY_AIO_BUILD_DIFY_API_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_API_IMAGE")
     dify_web_image_ref = env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE")
@@ -1002,6 +1008,9 @@ def version_payload() -> dict[str, Any]:
         "build": {
             "dify_version": env("DIFY_AIO_BUILD_DIFY_VERSION"),
             "uv_version": env("DIFY_AIO_BUILD_UV_VERSION"),
+            "base_image_ref": base_image_ref,
+            "dify_source_repo": dify_source_repo,
+            "dify_source_main_ref": dify_source_main_ref,
             "upstream_base_ref": upstream_base_ref,
             "dify_api_image_ref": dify_api_image_ref,
             "dify_web_image_ref": dify_web_image_ref,
