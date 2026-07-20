@@ -61,9 +61,17 @@ else
   export PLUGIN_STORAGE_LOCAL_ROOT
 fi
 export PLUGIN_WORKING_PATH="${PLUGIN_WORKING_PATH:-/data/plugin_daemon/cwd}"
+export PLUGIN_UV_CACHE_DIR="${PLUGIN_UV_CACHE_DIR:-${RUNTIME_ROOT:-/tmp/dify-aio}/plugin-uv-cache}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$PLUGIN_UV_CACHE_DIR}"
 export PLUGIN_INSTALLED_PATH="${PLUGIN_INSTALLED_PATH:-plugin}"
 export PLUGIN_PACKAGE_CACHE_PATH="${PLUGIN_PACKAGE_CACHE_PATH:-plugin_packages}"
 export PLUGIN_MEDIA_CACHE_PATH="${PLUGIN_MEDIA_CACHE_PATH:-assets}"
+
+mkdir -p "$PLUGIN_WORKING_PATH" "$UV_CACHE_DIR"
+if [ ! -w "$UV_CACHE_DIR" ]; then
+  printf '[plugin-daemon] UV_CACHE_DIR is not writable: %s\n' "$UV_CACHE_DIR" >&2
+  exit 1
+fi
 
 export REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
 export REDIS_PORT="${REDIS_PORT:-6379}"

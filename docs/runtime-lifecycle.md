@@ -4,50 +4,74 @@
 
 ## Build 阶段
 
-`Dockerfile` 使用多阶段构建，复用官方镜像资产：
+`Dockerfile` 使用多阶段构建，组装 self GHCR release 与固定的外部 runtime assets：
 
 1. `web-builder`
-   - 来源：`${DIFY_WEB_IMAGE_REF}`，默认固定为 `langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106`。
+   - 来源：`${DIFY_WEB_IMAGE_REF}`，使用已验证的 image-specific GHCR digest。
    - 验证 `/app/targets/next`、`/app/targets/vinext` 和 `/app/entrypoint.sh` 存在。
    - 最终复制 `/app/targets/` 和 `/app/entrypoint.sh` 到 runtime。
 
 2. `api-image`
-   - 来源：`${DIFY_API_IMAGE_REF}`，默认固定为 `langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24`。
+   - 来源：`${DIFY_API_IMAGE_REF}`，使用已验证的 image-specific GHCR digest。
    - 验证 `/app/api/.venv/bin/flask` 和 `/app/api/docker/entrypoint.sh` 存在。
    - 最终复制 `/app/api` 到 runtime。
 
 3. `plugin-daemon-image`
-   - 来源：`${PLUGIN_DAEMON_IMAGE_REF}`，开发默认 `langgenius/dify-plugin-daemon:main-local`。
+   - 来源：`${PLUGIN_DAEMON_IMAGE_REF}`，默认固定为 `langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566`。
    - 最终复制 `/app` 到 `/opt/dify/plugin-daemon`。
    - runtime 阶段会验证 `/opt/dify/plugin-daemon/commandline` 可执行。
 
 4. `sandbox-image`
-   - 来源：`${SANDBOX_IMAGE_REF}`，开发默认 `langgenius/dify-sandbox:latest`。
-   - 最终复制 `/main`、`/conf` 和 `/dependencies`。
+   - 来源：`${SANDBOX_IMAGE_REF}`，默认固定为 `langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8`。`sandbox_exec` 判定必须同时满足 sandbox HTTP 200、JSON envelope 成功、`exit_code=0`、`error=""` 和 stdout marker。
+   - 最终复制 `/conf` 和 `/dependencies`。
    - runtime 阶段会用 `docker/sandbox-python-requirements.txt` 覆盖 `/dependencies/python-requirements.txt`，并在 build 时预装这些 Python 包，避免 demo 运行期依赖临时 PyPI 下载。
 
-5. `runtime`
-   - 来源：`${BASE_IMAGE_REF}`，开发默认 `python:3.12-slim-bookworm`。
-   - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv 等运行时依赖。
+5. `sandbox-builder`
+   - 来源：`${DIFY_SANDBOX_SOURCE_REF}`，默认固定为 `97c8097d51d0f46238bb720b1e9e9439ce68784d`。
+   - 构建一个只包含 HFS UID/GID 兼容 patch 的 `/opt/dify/sandbox/main`，使 sandbox execution 默认使用 Hugging Face 映射的 UID/GID `1000`，而不是 upstream 默认 `10000..10999` UID pool。
+   - 仍使用 upstream chroot/seccomp 代码路径；HFS 默认 `SANDBOX_UID_POOL_MIN=1000`、`SANDBOX_UID_POOL_MAX=1001`、`SANDBOX_RUN_GID=1000` 会让 code execution 串行化到单 UID。
+
+6. `agent-image` 与 `agent-runtime-image`
+   - `${DIFY_AGENT_IMAGE_REF}` 提供 `/app/api/.venv`，runtime 将其复制为独立 `/opt/dify-agent/.venv`；`${DIFY_AGENT_RUNTIME_IMAGE_REF}` 提供 Go `shellctl`、`shellctl-sanitize-pty`、`shellctl-runner-exit`、`shellctl-runner` 和 `dify-agent` CLI。
+   - Go shellctl server 取代已从 upstream Python package 移除的 `shellctl-server` extra；`run-shellctl` 只使用 loopback `127.0.0.1:5004` 和 `${RUNTIME_ROOT}/shellctl` state directory。
+
+7. `runtime`
+   - 来源：`${BASE_IMAGE_REF}`；`${DIFY_UPSTREAM_BASE_REF}` 只记录已经合入 self fork 的 upstream commit，不参与 `FROM`。
+   - 安装 Nginx、Supervisor、Redis、PostgreSQL 15、pgvector、Node.js 22、uv、tmux 等运行时依赖。
+   - 保留 self API image 和 `/app/api/.venv` 原样；不再针对 API 文件做 source overlay。
+   - 从 `agent-image` 复制 `/opt/dify-agent/.venv`，从 `agent-runtime-image` 复制 Go binaries；执行 API/Agent import、两个 venv 的 `sys.prefix` 隔离检查、Go CLI help，并分别执行 `uv pip check` 作为 build gate。API 当前只允许 `alibabacloud-tea-openapi`、`clickzetta-connector-python` 和 `msal` 三条已知上游冲突；出现其他冲突仍会失败。
    - 安装 Sandbox Python requirements 后执行 `python3 -m pip check`。
    - 创建 UID `1000` 的 `user`，适配 Hugging Face Space。
    - 将 Sandbox binary 设置为 setuid root，满足 sandbox runtime 需求。
+
+Sandbox Python 包预设链路：
+
+1. `docker/sandbox-python-requirements.txt` 是本仓库维护的 Code Node Python 包预设清单。
+2. Docker build 使用 `/usr/local/bin/python3 -m pip install -r /dependencies/python-requirements.txt` 把这些包安装进系统 Python site-packages。
+3. Sandbox 默认 `SANDBOX_PYTHON_PATH=/usr/local/bin/python3`，与 build-time 安装目标一致。
+4. 当前上游 Sandbox 会从 `python_path` 自动发现 stdlib 和 site-packages，并把这些路径复制或硬链进 `/var/sandbox/sandbox-python`，供 Code Node chroot 后 import。
+
+`python_lib_path` / `PYTHON_LIB_PATH` 是旧配置口径；当前上游 Sandbox 会忽略它们并记录 deprecated warning。它们不应作为预设包是否可用的验收依据。验收应以真实 `/v1/sandbox/run` import smoke 为准。
 
 默认 build args：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-DIFY_VERSION=1.15.0
-UV_VERSION=latest
+DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+DIFY_SOURCE_MAIN_REF=4d010cc912753e4a0443cc01721e24d0752bce46
+DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
+DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:17c5a57c432e24179b42c210a5ea48a5c79f4f9844c6944f6bf33a5d0cdb9054
+DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:ff5cfc41d95fb28abf13854c0c215d0680a611d53390bd012a6b83191ae68ad9
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:45938ec2584eaf43a4d0ca6502874ac5c84dc960c60cd6067d79117aea7b58df
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:f88faab3f5cc8aa24ca07d1cc45750aaa531c6147fd504d690bae3d6e922e93b
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
+DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+DIFY_VERSION=BlueSkyXN-dify-main-4d010cc912753e4a0443cc01721e24d0752bce46
+UV_VERSION=0.11.21
 ```
 
-Web/API 默认值固定为经过兼容性确认的 `1.15.0` digest pair。`BASE_IMAGE_REF`、`PLUGIN_DAEMON_IMAGE_REF`、`SANDBOX_IMAGE_REF` 和 `UV_VERSION` 仍保留原有可移动开发默认值；发布或长期演示时必须记录全部输入，并把这些剩余输入固定到 digest 或明确版本。
-
-`DIFY_VERSION=1.15.0` 只作为 build/runtime metadata，不参与 `FROM` 镜像选择。需要切换真实 Dify Web/API 镜像时，必须同时覆盖 `DIFY_WEB_IMAGE_REF` 和 `DIFY_API_IMAGE_REF`，并让 metadata 准确描述该 pair。`langgenius/dify-plugin-daemon` 当前不发布 `latest` tag；开发默认使用可移动的 `main-local` 作为最新构建入口。
+self source SHA 与四个 GHCR digest 已按同一次 release 原子固定；后续升级必须继续保持共同 revision，并重新完成 artifact、build、smoke 和 runtime readback。`DIFY_VERSION` 只作为 build/runtime metadata，不参与 `FROM` 镜像选择。
 
 ## Container Entry Point
 
@@ -119,7 +143,9 @@ bucket-lite 模式下关键映射为：
 HF_HOME/HF_HUB_CACHE           -> /tmp/dify-aio/hf-cache(/hub)
 ```
 
-PostgreSQL 会先尝试使用 `/persist/postgres`。由于 object-store backed mount 可能不保留空目录，entrypoint 会在启动已有 PGDATA 前补建 `pg_notify`、`pg_tblspc`、`pg_wal/archive_status` 等 PostgreSQL 必需目录。如果 bucket mount 仍不满足 live data directory 需要的权限、锁或同步语义，默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会把 `/data/postgres` 切到 `/tmp/dify-aio/postgres`，并继续把 dump 备份写到 `/persist/postgres-backups`。
+PostgreSQL 默认会先尝试使用 `/persist/postgres`。由于 object-store backed mount 可能不保留空目录，entrypoint 会在启动已有 PGDATA 前补建 `pg_notify`、`pg_tblspc`、`pg_wal/archive_status` 等 PostgreSQL 必需目录。如果 bucket mount 仍不满足 live data directory 需要的权限、锁或同步语义，默认 `POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime` 会先确认旧 PostgreSQL 已停止，只重建 `/tmp/dify-aio/postgres` scratch PGDATA，再把 `/data/postgres` 切过去并从最近有效 dump 恢复；`/persist/postgres` 不会被删除或复用。恢复点最多只新到最近一次成功 dump，可能落后于故障前最后提交的事务；后续 dump 仍写入 `/persist/postgres-backups`。
+
+`EXTERNAL_POSTGRES_ENABLED=true` 时，entrypoint 不初始化 `/data/postgres`，而是等待 `DB_HOST` 指向的外部 PostgreSQL，检查 `DB_DATABASE` 和 `DB_PLUGIN_DATABASE` 可连接，并在 `EXTERNAL_POSTGRES_REQUIRE_VECTOR=true` 时确认两个 database 可用 `vector` extension。
 
 如果设置 `PLUGIN_CWD_PERSISTENCE=true`，`/data/plugin_daemon/cwd` 会改为映射到 `/persist/plugin_daemon/cwd`。
 
@@ -224,9 +250,11 @@ requirepass <REDIS_PASSWORD>
 75 ops-service
 76 admin-service
 80 nginx
+85 shellctl
+90 dify-agent
 ```
 
-priority 控制启动顺序，但真正的依赖等待由 `wait-for-core` 执行。
+priority 控制启动顺序，但真正的依赖等待由 `wait-for-core` 执行。`postgres` program 通过 `run-postgres` 启动本地 PostgreSQL；如果 `EXTERNAL_POSTGRES_ENABLED=true`，该 program 保持 idle，`wait-for-core postgres` 改为等待外部 `DB_HOST`。`shellctl` 只监听 `127.0.0.1:5004`，由 `run-shellctl` 按 `DIFY_AGENT_ENABLED` 和 `AGENT_SHELL_ENABLED` 控制；`run-dify-agent` 在 shell layer 开启时会等待 shellctl TCP 可达后再启动 Agent backend。
 
 ## Plugin Daemon Migration
 
@@ -288,6 +316,7 @@ curl -fsS http://127.0.0.1:7860/
 
 - bucket-lite 下 `/data/postgres`、`/data/config/generated.env`、`/data/dify/storage`、`/data/plugin_daemon/plugin`、`/data/plugin_daemon/assets`、`/data/plugin_daemon/plugin_packages` 会通过 `/persist` 保留。
 - `/data/redis`、`/data/logs`、`/data/run`、`/data/plugin_daemon/cwd` 和 Hugging Face cache 默认在 `/tmp/dify-aio`，重启后会重新生成。
-- `postgres-backup` 会定期写 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验 gzip 和非空后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，作为 live PostgreSQL data directory 的普通文件兜底备份。
+- `postgres-backup` 会定期写 `/persist/postgres-backups/YYYYmmddTHHMMSSZ.sql.gz`，校验 gzip 和非空后更新 `latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，作为 live PostgreSQL data directory 的普通文件兜底备份；备份脚本使用锁避免自动、手动和退出前备份并发运行，默认 `gzip -1` 快速压缩，并在成功备份后按 tiered retention 清理旧 dump。`/_admin/api/actions/force-postgres-backup` 可触发同一脚本的一次性备份。
+- `postgres-backup` 收到 `TERM` / `INT` 时会 best-effort 尝试最后一次备份，Supervisor 会等待最多 120 秒；这不能替代正常 60 秒周期备份，也不能保证异常崩溃时一定完成。
 - `entrypoint.sh` 会跳过 `initdb`，继续更新 role 密码和确保数据库存在。
 - Dify API migration 和 Plugin Daemon migration 仍会执行，应当保持幂等。

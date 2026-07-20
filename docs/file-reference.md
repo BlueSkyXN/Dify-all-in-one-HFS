@@ -56,15 +56,21 @@ Docker Space 构建入口。
 
 ```text
 BASE_IMAGE_REF
+DIFY_SOURCE_REPO
+DIFY_SOURCE_MAIN_REF
+DIFY_UPSTREAM_BASE_REF
 DIFY_API_IMAGE_REF
 DIFY_WEB_IMAGE_REF
+DIFY_AGENT_IMAGE_REF
+DIFY_AGENT_RUNTIME_IMAGE_REF
 PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
+DIFY_SANDBOX_SOURCE_REF
 UV_VERSION
 DIFY_VERSION
 ```
 
-`*_IMAGE_REF` 和 `BASE_IMAGE_REF` 是真实 `FROM` selector。Dify Web/API 默认固定为兼容的 `1.15.0` digest pair；其他上游输入仍可由 build arg 覆盖，发布构建应记录并固定全部 image ref。`DIFY_VERSION` 只作为 metadata，不决定 Dify Web/API 镜像来源。
+`BASE_IMAGE_REF` 与 Dify API/Web/Agent/Agent runtime 的 `*_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_REPO` / `DIFY_SOURCE_MAIN_REF` 标识四个 self image 的共同源码，`DIFY_UPSTREAM_BASE_REF` 只记录 fork intake 的 upstream commit。self source SHA 与四个 image-specific digest 必须按 release 原子更新。Agent Python venv 与 Go runtime 分别从独立 self image 复制，不能对 API 做 targeted source overlay。`DIFY_SANDBOX_SOURCE_REF` 仅选择带 HFS patch 的 Sandbox server build source。`DIFY_VERSION` 只作为 metadata，不决定镜像来源。
 
 ### `.dockerignore`
 
@@ -121,7 +127,7 @@ GitHub Actions 轻量静态检查 workflow。
 职责：
 
 - 保留已有 Docker/HF env。
-- 为 Dify API/Web/Worker/Beat、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
+- 为 Dify API/Web/Worker/Beat、OpenAPI、Agent backend、PostgreSQL、Redis、Storage、pgvector、Sandbox、Plugin Daemon、Nginx 和 Ops Service 设置默认值。
 - 为 Admin Service 设置默认值。
 - 被 `entrypoint.sh`、`with-*` wrapper 和 `wait-for-core` source。
 
@@ -149,10 +155,14 @@ Sandbox Python 依赖清单。
 - 定义 Dify Workflow Code Node 常用 Python 包。
 - 在 `Dockerfile` build 阶段复制为 `/dependencies/python-requirements.txt`。
 - 配合 build-time `pip install` 和 `pip check`，让 demo runtime 不依赖现场下载这些包。
+- 作为本仓库维护的 Code Node Python 包预设入口；新增或删除预设包时优先改这个文件。
 
 修改注意：
 
 - 新增或升级包后，至少验证目标 Python 版本和 manylinux wheel 可下载。
+- `/_ops/version` 中的 requirements `package_count`、`sha256` 和 `packages` 只证明镜像内清单文件内容，不证明包已安装、已链入 Sandbox rootfs 或可被 Code Node import。
+- 功能验收应使用真实 Sandbox `/v1/sandbox/run` 路径执行 import smoke；不要只用 `pip check` 或 `package_count` 作为验收。
+- `requests`、`aiohttp`、`deep-translator` 等网络相关包即使可 import，默认仍受 `SANDBOX_ENABLE_NETWORK=false` 约束。
 - 依赖清单服务于 demo 便利性，不代表生产 Sandbox 依赖治理方案。
 
 ### `docker/entrypoint.sh`
@@ -188,7 +198,7 @@ main
 
 职责：
 
-- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、dify-api、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
+- 定义 postgres、redis、postgres-backup、plugin-daemon、sandbox、shellctl、dify-agent、dify-api、dify-worker、dify-beat、dify-web、ops-service、admin-service、nginx。
 - 定义 admin-service，默认由 `ADMIN_ENABLED=false` 返回 404。
 - 设置启动 priority、autorestart、日志路径。
 - 暴露 supervisor unix socket：`/data/run/supervisor.sock`。
@@ -235,7 +245,7 @@ Nginx 路由和日志配置。
 - 监听 `ADMIN_HOST:ADMIN_PORT`，默认 `127.0.0.1:8082`。
 - `ADMIN_ENABLED=false` 时所有入口返回 404。
 - 使用 `ADMIN_TOKEN`、signed HttpOnly cookie、cookie session CSRF、登录失败 audit 和内存级限速保护管理入口。
-- 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks。
+- 提供 `/api/status`、`/api/actions` 和白名单 action：restart service、reload nginx、run health checks、force postgres backup。
 - 可选提供 `/_admin/api/files/*` 文件管理；path 限制在 `ADMIN_FILES_ROOT` 内。
 - rename/delete 由 `ADMIN_FILES_DESTRUCTIVE_ENABLED` 单独 gate。
 - 写入 `ADMIN_AUDIT_LOG`，并通过 `/api/audit` 鉴权只读展示最近审计事件；不记录 token、secret 或文件内容。
@@ -248,8 +258,19 @@ bucket-lite PostgreSQL dump 备份循环。
 职责：
 
 - 在 bucket-lite 或显式开启备份时等待 PostgreSQL ready。
-- 周期执行 `pg_dumpall --no-role-passwords`。
-- 写入 timestamped dump，校验后更新 `${POSTGRES_BACKUP_DIR}/latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，并按 `POSTGRES_BACKUP_RETAIN_COUNT` 轮转。
+- 周期执行 `pg_dumpall --no-role-passwords`，也支持 `--once` 做部署或重启前的一次性备份。
+- 写入 timestamped dump，校验后更新 `${POSTGRES_BACKUP_DIR}/latest.sql.gz`、`latest.created_at` 和 `latest.sha256`，并按 `POSTGRES_BACKUP_RETENTION_POLICY` / `POSTGRES_BACKUP_RETAIN_COUNT` 清理旧备份。
+- 用 `${POSTGRES_BACKUP_DIR}/.backup.lock` 串行化自动、手动和退出前备份；默认 `POSTGRES_BACKUP_COMPRESSION_LEVEL=1`，优先快速落盘。
+- `EXTERNAL_POSTGRES_ENABLED=true` 时默认 disabled，外部数据库备份交给托管 PostgreSQL。
+
+### `docker/run-postgres`
+
+Supervisor 的 PostgreSQL 启动包装器。
+
+职责：
+
+- 默认启动本地 `/data/postgres` PostgreSQL。
+- `EXTERNAL_POSTGRES_ENABLED=true` 时保持 idle，避免在同一容器内再启动本地 PostgreSQL。
 
 ### `docker/with-dify-env`
 
@@ -259,7 +280,28 @@ Dify API/Web/Worker/Beat 的环境包装器。
 
 - source runtime defaults 和 generated secrets。
 - 确保 `/app/api/.venv/bin` 在 `PATH` 中。
+- `DIFY_AGENT_ENABLED=true` 时派生 `AGENT_BACKEND_BASE_URL`、URL-encoded `DIFY_AGENT_REDIS_URL`、`DIFY_AGENT_PLUGIN_DAEMON_API_KEY`、`DIFY_AGENT_INNER_API_URL`、`DIFY_AGENT_INNER_API_KEY` 和 `DIFY_AGENT_STUB_API_BASE_URL`；旧 `DIFY_AGENT_DIFY_API_*` / `DIFY_AGENT_STUB_URL` 只保留兼容映射。
 - 执行传入命令。
+
+### `docker/run-dify-agent`
+
+Agent backend 启动脚本。
+
+职责：
+
+- `DIFY_AGENT_ENABLED=false` 时保持 supervisor program idle，不影响 demo。
+- `DIFY_AGENT_ENABLED=true` 时等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟，然后从独立 `/opt/dify-agent/.venv` 以 `python -m uvicorn dify_agent.server.app:app` 启动。
+- 只监听内部 `DIFY_AGENT_HOST:DIFY_AGENT_PORT`，默认 `127.0.0.1:5005`。
+
+### `docker/run-shellctl`
+
+Agent shell layer 启动脚本。
+
+职责：
+
+- `DIFY_AGENT_ENABLED=false` 或 `AGENT_SHELL_ENABLED=false` 时保持 supervisor program idle。
+- 开启时执行 `${SHELLCTL_BINARY:-/usr/local/bin/shellctl} serve --listen 127.0.0.1:5004`，并把 SQLite/tmux runtime 放到 `${RUNTIME_ROOT}/shellctl`；shellctl server 不再来自 Python virtualenv。
+- 只服务内部 loopback endpoint，不经 Nginx 暴露公网。
 
 ### `docker/with-plugin-env`
 
@@ -275,6 +317,7 @@ Plugin Daemon 环境包装器。
   - `PLUGIN_DIFY_INNER_API_URL` -> `DIFY_INNER_API_URL`
   - `PLUGIN_DIFY_INNER_API_KEY` -> `DIFY_INNER_API_KEY`
   - `PLUGIN_MAX_REQUEST_TIMEOUT` -> `MAX_REQUEST_TIMEOUT`
+  - 固定 `UV_CACHE_DIR` 到 `PLUGIN_UV_CACHE_DIR`，并在启动前创建/校验可写目录，避免插件 Python venv 初始化回落到不可写的 `/home/user/.cache/uv`。
   - `/opt/dify/plugin-runtime-patches` -> Plugin runtime `PYTHONPATH`
 
 ### `docker/plugin_runtime_patches/sitecustomize.py`
@@ -297,6 +340,7 @@ Sandbox 环境包装器。
 - 设置 Sandbox 期望的 `API_KEY`、`GIN_MODE`、`WORKER_TIMEOUT` 等变量。
 - 清理并重建 `/var/sandbox/sandbox-python`，避免 rootless 重启时残留只读文件导致初始化失败。
 - 默认把 `PYTHON_DEPS_UPDATE_INTERVAL` 设为长间隔，避免上游 Sandbox 周期刷新重复覆盖只读 rootfs 文件。
+- 当前上游 Sandbox 从 `PYTHON_PATH` 自动发现 Python stdlib 和 site-packages；旧的 `PYTHON_LIB_PATH` / `python_lib_path` 不是预设包可用性的验收依据。
 
 ### `docker/wait-for-core`
 
@@ -308,6 +352,7 @@ Sandbox 环境包装器。
 postgres
 redis
 api
+plugin-daemon
 ```
 
 用法：
@@ -315,6 +360,7 @@ api
 ```bash
 wait-for-core postgres redis -- <command>
 wait-for-core api -- <command>
+wait-for-core redis plugin-daemon -- <command>
 ```
 
 ### `docker/healthcheck.sh`
@@ -345,12 +391,19 @@ dify-all-in-one-hf-space:latest
 
 ```text
 BASE_IMAGE_REF
+DIFY_SOURCE_REPO
+DIFY_SOURCE_MAIN_REF
+DIFY_UPSTREAM_BASE_REF
 DIFY_API_IMAGE_REF
 DIFY_WEB_IMAGE_REF
+DIFY_AGENT_IMAGE_REF
+DIFY_AGENT_RUNTIME_IMAGE_REF
 PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
+DIFY_SANDBOX_SOURCE_REF
 DIFY_VERSION
 UV_VERSION
+```
 ```
 
 ### `scripts/run-demo.sh`
@@ -367,7 +420,7 @@ volume=dify-hf-demo-persist:/persist
 env-file=docker/dify.env.demo
 ```
 
-脚本会额外透传当前 shell 中已设置的 `POSTGRES_BACKUP_RETAIN_COUNT`、`OPS_TOKEN`、`ALLOW_DEMO_OPS_TOKEN`、`OPS_*` session/cache/cookie/timeout 变量和常用 `ADMIN_*` 开关，便于本地启动开启 admin 的临时 demo。
+脚本会额外透传当前 shell 中已设置的 `EXTERNAL_POSTGRES_*`、`DB_*`、`POSTGRES_BACKUP_*`、`OPS_TOKEN`、`ALLOW_DEMO_OPS_TOKEN`、`OPS_*` session/cache/cookie/timeout 变量和常用 `ADMIN_*` 开关，便于本地启动开启 admin 或外部 PostgreSQL 的临时 demo。
 
 ### `scripts/hf-space-smoke.sh`
 
@@ -380,6 +433,7 @@ env-file=docker/dify.env.demo
 - `OPS_TOKEN` 可选，用于检查 `/_ops`。
 - 设置 `OPS_TOKEN` 时会额外验证 query token 迁移到 cookie-backed dashboard，且 HTML 不再包含完整 token。
 - `ADMIN_TOKEN` + `SMOKE_ADMIN_ENABLED=true` 可选，用于检查已开启的 `/_admin`。
+- `SMOKE_OPENAPI_ENABLED=true` 可选，用于检查 OpenAPI `/_health` 和 `/_version`。
 - `SMOKE_RETRIES` 和 `SMOKE_DELAY` 控制重试。
 
 检查：
@@ -392,6 +446,8 @@ env-file=docker/dify.env.demo
 /_admin/
 /console/api/setup
 /console/api/init
+/openapi/v1/_health    # 仅 SMOKE_OPENAPI_ENABLED=true 时
+/openapi/v1/_version   # 仅 SMOKE_OPENAPI_ENABLED=true 时
 /_ops/health
 /_ops/system
 /_ops/metrics
@@ -416,11 +472,11 @@ HFS 范式结构契约检查脚本。
 
 - 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
-- 检查 Dockerfile 暴露 digest-capable `*_IMAGE_REF` / `BASE_IMAGE_REF`、默认 Web/API digest pair 与 `DIFY_VERSION` metadata，并拒绝旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 Dockerfile 暴露 self source refs、GHCR `*_IMAGE_REF`、原子 self release 边界与 `DIFY_VERSION` metadata，并拒绝 placeholder、旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
 - 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
-- 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz` 和 `/_ops/health`。
+- 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/health` 和 shellctl 状态。
 
 ### `scripts/static-check.sh`
 

@@ -52,6 +52,9 @@ bash -n \
   docker/with-dify-env \
   docker/with-plugin-env \
   docker/with-sandbox-env \
+  docker/run-postgres \
+  docker/run-dify-agent \
+  docker/run-shellctl \
   docker/wait-for-core \
   docker/healthcheck.sh \
   docker/postgres-backup-loop \
@@ -64,15 +67,22 @@ bash -n \
 
 require_executable scripts/admin-smoke.sh
 require_executable scripts/build.sh
+require_executable scripts/check-self-release-pins.py
 require_executable scripts/hf-space-smoke.sh
 require_executable scripts/run-demo.sh
 require_executable scripts/static-check.sh
 require_executable scripts/validate-hfs-contract.sh
+require_executable docker/run-dify-agent
+require_executable docker/run-shellctl
+require_executable docker/run-postgres
+require_executable docker/sandbox-selfcheck
 
 scripts/validate-hfs-contract.sh
 python3 -W error::SyntaxWarning -m py_compile \
   docker/ops_service.py \
   docker/admin_service.py \
+  docker/sandbox-selfcheck \
+  scripts/check-self-release-pins.py \
   docker/plugin_runtime_patches/sitecustomize.py
 python3 -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check

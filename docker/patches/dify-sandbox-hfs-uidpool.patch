@@ -1,0 +1,115 @@
+diff --git a/internal/core/runner/init.go b/internal/core/runner/init.go
+index b4be396..aa45464 100644
+--- a/internal/core/runner/init.go
++++ b/internal/core/runner/init.go
+@@ -5,0 +6 @@ import (
++	"os"
+@@ -13,0 +15,11 @@ func init() {
++	if gidOverride := strings.TrimSpace(os.Getenv("SANDBOX_RUN_GID")); gidOverride != "" {
++		gid, err := strconv.Atoi(gidOverride)
++		if err != nil {
++			slog.Error("failed to parse SANDBOX_RUN_GID", "err", err, "value", gidOverride)
++			panic(fmt.Sprintf("failed to parse SANDBOX_RUN_GID: %v", err))
++		}
++		static.SANDBOX_GROUP_ID = gid
++		slog.Info("sandbox group id overridden", "gid", gid)
++		return
++	}
++
+diff --git a/internal/core/runner/uidpool/uid_pool.go b/internal/core/runner/uidpool/uid_pool.go
+index 08d0437..ad0967d 100644
+--- a/internal/core/runner/uidpool/uid_pool.go
++++ b/internal/core/runner/uidpool/uid_pool.go
+@@ -8,0 +9,2 @@ import (
++	"strconv"
++	"strings"
+@@ -59,2 +61,4 @@ func AcquireUID(ctx context.Context) (int, error) {
+-		globalPool = NewUIDPool(10000, 11000)
+-		ensurePasswdEntries(10000, 11000)
++		min, max := uidPoolBounds()
++		globalPool = NewUIDPool(min, max)
++		ensurePasswdEntries(min, max)
++		slog.Info("sandbox UID pool initialized", "range", fmt.Sprintf("%d-%d", min, max-1))
+@@ -64,0 +69,22 @@ func AcquireUID(ctx context.Context) (int, error) {
++func uidPoolBounds() (int, int) {
++	min := envInt("SANDBOX_UID_POOL_MIN", 10000)
++	max := envInt("SANDBOX_UID_POOL_MAX", 11000)
++	if max <= min {
++		max = min + 1
++	}
++	return min, max
++}
++
++func envInt(name string, fallback int) int {
++	value := strings.TrimSpace(os.Getenv(name))
++	if value == "" {
++		return fallback
++	}
++	parsed, err := strconv.Atoi(value)
++	if err != nil {
++		slog.Warn("invalid sandbox uid pool value, using fallback", "name", name, "value", value, "fallback", fallback)
++		return fallback
++	}
++	return parsed
++}
++
+@@ -74,0 +101,3 @@ func ensurePasswdEntries(min, max int) {
++		if passwdEntryExists(i) {
++			continue
++		}
+@@ -79,0 +109,15 @@ func ensurePasswdEntries(min, max int) {
++func passwdEntryExists(uid int) bool {
++	data, err := os.ReadFile("/etc/passwd")
++	if err != nil {
++		return false
++	}
++	uidText := strconv.Itoa(uid)
++	for _, line := range strings.Split(string(data), "\n") {
++		fields := strings.Split(line, ":")
++		if len(fields) > 2 && fields[2] == uidText {
++			return true
++		}
++	}
++	return false
++}
++
+@@ -82 +126,2 @@ func ReleaseUID(uid int) {
+-		globalPool = NewUIDPool(10000, 11000)
++		min, max := uidPoolBounds()
++		globalPool = NewUIDPool(min, max)
+diff --git a/internal/static/python_syscall/syscalls_amd64.go b/internal/static/python_syscall/syscalls_amd64.go
+index c9a7df6..c6e01ca 100644
+--- a/internal/static/python_syscall/syscalls_amd64.go
++++ b/internal/static/python_syscall/syscalls_amd64.go
+@@ -8,5 +8,10 @@ const (
+-	SYS_GETRANDOM = 318
+-	SYS_RSEQ      = 334
+-	SYS_SENDMMSG  = 307
+-	SYS_STATX     = 332
+-	SYS_CLONE3    = 435
++	SYS_GETRANDOM   = 318
++	SYS_RSEQ        = 334
++	SYS_SENDMMSG    = 307
++	SYS_STATX       = 332
++	SYS_CLONE3      = 435
++	SYS_CLOSE_RANGE = 436
++	SYS_OPENAT2     = 437
++	SYS_FACCESSAT2  = 439
++	SYS_GETCPU      = 309
++	SYS_MEMBARRIER  = 324
+@@ -44,0 +50,11 @@ var ALLOW_SYSCALLS = []int{
++	// Python 3.12 on current HFS base images can issue these after the
++	// prescript installs seccomp. They are read-only/process-introspection
++	// or descriptor housekeeping calls; network syscalls remain gated by
++	// ENABLE_NETWORK below.
++	syscall.SYS_ACCESS, syscall.SYS_FACCESSAT, SYS_FACCESSAT2,
++	syscall.SYS_STAT, syscall.SYS_LSTAT, syscall.SYS_STATFS, syscall.SYS_FSTATFS,
++	syscall.SYS_OPEN, SYS_OPENAT2, syscall.SYS_READLINK, syscall.SYS_READLINKAT,
++	syscall.SYS_POLL, syscall.SYS_PPOLL, syscall.SYS_EPOLL_WAIT, syscall.SYS_EPOLL_PWAIT,
++	syscall.SYS_GETRLIMIT, syscall.SYS_GETRUSAGE, syscall.SYS_GETGID, syscall.SYS_GETEUID,
++	syscall.SYS_GETEGID, syscall.SYS_GETGROUPS, syscall.SYS_PRCTL, SYS_GETCPU,
++	syscall.SYS_UTIMENSAT, SYS_CLOSE_RANGE, SYS_MEMBARRIER,
+@@ -49,0 +66,3 @@ var ALLOW_ERROR_SYSCALLS = []int{
++	syscall.SYS_FORK,
++	syscall.SYS_VFORK,
++	syscall.SYS_EXECVE,

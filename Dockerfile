@@ -14,18 +14,28 @@
 #     --env-file docker/dify.env.demo \
 #     dify-all-in-one-hf-space:latest
 
+# Verified self release. Keep the source SHA and image-specific digests atomic;
+# never reuse one image digest for another image.
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
-ARG DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
-ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-ARG DIFY_VERSION=1.15.0
-ARG UV_VERSION=latest
+ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+ARG DIFY_SOURCE_MAIN_REF=4d010cc912753e4a0443cc01721e24d0752bce46
+ARG DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
+ARG DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:17c5a57c432e24179b42c210a5ea48a5c79f4f9844c6944f6bf33a5d0cdb9054
+ARG DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:ff5cfc41d95fb28abf13854c0c215d0680a611d53390bd012a6b83191ae68ad9
+ARG DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:45938ec2584eaf43a4d0ca6502874ac5c84dc960c60cd6067d79117aea7b58df
+ARG DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:f88faab3f5cc8aa24ca07d1cc45750aaa531c6147fd504d690bae3d6e922e93b
+ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
+ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
+ARG DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+ARG DIFY_VERSION=BlueSkyXN-dify-main-4d010cc912753e4a0443cc01721e24d0752bce46
+ARG UV_VERSION=0.11.21
 
 # -----------------------------
-# Use official prebuilt Dify Web assets
+# Use the prebuilt maintained-fork Dify Web assets
 # -----------------------------
 FROM ${DIFY_WEB_IMAGE_REF} AS web-builder
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
 RUN test -d /app/targets/next \
     && test -d /app/targets/vinext \
     && test -x /app/entrypoint.sh
@@ -33,9 +43,11 @@ RUN touch /tmp/web-builder.done
 
 
 # -----------------------------
-# Use official prebuilt Dify API source and virtualenv
+# Use the prebuilt maintained-fork Dify API source and virtualenv
 # -----------------------------
 FROM ${DIFY_API_IMAGE_REF} AS api-image
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
 COPY --from=web-builder /tmp/web-builder.done /tmp/web-builder.done
 RUN test -d /app/api/.venv \
     && test -x /app/api/.venv/bin/flask \
@@ -48,6 +60,40 @@ RUN touch /tmp/api-builder.done
 # -----------------------------
 FROM ${PLUGIN_DAEMON_IMAGE_REF} AS plugin-daemon-image
 FROM ${SANDBOX_IMAGE_REF} AS sandbox-image
+FROM ${DIFY_AGENT_IMAGE_REF} AS agent-image
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
+FROM ${DIFY_AGENT_RUNTIME_IMAGE_REF} AS agent-runtime-image
+ARG DIFY_SOURCE_MAIN_REF
+RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
+
+
+# -----------------------------
+# Build a small HFS-compatible Dify Sandbox binary patch
+# -----------------------------
+FROM golang:1.25-bookworm AS sandbox-builder
+ARG DIFY_SANDBOX_SOURCE_REF
+ARG TARGETARCH
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       ca-certificates git pkg-config gcc libseccomp-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git init \
+    && git remote add origin https://github.com/langgenius/dify-sandbox.git \
+    && git fetch --depth 1 origin "${DIFY_SANDBOX_SOURCE_REF}" \
+    && git checkout --detach FETCH_HEAD
+COPY docker/patches/dify-sandbox-hfs-uidpool.patch /tmp/dify-sandbox-hfs-uidpool.patch
+RUN git apply --unidiff-zero /tmp/dify-sandbox-hfs-uidpool.patch \
+    && go mod download \
+    && case "${TARGETARCH:-amd64}" in \
+         amd64) export GOARCH=amd64 ;; \
+         arm64) export GOARCH=arm64 ;; \
+         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+       esac \
+    && CGO_ENABLED=1 GOOS=linux go build -o internal/core/runner/python/python.so -buildmode=c-shared -ldflags="-s -w" cmd/lib/python/main.go \
+    && CGO_ENABLED=1 GOOS=linux go build -o internal/core/runner/nodejs/nodejs.so -buildmode=c-shared -ldflags="-s -w" cmd/lib/nodejs/main.go \
+    && GOOS=linux go build -o main -ldflags="-s -w" cmd/server/main.go
 
 
 # -----------------------------
@@ -57,10 +103,16 @@ FROM ${BASE_IMAGE_REF} AS runtime
 COPY --from=api-image /tmp/api-builder.done /tmp/api-builder.done
 
 ARG BASE_IMAGE_REF
+ARG DIFY_SOURCE_REPO
+ARG DIFY_SOURCE_MAIN_REF
+ARG DIFY_UPSTREAM_BASE_REF
 ARG DIFY_WEB_IMAGE_REF
 ARG DIFY_API_IMAGE_REF
+ARG DIFY_AGENT_IMAGE_REF
+ARG DIFY_AGENT_RUNTIME_IMAGE_REF
 ARG PLUGIN_DAEMON_IMAGE_REF
 ARG SANDBOX_IMAGE_REF
+ARG DIFY_SANDBOX_SOURCE_REF
 ARG DIFY_VERSION
 ARG UV_VERSION
 ARG TARGETARCH
@@ -69,10 +121,16 @@ ENV DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_DIFY_VERSION=${DIFY_VERSION}
 ENV DIFY_AIO_BUILD_UV_VERSION=${UV_VERSION}
 ENV DIFY_AIO_BUILD_BASE_IMAGE_REF=${BASE_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_SOURCE_REPO=${DIFY_SOURCE_REPO}
+ENV DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF=${DIFY_SOURCE_MAIN_REF}
+ENV DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF=${DIFY_UPSTREAM_BASE_REF}
 ENV DIFY_AIO_BUILD_DIFY_API_IMAGE_REF=${DIFY_API_IMAGE_REF}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF=${DIFY_WEB_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF=${DIFY_AGENT_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF=${DIFY_AGENT_RUNTIME_IMAGE_REF}
 ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF=${PLUGIN_DAEMON_IMAGE_REF}
 ENV DIFY_AIO_BUILD_SANDBOX_IMAGE_REF=${SANDBOX_IMAGE_REF}
+ENV DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF=${DIFY_SANDBOX_SOURCE_REF}
 ENV DIFY_AIO_BUILD_DIFY_API_IMAGE=${DIFY_API_IMAGE_REF}
 ENV DIFY_AIO_BUILD_DIFY_WEB_IMAGE=${DIFY_WEB_IMAGE_REF}
 ENV DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE=${PLUGIN_DAEMON_IMAGE_REF}
@@ -99,8 +157,9 @@ ENV TIKTOKEN_CACHE_DIR=/app/api/.tiktoken_cache
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ca-certificates curl gnupg lsb-release git \
-       openssl tini procps netcat-openbsd \
+       openssl tini procps netcat-openbsd tmux util-linux \
        nginx supervisor redis-server \
+       libcap2-bin \
        libgmp-dev libmpfr-dev libmpc-dev \
        libseccomp2 libseccomp-dev \
        libmagic1 media-types fonts-noto-cjk \
@@ -142,6 +201,39 @@ ENV HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub
 # script shebangs inside .venv point there.
 COPY --from=api-image --chown=user:user /app/api /app/api
 
+# The self release supplies the Agent Python environment and its Go runtime as
+# independent, digest-pinned artifacts. Do not overlay individual API files.
+COPY --from=agent-image --chown=user:user /app/api/.venv /opt/dify-agent/.venv
+COPY --from=agent-runtime-image /usr/local/bin/shellctl /usr/local/bin/shellctl
+COPY --from=agent-runtime-image /usr/local/bin/shellctl-sanitize-pty /usr/local/bin/shellctl-sanitize-pty
+COPY --from=agent-runtime-image /usr/local/bin/shellctl-runner-exit /usr/local/bin/shellctl-runner-exit
+COPY --from=agent-runtime-image /usr/local/bin/shellctl-runner /usr/local/bin/shellctl-runner
+COPY --from=agent-runtime-image /usr/local/bin/dify-agent /usr/local/bin/dify-agent
+RUN set -eu; \
+    /app/api/.venv/bin/python -c 'import flask; from importlib.metadata import version; assert version("graphon") == "0.6.0"' \
+    && /opt/dify-agent/.venv/bin/python -c 'import dify_agent.server.app; import shellctl.client; from importlib.metadata import version; assert version("graphon") == "0.5.2"' \
+    && /app/api/.venv/bin/python -c 'import sys; assert sys.prefix == "/app/api/.venv", sys.prefix' \
+    && /opt/dify-agent/.venv/bin/python -c 'import sys; assert sys.prefix == "/opt/dify-agent/.venv", sys.prefix' \
+    && /usr/local/bin/shellctl serve --help >/dev/null \
+    && /usr/local/bin/dify-agent --help >/dev/null \
+    && test -x /usr/local/bin/shellctl-runner \
+    && test -x /usr/local/bin/shellctl-sanitize-pty \
+    && test -x /usr/local/bin/shellctl-runner-exit \
+    && /opt/dify-agent/.venv/bin/python -m uvicorn --help >/dev/null \
+    && api_pip_check=/tmp/dify-api-uv-pip-check.txt \
+    && if uv pip check --python /app/api/.venv/bin/python >"${api_pip_check}" 2>&1; then \
+         cat "${api_pip_check}"; \
+       else \
+         cat "${api_pip_check}"; \
+         test "$(grep -c '^The package `' "${api_pip_check}")" -eq 3; \
+         grep -Fq 'The package `alibabacloud-tea-openapi` requires `cryptography' "${api_pip_check}"; \
+         grep -Fq 'The package `clickzetta-connector-python` requires `pyarrow' "${api_pip_check}"; \
+         grep -Fq 'The package `msal` requires `cryptography' "${api_pip_check}"; \
+       fi \
+    && rm -f "${api_pip_check}" \
+    && uv pip check --python /opt/dify-agent/.venv/bin/python \
+    && chown -R user:user /opt/dify-agent
+
 # Download NLTK/tiktoken caches during image build, mirroring Dify's official API image behavior.
 RUN mkdir -p /usr/local/share/nltk_data ${TIKTOKEN_CACHE_DIR} \
     && python -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger'); nltk.download('stopwords')" \
@@ -154,9 +246,10 @@ RUN mkdir -p /app
 COPY --from=web-builder --chown=user:user /app/targets/ /app/targets/
 COPY --from=web-builder --chown=user:user --chmod=755 /app/entrypoint.sh /app/entrypoint.sh
 
-# Copy official Plugin Daemon and Sandbox runtime artifacts.
+# Copy official Plugin Daemon and Sandbox runtime artifacts. The Sandbox server
+# uses the source-pinned HFS UID/GID compatibility patch.
 COPY --from=plugin-daemon-image --chown=user:user /app /opt/dify/plugin-daemon
-COPY --from=sandbox-image /main /opt/dify/sandbox/main
+COPY --from=sandbox-builder /src/main /opt/dify/sandbox/main
 COPY --from=sandbox-image --chown=user:user /conf /conf
 COPY --from=sandbox-image --chown=user:user /dependencies /dependencies
 COPY docker/sandbox-python-requirements.txt /dependencies/python-requirements.txt
@@ -172,6 +265,10 @@ COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/plugin_runtime_patches /opt/dify/plugin-runtime-patches
 COPY docker/with-sandbox-env /usr/local/bin/with-sandbox-env
+COPY docker/run-postgres /usr/local/bin/run-postgres
+COPY docker/run-dify-agent /usr/local/bin/run-dify-agent
+COPY docker/run-shellctl /usr/local/bin/run-shellctl
+COPY docker/sandbox-selfcheck /usr/local/bin/dify-sandbox-selfcheck
 COPY docker/postgres-backup-loop /usr/local/bin/postgres-backup-loop
 COPY docker/ops_service.py /usr/local/bin/dify-ops-service
 COPY docker/admin_service.py /usr/local/bin/dify-admin-service
@@ -180,11 +277,19 @@ COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/healthcheck.sh /usr/local/bin/dify-demo-healthcheck
 COPY docker/wait-for-core /usr/local/bin/wait-for-core
 
-RUN chmod +x \
+RUN cp "$(readlink -f /usr/local/bin/python3)" /opt/dify/sandbox/python3-sandbox \
+    && chmod 755 /opt/dify/sandbox/python3-sandbox \
+    && setcap cap_sys_chroot,cap_setuid,cap_setgid+ep /opt/dify/sandbox/python3-sandbox \
+    && getcap /opt/dify/sandbox/python3-sandbox \
+    && chmod +x \
       /usr/local/bin/dify-all-in-one-entrypoint \
       /usr/local/bin/with-dify-env \
       /usr/local/bin/with-plugin-env \
       /usr/local/bin/with-sandbox-env \
+      /usr/local/bin/run-postgres \
+      /usr/local/bin/run-dify-agent \
+      /usr/local/bin/run-shellctl \
+      /usr/local/bin/dify-sandbox-selfcheck \
       /usr/local/bin/postgres-backup-loop \
       /usr/local/bin/dify-ops-service \
       /usr/local/bin/dify-admin-service \
@@ -195,6 +300,7 @@ RUN chmod +x \
       /opt/dify/plugin-daemon/commandline \
       /opt/dify/plugin-daemon/main \
       /opt/dify/sandbox/main \
+      /opt/dify/sandbox/python3-sandbox \
     && test -x /opt/dify/plugin-daemon/commandline \
     && mkdir -p \
       /data/postgres /data/redis /data/dify/storage /data/plugin_daemon /data/config /data/logs /data/run/postgresql \

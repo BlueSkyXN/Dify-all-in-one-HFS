@@ -30,6 +30,7 @@
 | Plugin 存储 | `/data/plugin_daemon`，插件包、已安装插件和 assets 指向 `/persist`，工作目录默认在 `/tmp/dify-aio` | 插件和 runtime relaunch 所需包保留，scratch/cache 不占 bucket |
 | Sandbox 出网 | 默认关闭 | 演示环境更安全 |
 | Marketplace | 默认开启 | 便于 demo/plugin 验证；公开或稳定演示环境可按需关闭以减少外部依赖 |
+| Agent Runtime | `dify-agent` backend 与 loopback `shellctl` shell layer 默认开启 | main 已把 Agent v2 / dify-agent 纳入主链路；本仓库提供 HFS 可观测的基础 backend 和 shell layer，不把它写成完整 Agent/Skills 验收完成态 |
 | 运维入口 | 只读 `ops-service` + 默认关闭的 `admin-service` | 诊断和受控管理分离 |
 
 ## 目录结构
@@ -50,6 +51,7 @@
 |   |-- nginx.conf             # 外部路由和 access log
 |   |-- ops_service.py         # 只读运维诊断 HTTP 服务
 |   |-- admin_service.py       # 默认关闭的受控管理 HTTP 服务
+|   |-- run-postgres           # 本地/外部 PostgreSQL 模式包装器
 |   |-- postgres-backup-loop   # bucket-lite PostgreSQL dump 备份循环
 |   |-- with-dify-env          # Dify API/Web/Worker 环境包装器
 |   |-- with-plugin-env        # Plugin Daemon 环境包装器
@@ -69,18 +71,24 @@
 开发默认值来自 `Dockerfile`：
 
 ```text
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_VERSION=1.15.0
-UV_VERSION=latest
+DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+DIFY_SOURCE_MAIN_REF=4d010cc912753e4a0443cc01721e24d0752bce46
+DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
+DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:ff5cfc41d95fb28abf13854c0c215d0680a611d53390bd012a6b83191ae68ad9
+DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:17c5a57c432e24179b42c210a5ea48a5c79f4f9844c6944f6bf33a5d0cdb9054
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:45938ec2584eaf43a4d0ca6502874ac5c84dc960c60cd6067d79117aea7b58df
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:f88faab3f5cc8aa24ca07d1cc45750aaa531c6147fd504d690bae3d6e922e93b
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
+DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+DIFY_VERSION=BlueSkyXN-dify-main-4d010cc912753e4a0443cc01721e24d0752bce46
+UV_VERSION=0.11.21
 PostgreSQL: 15 + pgvector
 Node.js: 22.x
 ```
 
-Web/API 默认值固定为经过兼容性确认的 `1.15.0` digest pair；Plugin Daemon、Sandbox、base image 和 uv 仍保留现有开发默认值。发布或长期演示仍应记录全部 image ref 并固定剩余可移动输入。`DIFY_VERSION=1.15.0` 只作为 metadata 描述该 Web/API pair，真实镜像内容始终以两个 digest ref 为准。
+API、Web、Agent Python venv 与 Agent Go runtime 均来自 `DIFY_SOURCE_REPO@DIFY_SOURCE_MAIN_REF` 构建的同一 self GHCR release；四个 image-specific digest 已由 self merge SHA 对应的 Actions artifact 回读。Agent venv 从 Agent image 的 `/app/api/.venv` 复制到 `/opt/dify-agent/.venv`，不修改 Dify API 的 `/app/api/.venv`；runtime 不再对 API 做 targeted source overlay。`DIFY_UPSTREAM_BASE_REF` 只记录已合入 self fork 的 upstream commit，`DIFY_VERSION` 仅是运行时 metadata。
 
 ## 运行状态入口
 

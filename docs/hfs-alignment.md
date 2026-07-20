@@ -32,7 +32,7 @@ Alignment manifest: hfs-dev.toml
 - `README.md` 顶部包含 Hugging Face Space metadata，说明 repo root 是 Space root。
 - `Dockerfile` 用多阶段 `FROM` 引入 `langgenius/dify-web`、`langgenius/dify-api`、Plugin Daemon 和 Sandbox 镜像资产。
 - `hfs-dev.toml` 声明 Pattern A、image-assembly、repo-root Space root 和发布态 pin surface。
-- `docs/architecture.md` 中的组件来源说明：本仓库只维护 runtime glue，Dify 官方镜像资产和系统依赖是构建输入。
+- `docs/architecture.md` 中的组件来源说明：本仓库维护 runtime glue，自维护 Dify GHCR 镜像、独立官方 Plugin/Sandbox 资产和系统依赖都是构建输入。
 - `docker/` 承载 entrypoint、Nginx、Supervisor、env defaults、healthcheck、ops-service 和 admin-service。
 
 所以它不是自研产品仓的 `cloud/hfs/` adapter，而是第三方/上游程序的 HFS port repository。
@@ -96,40 +96,43 @@ cloud/hfs/Dockerfile
 
 `hfs-dev.toml` v2 使用结构化 `[[release_pins]]` 描述 release pin contract，并已对齐 `Dockerfile` 真实可消费的 build args。每个 pin 都声明 `name`、`type`、`source`、`required_for_release` 和 `dev_mutable_default_allowed`；image ref pin 还声明 `release_requires_digest=true`。
 
-所有上游镜像选择都通过完整 image ref 输入完成：
+所有镜像和 source provenance 都通过独立输入完成：
 
 ```text
 BASE_IMAGE_REF
+DIFY_SOURCE_REPO
+DIFY_SOURCE_MAIN_REF
+DIFY_UPSTREAM_BASE_REF
 DIFY_WEB_IMAGE_REF
 DIFY_API_IMAGE_REF
+DIFY_AGENT_IMAGE_REF
+DIFY_AGENT_RUNTIME_IMAGE_REF
 PLUGIN_DAEMON_IMAGE_REF
 SANDBOX_IMAGE_REF
+DIFY_SANDBOX_SOURCE_REF
 ```
 
-当前 Web/API 默认值固定为兼容的 `1.15.0` digest pair；其他上游输入保留现有开发默认值：
+当前 self runtime contract 使用已验证的 GHCR image-specific digest：
 
 ```text
 BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:4f526395772321f0130eeb335339317dfefeb9207b4187306f2d12e2fc6ec106
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:c1712c50f27c9dfd31c5be77a9a03f30c464fc6983287eefd4a6a98376c70c24
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon:main-local
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox:latest
-UV_VERSION=latest
-DIFY_VERSION=1.15.0
+DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
+DIFY_SOURCE_MAIN_REF=4d010cc912753e4a0443cc01721e24d0752bce46
+DIFY_UPSTREAM_BASE_REF=ef0115d34030eb496a1bc761b842e3bcd8f5598d
+DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:17c5a57c432e24179b42c210a5ea48a5c79f4f9844c6944f6bf33a5d0cdb9054
+DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:ff5cfc41d95fb28abf13854c0c215d0680a611d53390bd012a6b83191ae68ad9
+DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:45938ec2584eaf43a4d0ca6502874ac5c84dc960c60cd6067d79117aea7b58df
+DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:f88faab3f5cc8aa24ca07d1cc45750aaa531c6147fd504d690bae3d6e922e93b
+PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
+SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
+DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+UV_VERSION=0.11.21
+DIFY_VERSION=BlueSkyXN-dify-main-4d010cc912753e4a0443cc01721e24d0752bce46
 ```
 
-Web/API 默认选择已经可复现，但完整发布仍必须记录全部输入，并把其余 image ref 与 uv 固定后再构建：
+self source revision 和四个 image-specific digest 已由同一 Actions release artifact 验证，使 API、Web、Agent venv 与 Agent Go runtime 保持同一 release 边界。更新时必须继续原子替换这些 pin。`DIFY_UPSTREAM_BASE_REF` 只记录已合入 self fork 的 upstream commit，不参与 `FROM`。Sandbox 的 `/conf` 和 `/dependencies` 仍来自 `SANDBOX_IMAGE_REF`，server binary 仍来自 source-pinned HFS patch build；Agent 的两个 venv 必须保持隔离。
 
-```text
-BASE_IMAGE_REF=python:3.12-slim-bookworm@sha256:...
-DIFY_WEB_IMAGE_REF=langgenius/dify-web@sha256:...
-DIFY_API_IMAGE_REF=langgenius/dify-api@sha256:...
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:...
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:...
-UV_VERSION=<pinned-version>
-```
-
-`DIFY_VERSION=1.15.0` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改 `DIFY_VERSION` 不会改变真实 Dify Web/API 镜像来源，两个 digest ref 才是事实源。
+`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改它不会改变 self GHCR artifacts。Sandbox server binary 来自 `DIFY_SANDBOX_SOURCE_REF` 加本仓库 patch，`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`，并且必须通过启动期 `sandbox_exec` 真实执行自检后才能进入可送审状态。这个自检不只看 marker，还要求 sandbox response 的 `exit_code=0` 且 `error=""`。
 
 ## 对其他 HFS 项目的迁移规则
 

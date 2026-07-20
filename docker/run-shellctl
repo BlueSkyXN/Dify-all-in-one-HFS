@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+is_true() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if ! is_true "${DIFY_AGENT_ENABLED:-false}"; then
+  printf '[shellctl] DIFY_AGENT_ENABLED is false; keeping supervisor program idle.\n'
+  exec sleep infinity
+fi
+
+if ! is_true "${AGENT_SHELL_ENABLED:-false}"; then
+  printf '[shellctl] AGENT_SHELL_ENABLED is false; keeping supervisor program idle.\n'
+  exec sleep infinity
+fi
+
+shellctl_binary=${SHELLCTL_BINARY:-/usr/local/bin/shellctl}
+if [ ! -x "$shellctl_binary" ]; then
+  printf '[shellctl] Go shellctl binary is missing: %s\n' "$shellctl_binary" >&2
+  exit 1
+fi
+shellctl_dir=$(dirname "$shellctl_binary")
+PATH="${shellctl_dir}:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+export PATH
+export SHELLCTL_AUTH_TOKEN=${SHELLCTL_AUTH_TOKEN:-${DIFY_AGENT_SHELLCTL_AUTH_TOKEN:-}}
+
+state_dir=${SHELLCTL_STATE_DIR:-${RUNTIME_ROOT:-/tmp/dify-aio}/shellctl}
+mkdir -p "$state_dir"
+export SHELLCTL_STATE_DIR="$state_dir"
+
+exec "$shellctl_binary" serve \
+  --listen 127.0.0.1:5004 \
+  --state-dir "$state_dir"

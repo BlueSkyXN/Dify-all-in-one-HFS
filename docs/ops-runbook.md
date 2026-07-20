@@ -36,6 +36,7 @@ nginx:7860
       |-- Redis
       |-- Plugin Daemon:5002
       |-- Sandbox:8194
+      |-- Dify Agent backend:5005 (enabled by default)
       |-- Dify Worker
       +-- Dify Beat
 ```
@@ -99,6 +100,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 /_admin/api/actions/restart-service
 /_admin/api/actions/reload-nginx
 /_admin/api/actions/run-health-checks
+/_admin/api/actions/force-postgres-backup
 /_admin/api/actions/ensure-app-api-token
 /_admin/api/actions/ensure-plugin-installed-from-cache
 /_admin/api/actions/set-provider-model-read-timeout
@@ -133,6 +135,12 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"service":"dify-api","confirm":true}' \
   https://your-space.hf.space/_admin/api/actions/restart-service
+
+curl -X POST \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirm":true}' \
+  https://your-space.hf.space/_admin/api/actions/force-postgres-backup
 
 curl -X POST \
   -H "X-Admin-Token: $ADMIN_TOKEN" \
@@ -214,7 +222,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" https://your-space.hf.space/_ops/version
 
 ```text
 version.dify_version
-version.build.base_image_ref
+version.build.upstream_base_ref
 version.build.dify_api_image_ref
 version.build.dify_web_image_ref
 version.build.plugin_daemon_image_ref
@@ -225,7 +233,7 @@ version.sandbox.requirements.sha256
 version.sandbox.requirements.package_count
 ```
 
-这些字段用于判断 live 镜像使用的上游 image 来源和 Sandbox requirements 摘要。它们不替代 Docker build log，也不证明 Hugging Face runtime 已接管目标 commit；发布时仍需对照 `hf spaces info` 的 `runtime.raw.sha`。
+这些字段用于判断 live 镜像使用的上游 image 来源和 Sandbox requirements 摘要。`version.sandbox.requirements.package_count`、`sha256` 和 `packages` 只来自 `/dependencies/python-requirements.txt` 文件读取，不证明这些包已安装、已进入 `/var/sandbox/sandbox-python`，也不证明 Code Node 可 import。它们不替代 Docker build log、真实 Sandbox import smoke，也不证明 Hugging Face runtime 已接管目标 commit；发布时仍需对照 `hf spaces info` 的 `runtime.raw.sha`。
 
 ## 健康检查语义
 
@@ -235,6 +243,7 @@ version.sandbox.requirements.package_count
 postgres            pg_isready
 redis               redis-cli ping
 plugin-daemon-tcp   TCP 127.0.0.1:5002
+shellctl-tcp        TCP 127.0.0.1:5004 when Agent shell layer is enabled
 sandbox-tcp         TCP 127.0.0.1:8194
 dify-api-health     HTTP 127.0.0.1:5001/health
 dify-web            HTTP 127.0.0.1:3000/apps
@@ -248,6 +257,7 @@ dify-init           HTTP 127.0.0.1:5001/console/api/init
 - Supervisor XML-RPC 进程状态
 - Dify / Space 版本摘要
 - 每个探针的耗时、HTTP 状态和短样本
+- Agent backend 与 shellctl 状态；shellctl 只在 `DIFY_AGENT_ENABLED=true` 且 `AGENT_SHELL_ENABLED=true` 时要求为 ok
 
 迁移到其他程序时，可以设置 `OPS_DEFAULT_CHECKS_ENABLED=false`，再用 `OPS_EXTRA_HTTP_CHECKS_JSON` 和 `OPS_EXTRA_TCP_CHECKS_JSON` 添加目标程序自己的只读探针。自定义 HTTP/TCP 探针最多执行 32 个；HTTP 探针可以用 `expected_status` 明确要求返回码。`/_ops` 不支持自定义 command 探针；需要执行命令的受控操作必须放入 `/_admin` 白名单 action。
 
@@ -273,7 +283,18 @@ curl -H "X-Ops-Token: $OPS_TOKEN" \
   https://your-space.hf.space/_ops/persistence
 ```
 
-重点看 `persist_active` 是否为 `bucket`、`paths.plugin_storage_root.path` 是否为真实 `/persist/plugin_daemon`、`paths.plugin_installed.is_symlink` 是否为 `false`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 和 `plugin_identifiers[].installed_exists` 是否都为 `true`。`missing_package_files`、`missing_installed_files`、`missing_runtime_states` 和 `plugin_storage_layout_issues` 都应为空。再看 `plugin_runtime_state.checked`、`plugin_runtime_state.identifiers[].state_count` 和 `plugin_runtime_state.identifiers[].log.ready`：Redis `plugin_state` 是 cluster routing 视图，单容器本机 runtime 已 ready 时，`state_count` 可能不是唯一证据。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。如果 package/installed 文件缺失，或日志没有 `local runtime ready`，再按下方 Plugin Runtime Not Found 的卸载重装路径修复。
+重点看 `persist_active` 是否为 `bucket`、`paths.plugin_storage_root.path` 是否为真实 `/persist/plugin_daemon`、`paths.plugin_installed.is_symlink` 是否为 `false`、`paths.plugin_package_cache.real_path` 是否指向 `/persist/plugin_daemon/plugin_packages`、`plugin_identifiers[].package_exists` 和 `plugin_identifiers[].installed_exists` 是否都为 `true`。`missing_package_files`、`missing_installed_files`、`missing_runtime_states` 和 `plugin_storage_layout_issues` 都应为空。再看 `plugin_runtime_state.checked`、`plugin_runtime_state.identifiers[].state_count` 和 `plugin_runtime_state.identifiers[].log.ready`：Redis `plugin_state` 是 cluster routing 视图，单容器本机 runtime 已 ready 时，`state_count` 可能不是唯一证据。`plugin_database.api_plugin_references` 会同时列出 Dify 主库里仍引用插件式 provider name 的配置记录，用于解释为什么页面配置还可见。`postgres_backup.safe_to_restart` 是重启前的只读建议值；如果为 `false`，先看 `postgres_backup.safe_to_restart_reason`、`latest_age_seconds` 和 `latest_error`，必要时通过 `/_admin/api/actions/force-postgres-backup` 生成一次最新 dump 再重启。如果 package/installed 文件缺失，或日志没有 `local runtime ready`，再按下方 Plugin Runtime Not Found 的卸载重装路径修复。
+
+`/_ops/provider-models` 返回只读模型/provider 绑定摘要，用于排查“页面已有模型配置但真实 LLM 调用失败”的情况：
+
+```bash
+curl -H "X-Ops-Token: $OPS_TOKEN" \
+  "https://your-space.hf.space/_ops/provider-models?limit=200&recent_limit=50"
+```
+
+该端点只运行固定 SQL，覆盖 `tenant_default_models`、`provider_models`、`provider_model_settings`、`provider_model_credentials`、`provider_credentials`、`load_balancing_model_configs`、`apps` / `app_model_configs`、近期 conversation 的模型绑定、app service `api_tokens` 摘要，以及 workflow graph 中的模型绑定摘要。`app_api_readiness` 是从这些只读 section 派生出的聚合视图，用 `api_token_count`、`ready_for_service_api_auth`、`ready_for_llm_dispatch` 和 `issue_codes` 标出常见阻断，例如 `app_api_token_missing`、`provider_model_missing` 或 `workflow_model_binding_missing`。`encrypted_config` 原文不会返回；响应只包含 hash、key 结构、secret presence boolean、URL host/path hash，以及 `model`、`mode`、`timeout`、`max_tokens` 等 allowlist 字段。`api_tokens.token` 原文也不会返回，只提供 prefix、length 和 sha256，用于核对本地 app key 是否已经和 live Dify 漂移。workflow graph 原文、prompt、变量和 secret 不返回，只提取 LLM-like node 的 provider/name/mode 与安全参数摘要。URL path 不原文返回，因为 Cloudflare Gateway 等路径可能包含 account、tenant 或 routing 标识。
+
+`plugin_runtime_readiness` 会额外把 plugin 数据库、package cache、installed bucket、Redis runtime state 和 Plugin Daemon local-runtime 日志归一成只读摘要。对 plugin provider，例如 `langgenius/openai_api_compatible/...`，`app_api_readiness.ready_for_llm_dispatch` 也会考虑 `plugin_installed_missing`、`plugin_runtime_missing`、`plugin_metadata_missing` 和 `plugin_runtime_unverified`，避免模型表存在但 runtime/schema 不可用时出现假绿。
 
 `/_ops/provider-models` 返回只读模型/provider 绑定摘要，用于排查“页面已有模型配置但真实 LLM 调用失败”的情况：
 
@@ -518,9 +539,11 @@ no plugin states found in redis hashed_plugin_id=<hash>
 
 本工程的 bucket-lite 布局会持久化 `/data/plugin_daemon/plugin_packages` 到 `/persist/plugin_daemon/plugin_packages`，并持久化 `/data/plugin_daemon/plugin` 到 `/persist/plugin_daemon/plugin`。前者是 package cache，后者是 local runtime watchdog 启动时枚举的 installed bucket。bucket-lite 下 Plugin Daemon 的 `PLUGIN_STORAGE_LOCAL_ROOT` 默认会指向真实目录 `/persist/plugin_daemon`，而不是 `/data/plugin_daemon`；这是为了避免 Go `filepath.WalkDir` 在扫描 `/data/plugin_daemon/plugin` 这个 symlink root 时不下钻，导致重建后 installed 文件明明存在但 runtime 不会 relaunch。local package upload 会先写 package bucket，后续安装流程再把包复制到 installed bucket、写安装元数据并启动 runtime。仅重新上传同一个 `.difypkg` 不一定修复已损坏的安装状态，因为数据库可能仍认为插件已安装，从而跳过完整 runtime install / launch 流程。
 
+插件 Python 环境初始化还依赖 uv cache。`with-plugin-env` 会把 `UV_CACHE_DIR` 固定到 `PLUGIN_UV_CACHE_DIR`，默认 `${RUNTIME_ROOT}/plugin-uv-cache`，并在 Plugin Daemon 启动前确认目录可写。如果日志出现 `failed to initialize cache at /home/user/.cache/uv`、`sdists-v9/.git` 或 `Permission denied`，说明进程仍在回落到不可控的 home cache，优先检查当前镜像是否包含 `PLUGIN_UV_CACHE_DIR` 修复，而不是只重试安装插件。
+
 推荐恢复路径：
 
-1. 确认使用同一个插件包，例如 `langgenius/openai_api_compatible:0.0.49@...` 对应的 `.difypkg`。
+1. 确认使用同一个插件包，例如 `langgenius/openai_api_compatible:<version>@<checksum>` 对应的 `.difypkg`。
 2. 如果刚部署了 storage-root 修复，先用 `/_admin/api/actions/restart-service` 重启 `plugin-daemon`，等待日志出现 `local runtime starting` / `local runtime ready`。
 3. 如果 `missing_installed_files` 非空且对应 `package_exists=true`，优先用 `/_admin/api/actions/ensure-plugin-installed-from-cache` 从 package cache 恢复 installed bucket，再等待 `plugin-daemon` 重启。
 4. 如果 package cache 也缺失，或恢复后仍没有 `local runtime ready` 证据，再在 Dify 插件页面卸载损坏的插件。
