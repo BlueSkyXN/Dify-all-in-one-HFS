@@ -86,7 +86,7 @@ cloud/hfs/Dockerfile
 | Multi-service reverse proxy | `docker/nginx.conf` 把 Web/API/Plugin/Ops/Admin 汇聚到单一入口 |
 | Runtime glue location | 多进程 glue 收在 `docker/` |
 | `/data` boundary | runtime state 经 `/data` 和 `/persist` 管理，不把 generated state 放进 repo |
-| Secrets boundary | `.env.local`、`*.secret`、`*.key`、`*.pem` 被忽略或排除构建上下文 |
+| Secrets boundary | `.env.local`、`.env.*.local`、`*.secret`、`*.key`、`*.pem` 被忽略或排除构建上下文 |
 | `/_ops` boundary | ops-service 是只读诊断面 |
 | `/_admin` boundary | admin-service 默认关闭，写操作有独立 token、CSRF/confirm、审计和白名单 |
 | Static gate | `.github/workflows/static-check.yml` 调用 `scripts/static-check.sh` |

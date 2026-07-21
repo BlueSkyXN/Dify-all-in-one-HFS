@@ -7,16 +7,19 @@ import fnmatch
 import hashlib
 import hmac
 import html
+import http.client
 import json
 import mimetypes
 import os
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import time
 import urllib.parse
 import uuid
+import xmlrpc.client
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from http.cookies import SimpleCookie
@@ -28,6 +31,7 @@ from typing import Any
 
 STARTED_AT = time.time()
 SUPERVISOR_CONFIG = "/etc/supervisor/conf.d/supervisord.conf"
+SUPERVISOR_SOCKET = "/data/run/supervisor.sock"
 SESSION_COOKIE = "dify_admin_session"
 MAX_JSON_BYTES = 1024 * 1024
 MAX_TEXT_READ_BYTES = 1024 * 1024
@@ -35,6 +39,7 @@ MAX_AUDIT_EVENTS = 500
 LOGIN_FAILURES_BY_IP: dict[str, deque[float]] = defaultdict(deque)
 LOGIN_FAILURES_GLOBAL: deque[float] = deque()
 LOGIN_RATE_LOCK = Lock()
+EXPECTED_EXITED_PROGRAMS = {"sandbox-selfcheck"}
 
 ALLOWED_RESTART_SERVICES = [
     "dify-api",
@@ -296,23 +301,79 @@ def run_cmd(args: list[str], timeout: float = 10.0, input_text: str | None = Non
         }
 
 
+class UnixSocketHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, socket_path: str, timeout: float = 3.0) -> None:
+        super().__init__("localhost", timeout=timeout)
+        self.socket_path = socket_path
+
+    def connect(self) -> None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self.socket_path)
+        self.sock = sock
+
+
+class UnixSocketTransport(xmlrpc.client.Transport):
+    def __init__(self, socket_path: str, timeout: float = 3.0) -> None:
+        super().__init__()
+        self.socket_path = socket_path
+        self.timeout = timeout
+
+    def make_connection(self, host: str) -> UnixSocketHTTPConnection:
+        return UnixSocketHTTPConnection(self.socket_path, timeout=self.timeout)
+
+
+def supervisor_process_info() -> list[dict[str, Any]]:
+    proxy = xmlrpc.client.ServerProxy(
+        "http://localhost/RPC2",
+        transport=UnixSocketTransport(SUPERVISOR_SOCKET, timeout=3.0),
+        allow_none=True,
+    )
+    return proxy.supervisor.getAllProcessInfo()
+
+
 def supervisor_status() -> dict[str, Any]:
-    result = run_cmd(["supervisorctl", "-c", SUPERVISOR_CONFIG, "status"], timeout=3.0)
+    started = time.time()
+    try:
+        info = supervisor_process_info()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": truncate_text(str(exc)),
+            "duration_ms": round((time.time() - started) * 1000),
+            "programs": [],
+            "socket": SUPERVISOR_SOCKET,
+        }
+
     programs = []
-    for line in result["stdout"].splitlines():
-        parts = line.split(None, 2)
-        if len(parts) >= 2:
-            programs.append(
-                {
-                    "name": parts[0],
-                    "state": parts[1],
-                    "description": parts[2] if len(parts) > 2 else "",
-                    "ok": parts[1] == "RUNNING",
-                }
-            )
-    result["programs"] = programs
-    result["ok"] = result["ok"] and all(program["ok"] for program in programs)
-    return result
+    for item in info:
+        state = str(item.get("statename", "UNKNOWN"))
+        name = str(item.get("name", ""))
+        group = str(item.get("group", ""))
+        exitstatus = item.get("exitstatus")
+        ok = state == "RUNNING" or (
+            name in EXPECTED_EXITED_PROGRAMS and state == "EXITED" and exitstatus == 0
+        )
+        programs.append(
+            {
+                "name": f"{group}:{name}" if group and group != name else name,
+                "state": state,
+                "exitstatus": exitstatus,
+                "description": str(item.get("description", "")),
+                "ok": ok,
+            }
+        )
+    return {
+        "ok": bool(programs) and all(program["ok"] for program in programs),
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "duration_ms": round((time.time() - started) * 1000),
+        "programs": programs,
+        "socket": SUPERVISOR_SOCKET,
+    }
 
 
 def status_payload(auth: AuthContext) -> dict[str, Any]:
