@@ -74,7 +74,7 @@ DIFY_VERSION
 
 ### `.dockerignore`
 
-控制 Docker build context，避免把无关本地文件传入构建。
+控制 Docker build context，避免把无关本地文件和 `.env.*.local` 这类本地 secret ledger 传入构建。
 
 ### `hfs-dev.toml`
 
@@ -475,7 +475,7 @@ HFS 范式结构契约检查脚本。
 - 检查 Dockerfile 暴露 self source refs、GHCR `*_IMAGE_REF`、原子 self release 边界与 `DIFY_VERSION` metadata，并拒绝 placeholder、旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
 - 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
-- 检查 `.dockerignore` 排除 `local/`、`.env.local` 和常见 secret 文件。
+- 检查 `.dockerignore` 排除 `local/`、`.env.local`、`.env.*.local` 和常见 secret 文件。
 - 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/health` 和 shellctl 状态。
 
 ### `scripts/static-check.sh`

@@ -8,6 +8,7 @@ README.hf-space.md
 local/
 **/local/
 .env.local
+.env.*.local
 *.secret
 *.key
 *.pem

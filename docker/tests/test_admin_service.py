@@ -175,6 +175,72 @@ class AdminServicePureFunctionTests(unittest.TestCase):
             "127.0.0.1",
         )
 
+    def test_supervisor_status_accepts_successful_expected_exit(self):
+        original_process_info = admin_service.supervisor_process_info
+        admin_service.supervisor_process_info = lambda: [
+            {
+                "name": "sandbox-selfcheck",
+                "group": "sandbox-selfcheck",
+                "statename": "EXITED",
+                "exitstatus": 0,
+                "description": "Jul 21 12:00 AM",
+            },
+            {
+                "name": "nginx",
+                "group": "nginx",
+                "statename": "RUNNING",
+                "exitstatus": 0,
+                "description": "pid 100, uptime 0:01:00",
+            },
+        ]
+        try:
+            status = admin_service.supervisor_status()
+        finally:
+            admin_service.supervisor_process_info = original_process_info
+
+        self.assertTrue(status["ok"])
+        self.assertTrue(status["programs"][0]["ok"])
+        self.assertEqual(status["programs"][0]["exitstatus"], 0)
+        self.assertTrue(status["programs"][1]["ok"])
+
+    def test_supervisor_status_rejects_failed_expected_exit(self):
+        original_process_info = admin_service.supervisor_process_info
+        admin_service.supervisor_process_info = lambda: [
+            {
+                "name": "sandbox-selfcheck",
+                "group": "sandbox-selfcheck",
+                "statename": "EXITED",
+                "exitstatus": 1,
+                "description": "Jul 21 12:00 AM",
+            }
+        ]
+        try:
+            status = admin_service.supervisor_status()
+        finally:
+            admin_service.supervisor_process_info = original_process_info
+
+        self.assertFalse(status["ok"])
+        self.assertFalse(status["programs"][0]["ok"])
+
+    def test_supervisor_status_rejects_unexpected_successful_exit(self):
+        original_process_info = admin_service.supervisor_process_info
+        admin_service.supervisor_process_info = lambda: [
+            {
+                "name": "nginx",
+                "group": "nginx",
+                "statename": "EXITED",
+                "exitstatus": 0,
+                "description": "Jul 21 12:00 AM",
+            }
+        ]
+        try:
+            status = admin_service.supervisor_status()
+        finally:
+            admin_service.supervisor_process_info = original_process_info
+
+        self.assertFalse(status["ok"])
+        self.assertFalse(status["programs"][0]["ok"])
+
     def test_force_postgres_backup_requires_confirm(self):
         with self.assertRaises(admin_service.AdminError):
             admin_service.force_postgres_backup({}, admin_service.AuthContext(kind="token", csrf_token="1"))

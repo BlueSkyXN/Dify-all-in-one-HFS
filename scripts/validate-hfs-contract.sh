@@ -453,6 +453,8 @@ require_grep '^local/$|^\*\*/local/$' .dockerignore \
   ".dockerignore must exclude local/ from Docker build context"
 require_grep '^\.env\.local$' .dockerignore \
   ".dockerignore must exclude .env.local"
+require_grep '^\.env\.\*\.local$' .dockerignore \
+  ".dockerignore must exclude named local env files such as .env.hfs.local"
 require_grep '^\*\.secret$' .dockerignore \
   ".dockerignore must exclude *.secret"
 require_grep '^\*\.key$' .dockerignore \
