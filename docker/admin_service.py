@@ -2160,13 +2160,14 @@ class Handler(BaseHTTPRequestHandler):
     def set_session_cookie(self, value: str, expires_at: int) -> None:
         max_age = max(expires_at - int(time.time()), 0)
         secure = "; Secure" if self.cookie_secure_enabled() else ""
-        self.send_header(
-            "Set-Cookie",
-            f"{SESSION_COOKIE}={value}; Path=/_admin/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}",
-        )
+        # Delete the legacy path first: libcurl otherwise applies this expiry to the active cookie too.
         self.send_header(
             "Set-Cookie",
             f"{SESSION_COOKIE}=; Path=/_admin; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
+        )
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE}={value}; Path=/_admin/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}",
         )
 
     def clear_session_cookie(self) -> None:

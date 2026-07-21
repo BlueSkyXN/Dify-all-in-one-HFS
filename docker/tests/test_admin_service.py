@@ -89,6 +89,24 @@ class AdminServicePureFunctionTests(unittest.TestCase):
         signature = admin_service.sign_message("session", str(expires_at), nonce)
         self.assertIsNone(admin_service.parse_session(f"{expires_at}.{nonce}.{signature}"))
 
+    def test_set_session_cookie_writes_legacy_deletion_before_active_cookie(self):
+        class FakeHandler:
+            headers = []
+
+            def cookie_secure_enabled(self):
+                return True
+
+            def send_header(self, name, value):
+                self.headers.append((name, value))
+
+        fake = FakeHandler()
+        admin_service.Handler.set_session_cookie(fake, "active-session", int(time.time()) + 3600)
+
+        self.assertEqual([name for name, _value in fake.headers], ["Set-Cookie", "Set-Cookie"])
+        self.assertIn("Path=/_admin; Max-Age=0", fake.headers[0][1])
+        self.assertIn("active-session", fake.headers[1][1])
+        self.assertIn("Path=/_admin/", fake.headers[1][1])
+
     def test_normalise_admin_path_rejects_escape(self):
         self.assertEqual(admin_service.normalise_admin_path("/logs/app.log"), Path("logs/app.log"))
         with self.assertRaises(admin_service.AdminError):
