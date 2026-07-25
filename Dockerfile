@@ -18,16 +18,16 @@
 # never reuse one image digest for another image.
 ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
 ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-ARG DIFY_SOURCE_MAIN_REF=dabed43933402155df59465ece399d30f6d78d6e
-ARG DIFY_UPSTREAM_BASE_REF=1227f19c6a8f58b6f4549a2de37f0226e6e6c841
-ARG DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:e73faceacbb71dc44e6cc474b48845c6ba06b9e3f30c74e9dd56266625ff48c0
-ARG DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:43b4434e2371164caa6e26e09364ae6cb5714fbdcb7edf46c57000a4c632b581
-ARG DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:d4c95fae81d081aa73bd77884fcdaf5c3d6bd38137f8d7872240bc8d859ae8dc
-ARG DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:9782338c5defd80c6f24e7609c8ce35f9d3b4fe72a62356068111390447760d4
+ARG DIFY_SOURCE_MAIN_REF=fac065132df0c44f3962334cb89e4eb0d338151a
+ARG DIFY_UPSTREAM_BASE_REF=a2d9aeff372a56d7f0f6b8b23114bfbd8ef7c397
+ARG DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:7816d9d552a40094a39ec3c084daf9fb3da8431652f3424419b1577ba50866f5
+ARG DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:e6f7f4ec93af964855d1cd274ea6f99facf650d974cdb38c60ceb78d11ffc683
+ARG DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:70e533dd11c54f2ec744a19c27a0beae168b945a21f66fbf4ee07cd30511020c
+ARG DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:e8552baf906ad725556e697424b3be2fa4134af859dbf6327e06f6b8a93d0415
 ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
 ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
 ARG DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
-ARG DIFY_VERSION=BlueSkyXN-dify-main-dabed43933402155df59465ece399d30f6d78d6e
+ARG DIFY_VERSION=BlueSkyXN-dify-main-fac065132df0c44f3962334cb89e4eb0d338151a
 ARG UV_VERSION=0.11.21
 
 # -----------------------------
