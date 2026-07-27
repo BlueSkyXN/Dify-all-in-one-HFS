@@ -1,116 +1,40 @@
-schema_version = 2
-standard = "hfs-dev"
-pattern = "A"
-runtime_mode = "image-assembly"
-space_root_mode = "repo-root"
-hfs_dir = "."
-public_port = 7860
-canonical_health_endpoint = "/healthz"
-release_pin_required = true
-required_files = [
-  "README.md",
-  "Dockerfile",
-  "docker",
-  "scripts",
-  "docs",
-  "AGENTS.md",
+standard = "2.0"
+project = "dify-all-in-one"
+space = "BlueSkyXN/dify-all-in-one"
+sovereignty = "fork"
+lane = "artifact"
+version_source = "commit"
+
+# Values remain in the ignored local ledger. This registry records names and
+# deployment relationships only; Docker/bootstrap scripts own pin validation.
+local_only = ["HF_TOKEN", "GH_TOKEN"]
+secrets = [
+  "DIFY_ARTIFACT_BEARER_TOKEN",
+  "OPS_TOKEN",
+  "DB_PASSWORD",
+  "REDIS_PASSWORD",
+  "SECRET_KEY",
+  "PLUGIN_DAEMON_KEY",
+  "PLUGIN_DIFY_INNER_API_KEY",
+  "CODE_EXECUTION_API_KEY",
+  "ADMIN_TOKEN",
+]
+variables = [
+  "DIFY_ARTIFACT_MANIFEST_HF_URI",
+  "DIFY_ARTIFACT_EXPECTED_SOURCE_REF",
+  "DIFY_ARTIFACT_MAX_BYTES",
+  "PERSIST_MODE",
+  "POSTGRES_BUCKET_FAILURE_MODE",
+  "ADMIN_ENABLED",
 ]
 
-[[release_pins]]
-name = "BASE_IMAGE_REF"
-type = "image_ref"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = true
-release_requires_digest = true
+dist_bucket = "hfs-dist"
+# No configuration seed is distributed: entrypoint-generated state stays on
+# /data (or its existing /persist mapping) and is never overwritten by deploy.
+seed_file = ""
+other_objects = []
 
-[[release_pins]]
-name = "DIFY_SOURCE_REPO"
-type = "source_repo"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = true
-
-[[release_pins]]
-name = "DIFY_SOURCE_MAIN_REF"
-type = "source_revision"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = false
-
-[[release_pins]]
-name = "DIFY_UPSTREAM_BASE_REF"
-type = "source_revision"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = false
-
-[[release_pins]]
-name = "DIFY_API_IMAGE_REF"
-type = "image_ref"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = false
-release_requires_digest = true
-
-[[release_pins]]
-name = "DIFY_WEB_IMAGE_REF"
-type = "image_ref"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = false
-release_requires_digest = true
-
-[[release_pins]]
-name = "DIFY_AGENT_IMAGE_REF"
-type = "image_ref"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = false
-release_requires_digest = true
-
-[[release_pins]]
-name = "DIFY_AGENT_RUNTIME_IMAGE_REF"
-type = "image_ref"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = false
-release_requires_digest = true
-
-[[release_pins]]
-name = "PLUGIN_DAEMON_IMAGE_REF"
-type = "image_ref"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = true
-release_requires_digest = true
-
-[[release_pins]]
-name = "SANDBOX_IMAGE_REF"
-type = "image_ref"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = true
-release_requires_digest = true
-
-[[release_pins]]
-name = "DIFY_SANDBOX_SOURCE_REF"
-type = "source_revision"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = true
-
-[[release_pins]]
-name = "UV_VERSION"
-type = "package_version"
-source = "Dockerfile ARG"
-required_for_release = true
-dev_mutable_default_allowed = true
-
-[[release_pins]]
-name = "DIFY_VERSION"
-type = "metadata"
-source = "Dockerfile ARG"
-required_for_release = false
-dev_mutable_default_allowed = true
-metadata_only = true
+deviations = [
+  "base-image-version = The existing Python base tag remains a reviewed build input; release evidence records its resolved digest.",
+  "sandbox-privilege-launcher = A tiny root-owned image-built launcher preserves the upstream Sandbox setuid boundary while the server binary itself is artifact-delivered.",
+]

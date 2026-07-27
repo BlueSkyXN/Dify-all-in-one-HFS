@@ -14,33 +14,16 @@ fail() {
 
 require_file() {
   local path=$1
-  if [ ! -f "$path" ]; then
-    fail "missing required file: $path"
-  fi
+  [ -f "$path" ] || fail "missing required file: $path"
 }
 
 require_grep() {
-  local pattern=$1
-  local path=$2
-  local message=$3
-  if ! grep -Eq "$pattern" "$path"; then
-    fail "$message"
-  fi
-}
-
-require_line() {
-  local expected=$1
-  local path=$2
-  local message=$3
-  if ! grep -Fqx -- "$expected" "$path"; then
-    fail "$message"
-  fi
+  local pattern=$1 path=$2 message=$3
+  grep -Eq "$pattern" "$path" || fail "$message"
 }
 
 require_absent() {
-  local pattern=$1
-  local path=$2
-  local message=$3
+  local pattern=$1 path=$2 message=$3
   if grep -Eq "$pattern" "$path"; then
     fail "$message"
   fi
@@ -48,34 +31,32 @@ require_absent() {
 
 frontmatter_value() {
   local key=$1
-  awk -v key="$key" '
-    NR == 1 && $0 == "---" { in_yaml = 1; next }
-    in_yaml && $0 == "---" { exit }
-    in_yaml {
-      split($0, parts, ":")
-      if (parts[1] == key) {
-        sub("^[^:]+:[[:space:]]*", "", $0)
-        print $0
-      }
-    }
-  ' README.md | tail -n 1
+  python3 - "$key" <<'PY'
+import sys
+from pathlib import Path
+
+key = sys.argv[1]
+lines = Path("README.md").read_text(encoding="utf-8").splitlines()
+if not lines or lines[0] != "---":
+    raise SystemExit(0)
+for line in lines[1:]:
+    if line == "---":
+        break
+    if line.startswith(f"{key}:"):
+        print(line.partition(":")[2].strip())
+PY
 }
 
-require_file README.md
-require_file Dockerfile
-require_file docker/nginx.conf
-require_file docker/entrypoint.sh
-require_file docker/supervisord.conf
-require_file docker/dify.env.runtime
-require_file docker/dify.env.demo
-require_file docker/ops_service.py
-require_file docker/admin_service.py
-require_file docker/plugin_runtime_patches/sitecustomize.py
-require_file docker/healthcheck.sh
-require_file scripts/hf-space-smoke.sh
-require_file scripts/check-self-release-pins.py
-require_file docs/hfs-alignment.md
-require_file hfs-dev.toml
+for path in \
+  README.md Dockerfile hfs-dev.toml .dockerignore .gitignore .env.example \
+  docker/entrypoint.sh docker/dify-artifact-bootstrap docker/dify_artifact_contract.py \
+  docker/sandbox-artifact-launcher.c docker/dify.env.runtime docker/dify.env.demo \
+  docker/supervisord.conf docker/nginx.conf docker/healthcheck.sh \
+  scripts/package-dify-runtime-artifact.py scripts/prepare-dify-artifact-manifest.py scripts/validate-hfs-contract.sh \
+  scripts/static-check.sh scripts/hf-space-smoke.sh docs/hfs-alignment.md \
+  docs/configuration.md docs/deployment.md docs/release-checklist.md; do
+  require_file "$path"
+done
 
 python3 - "$repo_root" <<'PY'
 from __future__ import annotations
@@ -86,397 +67,142 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 manifest = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
-
 expected = {
-    "schema_version": 2,
-    "standard": "hfs-dev",
-    "pattern": "A",
-    "runtime_mode": "image-assembly",
-    "space_root_mode": "repo-root",
-    "hfs_dir": ".",
-    "public_port": 7860,
-    "release_pin_required": True,
+    "standard": "2.0",
+    "project": "dify-all-in-one",
+    "space": "BlueSkyXN/dify-all-in-one",
+    "sovereignty": "fork",
+    "lane": "artifact",
+    "version_source": "commit",
+    "dist_bucket": "hfs-dist",
 }
-
-failures: list[str] = []
-for key, value in expected.items():
-    if manifest.get(key) != value:
-        failures.append(f"hfs-dev.toml {key} must be {value!r}, got {manifest.get(key)!r}")
-
-if "release_pin_surfaces" in manifest:
-    failures.append("hfs-dev.toml v2 must use structured [[release_pins]], not release_pin_surfaces")
-
-release_pins = manifest.get("release_pins")
-expected_pins = {
-    "BASE_IMAGE_REF": {
-        "type": "image_ref",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": True,
-        "release_requires_digest": True,
-    },
-    "DIFY_SOURCE_REPO": {
-        "type": "source_repo",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": True,
-    },
-    "DIFY_SOURCE_MAIN_REF": {
-        "type": "source_revision",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": False,
-    },
-    "DIFY_UPSTREAM_BASE_REF": {
-        "type": "source_revision",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": False,
-    },
-    "DIFY_API_IMAGE_REF": {
-        "type": "image_ref",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": False,
-        "release_requires_digest": True,
-    },
-    "DIFY_WEB_IMAGE_REF": {
-        "type": "image_ref",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": False,
-        "release_requires_digest": True,
-    },
-    "DIFY_AGENT_IMAGE_REF": {
-        "type": "image_ref",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": False,
-        "release_requires_digest": True,
-    },
-    "DIFY_AGENT_RUNTIME_IMAGE_REF": {
-        "type": "image_ref",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": False,
-        "release_requires_digest": True,
-    },
-    "PLUGIN_DAEMON_IMAGE_REF": {
-        "type": "image_ref",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": True,
-        "release_requires_digest": True,
-    },
-    "SANDBOX_IMAGE_REF": {
-        "type": "image_ref",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": True,
-        "release_requires_digest": True,
-    },
-    "DIFY_SANDBOX_SOURCE_REF": {
-        "type": "source_revision",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": True,
-    },
-    "UV_VERSION": {
-        "type": "package_version",
-        "required_for_release": True,
-        "dev_mutable_default_allowed": True,
-    },
-    "DIFY_VERSION": {
-        "type": "metadata",
-        "required_for_release": False,
-        "dev_mutable_default_allowed": True,
-        "metadata_only": True,
-    },
+errors = [f"hfs-dev.toml {key} must be {value!r}, got {manifest.get(key)!r}" for key, value in expected.items() if manifest.get(key) != value]
+required_secrets = {
+    "DIFY_ARTIFACT_BEARER_TOKEN", "OPS_TOKEN", "DB_PASSWORD", "REDIS_PASSWORD",
+    "SECRET_KEY", "PLUGIN_DAEMON_KEY", "PLUGIN_DIFY_INNER_API_KEY",
+    "CODE_EXECUTION_API_KEY", "ADMIN_TOKEN",
 }
-if not isinstance(release_pins, list) or not release_pins:
-    failures.append("hfs-dev.toml release_pins must be a non-empty structured array")
-else:
-    pins_by_name: dict[str, dict[str, object]] = {}
-    for index, pin in enumerate(release_pins, start=1):
-        if not isinstance(pin, dict):
-            failures.append(f"hfs-dev.toml release_pins[{index}] must be a table")
-            continue
-        name = pin.get("name")
-        if not isinstance(name, str) or not name:
-            failures.append(f"hfs-dev.toml release_pins[{index}] must set name")
-            continue
-        if name in pins_by_name:
-            failures.append(f"hfs-dev.toml release_pins duplicate name: {name}")
-        pins_by_name[name] = pin
-
-    missing_pins = sorted(set(expected_pins) - set(pins_by_name))
-    if missing_pins:
-        failures.append("hfs-dev.toml release_pins missing: " + ", ".join(missing_pins))
-    unexpected_pins = sorted(set(pins_by_name) - set(expected_pins))
-    if unexpected_pins:
-        failures.append("hfs-dev.toml release_pins unexpected: " + ", ".join(unexpected_pins))
-
-    for name, expected_pin in expected_pins.items():
-        pin = pins_by_name.get(name)
-        if not pin:
-            continue
-        if not isinstance(pin.get("source"), str) or not pin.get("source"):
-            failures.append(f"hfs-dev.toml release_pins {name} must set source")
-        for key, value in expected_pin.items():
-            if pin.get(key) != value:
-                failures.append(
-                    f"hfs-dev.toml release_pins {name}.{key} must be {value!r}, got {pin.get(key)!r}"
-                )
-
-required_files = manifest.get("required_files")
-if not isinstance(required_files, list) or not required_files:
-    failures.append("hfs-dev.toml required_files must be a non-empty list")
-else:
-    for rel_path in required_files:
-        if not isinstance(rel_path, str) or not (root / rel_path).exists():
-            failures.append(f"hfs-dev.toml required file is missing: {rel_path!r}")
-
-if failures:
-    for failure in failures:
-        print(f"FAIL hfs-contract: {failure}", file=sys.stderr)
+required_variables = {
+    "DIFY_ARTIFACT_MANIFEST_HF_URI", "DIFY_ARTIFACT_EXPECTED_SOURCE_REF",
+    "DIFY_ARTIFACT_MAX_BYTES", "PERSIST_MODE", "POSTGRES_BUCKET_FAILURE_MODE", "ADMIN_ENABLED",
+}
+for field, expected_keys in (("secrets", required_secrets), ("variables", required_variables)):
+    actual = manifest.get(field)
+    if not isinstance(actual, list) or set(actual) != expected_keys:
+        errors.append(f"hfs-dev.toml {field} must register exactly the approved key names")
+if manifest.get("local_only") != ["HF_TOKEN", "GH_TOKEN"]:
+    errors.append("hfs-dev.toml local_only must keep control-plane credentials separate")
+if manifest.get("seed_file") != "" or manifest.get("other_objects") != []:
+    errors.append("dify artifact lane must not declare generated runtime state as a distributable seed")
+if errors:
+    for error in errors:
+        print(f"FAIL hfs-contract: {error}", file=sys.stderr)
     raise SystemExit(1)
 PY
 
 sdk=$(frontmatter_value sdk)
 app_port=$(frontmatter_value app_port)
-if [ "$sdk" != "docker" ]; then
-  fail "README.md frontmatter must set sdk: docker"
-fi
-if [ -z "$app_port" ]; then
-  fail "README.md frontmatter must set app_port"
-fi
+docker_expose=$(python3 - <<'PY'
+from pathlib import Path
+for line in Path("Dockerfile").read_text(encoding="utf-8").splitlines():
+    fields = line.split()
+    if fields and fields[0].upper() == "EXPOSE":
+        print(fields[1])
+        break
+PY
+)
+nginx_listen=$(python3 - <<'PY'
+import re
+from pathlib import Path
+match = re.search(r"^\s*listen\s+([^;\s]+)", Path("docker/nginx.conf").read_text(encoding="utf-8"), re.M)
+if match:
+    print(match.group(1).rsplit(":", 1)[-1])
+PY
+)
+[ "$sdk" = "docker" ] || fail "README.md frontmatter must set sdk: docker"
+[ "$app_port" = "7860" ] || fail "README.md frontmatter must set app_port: 7860"
+[ "$docker_expose" = "$app_port" ] || fail "Dockerfile EXPOSE must match README.md app_port"
+[ "$nginx_listen" = "$app_port" ] || fail "docker/nginx.conf listen must match README.md app_port"
 
-docker_expose=$(awk 'toupper($1) == "EXPOSE" { print $2; exit }' Dockerfile)
-nginx_listen=$(awk '
-  $1 == "listen" {
-    value = $2
-    gsub(";", "", value)
-    split(value, parts, ":")
-    print parts[length(parts)]
-    exit
-  }
-' docker/nginx.conf)
+# Artifact delivery must not silently retain the old image-assembly product path.
+require_grep '^FROM \$\{BASE_IMAGE_REF\} AS runtime$' Dockerfile "Dockerfile must use the declared base runtime image"
+require_grep 'DIFY_AIO_RUNTIME_DELIVERY=manifest-first-artifact' Dockerfile "Dockerfile must expose artifact delivery provenance"
+require_grep 'dify-artifact-bootstrap' Dockerfile "Dockerfile must install the artifact bootstrap"
+require_grep 'sandbox-artifact-launcher' Dockerfile "Dockerfile must retain the fixed Sandbox privilege launcher"
+require_absent '^FROM \$\{DIFY_' Dockerfile "Dockerfile must not select Dify business OCI images"
+require_absent '^ARG DIFY_(API|WEB|AGENT|SOURCE|SANDBOX|VERSION)' Dockerfile "Dockerfile must not duplicate artifact runtime pins"
+require_absent 'git fetch|git clone|dify-sandbox.git' Dockerfile "Dockerfile must not fetch Dify product source during build"
+require_absent 'COPY --from=(api-image|web-builder|agent-image|agent-runtime-image|plugin-daemon-image|sandbox-image|sandbox-builder)' Dockerfile "Dockerfile must not copy product image payloads"
 
-if [ -n "$app_port" ] && [ "$docker_expose" != "$app_port" ]; then
-  fail "Dockerfile EXPOSE ($docker_expose) must match README.md app_port ($app_port)"
-fi
-if [ -n "$app_port" ] && [ "$nginx_listen" != "$app_port" ]; then
-  fail "docker/nginx.conf listen ($nginx_listen) must match README.md app_port ($app_port)"
-fi
+require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' docker/dify.env.runtime "runtime defaults must register manifest URI"
+require_grep 'DIFY_ARTIFACT_BEARER_TOKEN' docker/dify.env.runtime "runtime defaults must register artifact credential"
+require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI=' docker/dify.env.demo "demo config must require an explicit artifact URI"
+require_grep '/usr/local/bin/dify-artifact-bootstrap' docker/entrypoint.sh "entrypoint must bootstrap before Dify initialization"
+require_grep 'require_env DIFY_ARTIFACT_MANIFEST_HF_URI' docker/dify-artifact-bootstrap "bootstrap must fail closed without manifest URI"
+require_grep 'require_env DIFY_ARTIFACT_BEARER_TOKEN' docker/dify-artifact-bootstrap "bootstrap must fail closed without artifact credential"
+require_absent 'DIFY_ARTIFACT_(URL|PATH|S3_|SHA256)' docker/dify.env.runtime "runtime defaults must not permit direct artifact fallback inputs"
+require_absent 'DIFY_ARTIFACT_(URL|PATH|S3_|SHA256)' docker/dify-artifact-bootstrap "bootstrap must not permit direct artifact fallback inputs"
+require_absent 'DIFY_ARTIFACT_(INSTALL_ROOT|DOWNLOAD_DIR)' docker/dify.env.runtime "runtime defaults must not expose artifact filesystem controls"
+require_absent 'DIFY_ARTIFACT_(INSTALL_ROOT|DOWNLOAD_DIR)' docker/dify-artifact-bootstrap "bootstrap must keep artifact filesystem controls image-owned"
 
-if [ -f cloud/hfs/README.md ] || [ -f cloud/hfs/Dockerfile ]; then
-  fail "Pattern A repo must keep Space root at repo root, not cloud/hfs/"
-fi
+require_grep '^\.env$' .dockerignore ".dockerignore must exclude the local env ledger"
+require_grep '^\.env\.\*$' .dockerignore ".dockerignore must exclude named env ledgers"
+require_grep '^local/$|^\*\*/local/$' .dockerignore ".dockerignore must exclude local/"
+require_grep '^\*\.secret$' .dockerignore ".dockerignore must exclude *.secret"
+require_grep '^\*\.key$' .dockerignore ".dockerignore must exclude *.key"
+require_grep '^\*\.pem$' .dockerignore ".dockerignore must exclude *.pem"
+require_grep '^/\.env$' .gitignore ".gitignore must exclude .env"
+require_grep '^/\.env\.\*$' .gitignore ".gitignore must exclude named local env ledgers"
+require_grep '^!\.env\.example$' .gitignore ".gitignore must retain the harmless .env.example template"
 
-require_grep 'Pattern A: HFS Port Repository' docs/hfs-alignment.md \
-  "docs/hfs-alignment.md must declare Pattern A"
-require_grep 'Runtime mode: image-assembly' docs/hfs-alignment.md \
-  "docs/hfs-alignment.md must declare image-assembly runtime mode"
-require_grep 'Space root: repo root' docs/hfs-alignment.md \
-  "docs/hfs-alignment.md must declare repo root as Space root"
+require_grep 'manifest-first' docs/hfs-alignment.md "HFS docs must describe manifest-first artifact delivery"
+require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' docs/configuration.md "configuration docs must list the manifest variable"
+require_grep 'manifest-last' docs/release-checklist.md "release checklist must require manifest-last evidence"
+require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' scripts/run-demo.sh "local runner must pass explicit artifact controls"
+require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
+require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
+require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"
 
-require_grep '^ARG DIFY_VERSION=' Dockerfile \
-  "Dockerfile must expose DIFY_VERSION build input"
-require_grep '^ARG UV_VERSION=' Dockerfile \
-  "Dockerfile must expose UV_VERSION build input"
-require_grep '^ARG BASE_IMAGE_REF=' Dockerfile \
-  "Dockerfile must expose BASE_IMAGE_REF build input"
-require_grep '^ARG DIFY_SOURCE_REPO=' Dockerfile \
-  "Dockerfile must expose DIFY_SOURCE_REPO build input"
-require_grep '^ARG DIFY_SOURCE_MAIN_REF=' Dockerfile \
-  "Dockerfile must expose DIFY_SOURCE_MAIN_REF build input"
-require_grep '^ARG DIFY_UPSTREAM_BASE_REF=' Dockerfile \
-  "Dockerfile must expose DIFY_UPSTREAM_BASE_REF build input"
-require_grep '^ARG DIFY_API_IMAGE_REF=' Dockerfile \
-  "Dockerfile must expose DIFY_API_IMAGE_REF build input"
-require_grep '^ARG DIFY_WEB_IMAGE_REF=' Dockerfile \
-  "Dockerfile must expose DIFY_WEB_IMAGE_REF build input"
-require_grep '^ARG DIFY_AGENT_IMAGE_REF=' Dockerfile \
-  "Dockerfile must expose DIFY_AGENT_IMAGE_REF build input"
-require_grep '^ARG DIFY_AGENT_RUNTIME_IMAGE_REF=' Dockerfile \
-  "Dockerfile must expose DIFY_AGENT_RUNTIME_IMAGE_REF build input"
-require_grep '^ARG PLUGIN_DAEMON_IMAGE_REF=' Dockerfile \
-  "Dockerfile must expose PLUGIN_DAEMON_IMAGE_REF build input"
-require_grep '^ARG SANDBOX_IMAGE_REF=' Dockerfile \
-  "Dockerfile must expose SANDBOX_IMAGE_REF build input"
-require_grep '^ARG DIFY_SANDBOX_SOURCE_REF=' Dockerfile \
-  "Dockerfile must expose DIFY_SANDBOX_SOURCE_REF build input"
-require_grep '^# Verified self release\. Keep the source SHA and image-specific digests atomic;$' Dockerfile \
-  "Dockerfile must centrally mark the atomic self release boundary"
-require_grep '^FROM \${DIFY_WEB_IMAGE_REF} AS web-builder$' Dockerfile \
-  "Dockerfile must select web image from DIFY_WEB_IMAGE_REF"
-require_grep '^FROM \${DIFY_API_IMAGE_REF} AS api-image$' Dockerfile \
-  "Dockerfile must select API image from DIFY_API_IMAGE_REF"
-require_grep '^FROM \${PLUGIN_DAEMON_IMAGE_REF} AS plugin-daemon-image$' Dockerfile \
-  "Dockerfile must select Plugin Daemon image from PLUGIN_DAEMON_IMAGE_REF"
-require_grep '^FROM \${SANDBOX_IMAGE_REF} AS sandbox-image$' Dockerfile \
-  "Dockerfile must select Sandbox image from SANDBOX_IMAGE_REF"
-require_grep '^FROM \${BASE_IMAGE_REF} AS runtime$' Dockerfile \
-  "Dockerfile must select the base runtime image from BASE_IMAGE_REF"
-require_absent '^ARG DIFY_API_IMAGE=' Dockerfile \
-  "Dockerfile must not expose legacy DIFY_API_IMAGE selector"
-require_absent '^ARG DIFY_WEB_IMAGE=' Dockerfile \
-  "Dockerfile must not expose legacy DIFY_WEB_IMAGE selector"
-require_absent '^ARG PLUGIN_DAEMON_IMAGE=' Dockerfile \
-  "Dockerfile must not expose legacy PLUGIN_DAEMON_IMAGE selector"
-require_absent '^ARG SANDBOX_IMAGE=' Dockerfile \
-  "Dockerfile must not expose legacy SANDBOX_IMAGE selector"
-require_absent '^FROM \${DIFY_WEB_IMAGE}:\${DIFY_VERSION}' Dockerfile \
-  "Dockerfile must not build web image refs by image:version concatenation"
-require_absent '^FROM \${DIFY_API_IMAGE}:\${DIFY_VERSION}' Dockerfile \
-  "Dockerfile must not build API image refs by image:version concatenation"
-require_absent 'observability_service\.py|agent-runtime-builder|DIFY_AGENT_SOURCE_REF' Dockerfile \
-  "Dockerfile must not retain targeted API overlays or branch-specific Agent source build logic"
-require_line 'COPY --from=agent-image --chown=user:user /app/api/.venv /opt/dify-agent/.venv' Dockerfile \
-  "Dockerfile must copy the isolated Agent venv from the self Agent image"
-require_grep 'import dify_agent\.server\.app; import shellctl\.client' Dockerfile \
-  "Dockerfile must verify the copied Python Agent backend and shellctl client imports"
-require_absent 'shellctl-server|shellctl\.server\.api' Dockerfile \
-  "Dockerfile must not depend on the removed Python shellctl server"
-require_line 'COPY --from=agent-runtime-image /usr/local/bin/shellctl /usr/local/bin/shellctl' Dockerfile \
-  "Dockerfile must copy the Go shellctl server binary from the self Agent runtime image"
-require_line 'COPY --from=agent-runtime-image /usr/local/bin/shellctl-sanitize-pty /usr/local/bin/shellctl-sanitize-pty' Dockerfile \
-  "Dockerfile must copy the Go shellctl PTY sanitizer"
-require_line 'COPY --from=agent-runtime-image /usr/local/bin/shellctl-runner-exit /usr/local/bin/shellctl-runner-exit' Dockerfile \
-  "Dockerfile must copy the Go shellctl runner exit helper"
-require_line 'COPY --from=agent-runtime-image /usr/local/bin/shellctl-runner /usr/local/bin/shellctl-runner' Dockerfile \
-  "Dockerfile must copy the Go shellctl runner"
-require_line 'COPY --from=agent-runtime-image /usr/local/bin/dify-agent /usr/local/bin/dify-agent' Dockerfile \
-  "Dockerfile must copy the Go Agent CLI"
-require_absent 'uv pip install --python /app/api/\.venv/bin/python --no-cache --no-deps' Dockerfile \
-  "Dockerfile must not overlay the self Agent package into the API virtualenv"
-require_line 'export DIFY_AGENT_VIRTUAL_ENV=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}' docker/dify.env.runtime \
-  "runtime defaults must point the Python Agent backend at the isolated virtualenv"
-require_line 'export SHELLCTL_BINARY=${SHELLCTL_BINARY:-/usr/local/bin/shellctl}' docker/dify.env.runtime \
-  "runtime defaults must point shellctl at the source-pinned Go binary"
-require_grep 'DIFY_AGENT_INNER_API_URL' docker/with-dify-env \
-  "Dify env wrapper must derive the canonical Agent inner API URL"
-require_grep 'DIFY_AGENT_INNER_API_KEY' docker/with-dify-env \
-  "Dify env wrapper must derive the canonical Agent inner API key"
-require_grep 'DIFY_AGENT_STUB_API_BASE_URL' docker/with-dify-env \
-  "Dify env wrapper must derive the canonical Agent Stub API base URL"
-require_line 'agent_virtual_env=${DIFY_AGENT_VIRTUAL_ENV:-/opt/dify-agent/.venv}' docker/run-dify-agent \
-  "Agent launcher must default to the isolated virtualenv"
-require_grep 'exec "\$VIRTUAL_ENV/bin/python" -m uvicorn' docker/run-dify-agent \
-  "Agent launcher must execute python -m uvicorn from the isolated virtualenv"
-require_line 'shellctl_binary=${SHELLCTL_BINARY:-/usr/local/bin/shellctl}' docker/run-shellctl \
-  "shellctl launcher must default to the Go server binary"
-require_grep 'exec "\$shellctl_binary" serve' docker/run-shellctl \
-  "shellctl launcher must execute the source-pinned Go server"
-require_absent 'DIFY_AGENT_VIRTUAL_ENV|agent_virtual_env|runtime-dir' docker/run-shellctl \
-  "shellctl launcher must not depend on the Python virtualenv or removed Go flags"
+python3 - <<'PY'
+from __future__ import annotations
 
-python3 scripts/check-self-release-pins.py --require-final-digest
+import importlib.util
+from pathlib import Path
 
-require_line \
-  'export SERVER_CONSOLE_API_URL=${SERVER_CONSOLE_API_URL:-http://127.0.0.1:5001}' \
-  docker/dify.env.runtime \
-  "runtime defaults must keep Dify Web SSR console API traffic on the same-container API origin"
-require_line 'SERVER_CONSOLE_API_URL=http://127.0.0.1:5001' docker/dify.env.demo \
-  "demo env must expose the same-container Dify Web SSR API origin"
-require_grep '\| `SERVER_CONSOLE_API_URL` \| `http://127\.0\.0\.1:5001` \|' docs/configuration.md \
-  "configuration docs must describe the Dify Web SSR internal API origin"
+path = Path("docker/dify_artifact_contract.py")
+spec = importlib.util.spec_from_file_location("dify_artifact_contract_gate", path)
+if spec is None or spec.loader is None:
+    raise SystemExit("FAIL hfs-contract: cannot import artifact contract")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+if module.SCHEMA_VERSION != 2 or module.MAX_EXTRACTED_BYTES != 32 * 1024 * 1024 * 1024:
+    raise SystemExit("FAIL hfs-contract: artifact schema/resource guard is not the approved v2 contract")
+for unsafe_uri in (
+    "hf://buckets/example%2Fescape/hfs-dist/dify-all-in-one/edge/manifest.json",
+    "hf://buckets/example/hfs-dist/dify-all-in-one/edge/manifest.json?fallback=1",
+):
+    try:
+        module.parse_manifest_uri(unsafe_uri)
+    except module.ContractError:
+        continue
+    raise SystemExit("FAIL hfs-contract: artifact URI parser accepted an unsafe path or query")
+PY
+python3 docker/dify_artifact_contract.py --self-test
+python3 -B - <<'PY'
+from pathlib import Path
+import warnings
 
-if ! env -i PATH="$PATH" SPACE_HOST=contract.example bash -c '
-  set -euo pipefail
-  source docker/dify.env.runtime
-  [ "$PUBLIC_URL" = "https://contract.example" ]
-  [ "$CONSOLE_API_URL" = "https://contract.example" ]
-  [ "${SERVER_CONSOLE_API_URL:-}" = "http://127.0.0.1:5001" ]
-'; then
-  fail "runtime URL defaults must keep browser URLs public and Dify Web SSR API traffic internal"
-fi
-
-if ! env -i \
-  PATH="$PATH" \
-  SPACE_HOST=contract.example \
-  SERVER_CONSOLE_API_URL=http://api.internal:5001 \
-  bash -c '
-    set -euo pipefail
-    source docker/dify.env.runtime
-    [ "$SERVER_CONSOLE_API_URL" = "http://api.internal:5001" ]
-  '; then
-  fail "runtime URL defaults must preserve an explicit SERVER_CONSOLE_API_URL override"
-fi
-
-if ! env -i PATH="$PATH" bash -c '
-  set -euo pipefail
-  source docker/dify.env.runtime
-  [ "$DIFY_AGENT_VIRTUAL_ENV" = "/opt/dify-agent/.venv" ]
-  [ "$SHELLCTL_BINARY" = "/usr/local/bin/shellctl" ]
-  [ "$DIFY_AGENT_INNER_API_URL" = "http://127.0.0.1:5001" ]
-  [ "$DIFY_AGENT_SHELL_PROVIDER" = "shellctl" ]
-  [ "$DIFY_AGENT_STUB_API_BASE_URL" = "http://127.0.0.1:5005/agent-stub" ]
-'; then
-  fail "runtime Agent defaults must use canonical self-fork variables, the isolated Python virtualenv, and the Go shellctl binary"
-fi
-
-if ! env -i \
-  PATH="$PATH" \
-  DIFY_AGENT_DIFY_API_BASE_URL=http://legacy-api:5001 \
-  DIFY_AGENT_STUB_URL=http://legacy-agent:5005/agent-stub \
-  bash -c '
-    set -euo pipefail
-    source docker/dify.env.runtime
-    [ "$DIFY_AGENT_INNER_API_URL" = "http://legacy-api:5001" ]
-    [ "$DIFY_AGENT_STUB_API_BASE_URL" = "http://legacy-agent:5005/agent-stub" ]
-  '; then
-  fail "runtime Agent defaults must preserve legacy alias compatibility"
-fi
-
-require_line \
-  'export SERVER_CONSOLE_API_URL=${SERVER_CONSOLE_API_URL:-http://127.0.0.1:5001}' \
-  docker/dify.env.runtime \
-  "runtime defaults must keep Dify Web SSR console API traffic on the same-container API origin"
-require_line 'SERVER_CONSOLE_API_URL=http://127.0.0.1:5001' docker/dify.env.demo \
-  "demo env must expose the same-container Dify Web SSR API origin"
-require_grep '\| `SERVER_CONSOLE_API_URL` \| `http://127\.0\.0\.1:5001` \|' docs/configuration.md \
-  "configuration docs must describe the Dify Web SSR internal API origin"
-
-if ! env -i PATH="$PATH" SPACE_HOST=contract.example bash -c '
-  set -euo pipefail
-  source docker/dify.env.runtime
-  [ "$PUBLIC_URL" = "https://contract.example" ]
-  [ "$CONSOLE_API_URL" = "https://contract.example" ]
-  [ "${SERVER_CONSOLE_API_URL:-}" = "http://127.0.0.1:5001" ]
-'; then
-  fail "runtime URL defaults must keep browser URLs public and Dify Web SSR API traffic internal"
-fi
-
-if ! env -i \
-  PATH="$PATH" \
-  SPACE_HOST=contract.example \
-  SERVER_CONSOLE_API_URL=http://api.internal:5001 \
-  bash -c '
-    set -euo pipefail
-    source docker/dify.env.runtime
-    [ "$SERVER_CONSOLE_API_URL" = "http://api.internal:5001" ]
-  '; then
-  fail "runtime URL defaults must preserve an explicit SERVER_CONSOLE_API_URL override"
-fi
-
-require_grep '^local/$|^\*\*/local/$' .dockerignore \
-  ".dockerignore must exclude local/ from Docker build context"
-require_grep '^\.env\.local$' .dockerignore \
-  ".dockerignore must exclude .env.local"
-require_grep '^\.env\.\*\.local$' .dockerignore \
-  ".dockerignore must exclude named local env files such as .env.hfs.local"
-require_grep '^\*\.secret$' .dockerignore \
-  ".dockerignore must exclude *.secret"
-require_grep '^\*\.key$' .dockerignore \
-  ".dockerignore must exclude *.key"
-require_grep '^\*\.pem$' .dockerignore \
-  ".dockerignore must exclude *.pem"
-
-require_grep 'location /openapi' docker/nginx.conf \
-  "docker/nginx.conf must expose /openapi through the internal API proxy"
-require_grep '/nginx-health' scripts/hf-space-smoke.sh \
-  "smoke script must check /nginx-health"
-require_grep '/healthz' scripts/hf-space-smoke.sh \
-  "smoke script must check /healthz"
-require_grep '/_ops/health' scripts/hf-space-smoke.sh \
-  "smoke script must check /_ops/health"
-require_grep 'SMOKE_OPENAPI_ENABLED' scripts/hf-space-smoke.sh \
-  "smoke script must support optional OpenAPI checks"
-require_grep 'web-root' scripts/hf-space-smoke.sh \
-  "smoke script must check the web root"
+warnings.simplefilter("error", SyntaxWarning)
+for raw_path in (
+    "docker/dify_artifact_contract.py",
+    "scripts/package-dify-runtime-artifact.py",
+    "scripts/prepare-dify-artifact-manifest.py",
+):
+    path = Path(raw_path)
+    compile(path.read_bytes(), str(path), "exec", dont_inherit=True)
+PY
 
 if [ "$errors" -gt 0 ]; then
   exit 1
 fi
-
-printf 'PASS hfs-contract: Pattern A image-assembly contract is structurally valid\n'
+printf 'PASS hfs-contract: Pattern A manifest-first artifact contract is structurally valid\n'

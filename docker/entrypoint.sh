@@ -933,6 +933,10 @@ run_dify_migration() {
 
 main() {
   prepare_dirs
+  # Product code is deliberately installed only from one manifest-selected,
+  # immutable runtime artifact. This must complete before any Dify wrapper,
+  # migration, service, or health probe can access application paths.
+  /usr/local/bin/dify-artifact-bootstrap
   configure_plugin_storage_root
   write_generated_env
   source_runtime_env

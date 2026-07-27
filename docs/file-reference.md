@@ -45,32 +45,20 @@ Docker Space 构建入口。
 
 职责：
 
-- 复用官方 Dify Web/API/Plugin/Sandbox 镜像。
-- 安装系统依赖、PostgreSQL、pgvector、Nginx、Supervisor、Redis、Node.js和 uv。
-- 注入 `DIFY_AIO_BUILD_*` 构建元数据，供 `/_ops/version` 只读展示。
-- 创建 rootless runtime user。
-- 复制 runtime scripts、Nginx、Supervisor、ops-service 和 admin-service。
+- 提供最小 wrapper runtime：系统依赖、PostgreSQL、pgvector、Nginx、Supervisor、Redis、Node.js 和 uv。
+- 不包含 Dify 产品 OCI `FROM`/`COPY --from` 组装路径；产品 payload 只由启动时的 manifest-first artifact bootstrap 安装。
+- 注入 wrapper build metadata，并预建 `/app`、Plugin Daemon 与固定 root-owned Sandbox privilege launcher 的路径边界。
+- 创建 rootless runtime user，复制 runtime glue、Nginx、Supervisor、ops-service 和 admin-service。
 - 声明 `HEALTHCHECK` 和最终 `ENTRYPOINT`。
 
 关键 build args：
 
 ```text
 BASE_IMAGE_REF
-DIFY_SOURCE_REPO
-DIFY_SOURCE_MAIN_REF
-DIFY_UPSTREAM_BASE_REF
-DIFY_API_IMAGE_REF
-DIFY_WEB_IMAGE_REF
-DIFY_AGENT_IMAGE_REF
-DIFY_AGENT_RUNTIME_IMAGE_REF
-PLUGIN_DAEMON_IMAGE_REF
-SANDBOX_IMAGE_REF
-DIFY_SANDBOX_SOURCE_REF
 UV_VERSION
-DIFY_VERSION
 ```
 
-`BASE_IMAGE_REF` 与 Dify API/Web/Agent/Agent runtime 的 `*_IMAGE_REF` 是真实 `FROM` selector；`DIFY_SOURCE_REPO` / `DIFY_SOURCE_MAIN_REF` 标识四个 self image 的共同源码，`DIFY_UPSTREAM_BASE_REF` 只记录 fork intake 的 upstream commit。self source SHA 与四个 image-specific digest 必须按 release 原子更新。Agent Python venv 与 Go runtime 分别从独立 self image 复制，不能对 API 做 targeted source overlay。`DIFY_SANDBOX_SOURCE_REF` 仅选择带 HFS patch 的 Sandbox server build source。`DIFY_VERSION` 只作为 metadata，不决定镜像来源。
+`BASE_IMAGE_REF` 和 `UV_VERSION` 仅选择 wrapper 基础与工具输入。Dify API/Web/Agent、Plugin Daemon 和 Sandbox 的组件 provenance 由 runtime artifact 内的 `runtime-lock.json` 绑定，并由 selected manifest 的 checksum 和 immutable `artifact_ref` 验证；`DIFY_VERSION` 仅为运行时 metadata，不选择产品 payload。
 
 ### `.dockerignore`
 
@@ -83,9 +71,9 @@ HFS alignment manifest。
 职责：
 
 - 声明本仓库为 Pattern A / HFS Port Repository。
-- 声明 runtime 获取模式为 image-assembly。
+- 声明 runtime 获取模式为 `artifact`。
 - 声明 repo root 是 Space root。
-- 通过结构化 `[[release_pins]]` 列出发布态 pin contract 和 HFS required files，供标准 checker 与 `scripts/validate-hfs-contract.sh` 检查。
+- 仅登记 HFS v2 semantic registry：standard、project、space、sovereignty、lane、version_source 和 dist bucket；产品 pin、checksum 和运行时不变量由 artifact contract 直接验证，避免第二份事实来源。
 
 ### `.gitattributes`
 
@@ -93,7 +81,7 @@ Git 属性配置。
 
 ### `.gitignore`
 
-忽略本地 generated/cache 文件和 `.env.local`。
+忽略本地 generated/cache 文件和 `.env*` 本地值账本，同时保留无密 `.env.example` 模板。
 
 ### `.github/workflows/static-check.yml`
 
@@ -228,7 +216,7 @@ Nginx 路由和日志配置。
 - 首页是单文件 HTML/CSS/原生 JS dashboard，不需要前端构建。
 - 支持通过 `OPS_EXTRA_*_CHECKS_JSON` 增加 HTTP、TCP 和只读 command 健康探针。
 - 返回 CPU load、memory、disk、uptime 和 process count 的只读系统摘要。
-- 通过 `/_ops/version` 返回 build image 来源和 Sandbox requirements 摘要。
+- 通过 `/_ops/version` 返回 wrapper build metadata、已验证 artifact 的 allowlisted provenance 和 Sandbox requirements 摘要；不返回 artifact bucket namespace、URI 或 bearer token。
 - 返回 Prometheus-style text metrics。
 - 通过 `OPS_LOG_DIR` 只读读取白名单日志，并允许用 `OPS_LOG_SERVICES_JSON` 扩展相对日志文件映射。
 - 只返回 secret presence，不返回 secret 原文。
@@ -387,24 +375,14 @@ http://127.0.0.1:7860/
 dify-all-in-one-hf-space:latest
 ```
 
-脚本会白名单透传当前 shell 中已设置的 build args：
+脚本会白名单透传当前 shell 中已设置的 wrapper build args：
 
 ```text
 BASE_IMAGE_REF
-DIFY_SOURCE_REPO
-DIFY_SOURCE_MAIN_REF
-DIFY_UPSTREAM_BASE_REF
-DIFY_API_IMAGE_REF
-DIFY_WEB_IMAGE_REF
-DIFY_AGENT_IMAGE_REF
-DIFY_AGENT_RUNTIME_IMAGE_REF
-PLUGIN_DAEMON_IMAGE_REF
-SANDBOX_IMAGE_REF
-DIFY_SANDBOX_SOURCE_REF
-DIFY_VERSION
 UV_VERSION
 ```
-```
+
+Dify 产品 runtime 不通过 build arg 选择；本地运行时必须另外提供受限 `DIFY_ARTIFACT_MANIFEST_HF_URI`、`DIFY_ARTIFACT_BEARER_TOKEN` 和可选 `DIFY_ARTIFACT_EXPECTED_SOURCE_REF`，由 bootstrap fail-closed 验证。
 
 ### `scripts/run-demo.sh`
 
@@ -470,12 +448,13 @@ HFS 范式结构契约检查脚本。
 
 职责：
 
-- 验证 `hfs-dev.toml` 声明 Pattern A / image-assembly / repo-root。
+- 验证 `hfs-dev.toml` 声明 Pattern A / artifact / repo-root 的最小 HFS v2 semantic registry。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
-- 检查 Dockerfile 暴露 self source refs、GHCR `*_IMAGE_REF`、原子 self release 边界与 `DIFY_VERSION` metadata，并拒绝 placeholder、旧的 `DIFY_API_IMAGE` / `DIFY_WEB_IMAGE` 加 `DIFY_VERSION` 拼接 selector。
+- 检查 Dockerfile 安装 manifest-first bootstrap 与固定 Sandbox launcher，同时拒绝残留的 Dify 产品 OCI `FROM`、`COPY --from` 和 source fetch 路径。
+- 检查 manifest URI allowlist、runtime artifact verifier、producer packaging/manifest scripts 和 workflow 的 manual-confirm/readback 边界。
 - 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
-- 检查 `.dockerignore` 排除 `local/`、`.env.local`、`.env.*.local` 和常见 secret 文件。
+- 检查 `.dockerignore` 排除 `local/`、`.env*` 和常见 secret 文件。
 - 检查 smoke 脚本覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/health` 和 shellctl 状态。
 
 ### `scripts/static-check.sh`

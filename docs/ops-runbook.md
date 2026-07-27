@@ -13,8 +13,8 @@
 
 - Hugging Face Docker Space
 - 单容器多进程运行方式
-- Dify Web/API 来源由 `DIFY_WEB_IMAGE_REF` / `DIFY_API_IMAGE_REF` 记录
-- Plugin Daemon 来源由 `PLUGIN_DAEMON_IMAGE_REF` 记录
+- Dify API/Web/Agent、Plugin Daemon 和 Sandbox 由 manifest-first runtime artifact 的 `runtime-lock.json` 记录
+- wrapper image 只提供基础设施和固定 Sandbox privilege launcher
 - 对外端口 `7860`
 
 ## 架构概览
@@ -221,19 +221,24 @@ curl -H "X-Ops-Token: $OPS_TOKEN" https://your-space.hf.space/_ops/version
 重点字段：
 
 ```text
-version.dify_version
-version.build.upstream_base_ref
-version.build.dify_api_image_ref
-version.build.dify_web_image_ref
-version.build.plugin_daemon_image_ref
-version.build.sandbox_image_ref
+version.build.delivery
+version.build.base_image_ref
 version.build.uv_version
+version.build.artifact_expected_source_ref
+version.artifact.status
+version.artifact.slot
+version.artifact.source_kind
+version.artifact.source_ref
+version.artifact.artifact_ref
+version.artifact.sha256
+version.artifact.unpacked_size_bytes
+version.artifact.runtime_lock_sha256
 version.sandbox.python_path
 version.sandbox.requirements.sha256
 version.sandbox.requirements.package_count
 ```
 
-这些字段用于判断 live 镜像使用的上游 image 来源和 Sandbox requirements 摘要。`version.sandbox.requirements.package_count`、`sha256` 和 `packages` 只来自 `/dependencies/python-requirements.txt` 文件读取，不证明这些包已安装、已进入 `/var/sandbox/sandbox-python`，也不证明 Code Node 可 import。它们不替代 Docker build log、真实 Sandbox import smoke，也不证明 Hugging Face runtime 已接管目标 commit；发布时仍需对照 `hf spaces info` 的 `runtime.raw.sha`。
+`version.artifact.status=verified` 代表 bootstrap 已为当前 runtime root 写入且 ops-service 已重新校验 allowlisted provenance 的结构和 immutable refs；它不回显 artifact bucket namespace、manifest URI 或 bearer token。`missing` 或 `invalid` 表示不能将该实例作为 artifact provenance 已验证的证据。`version.sandbox.requirements.package_count`、`sha256` 和 `packages` 只来自 `/dependencies/python-requirements.txt` 文件读取，不证明这些包已安装、已进入 `/var/sandbox/sandbox-python`，也不证明 Code Node 可 import。这些字段不替代 artifact publish/readback、Docker build log、真实 Sandbox import smoke，也不证明 Hugging Face runtime 已接管目标 commit；发布时仍需对照 `hf spaces info` 的 `runtime.raw.sha`。
 
 ## 健康检查语义
 

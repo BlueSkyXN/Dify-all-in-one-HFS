@@ -1,164 +1,66 @@
-# HFS Paradigm Alignment
+# HFS v2 对齐
 
-本文档说明 `dify-all-in-one` 如何对齐本机 `hfs-dev` HFS 开发范式。
+`dify-all-in-one` 是 Hugging Face Docker Space 的 **Pattern A / port** 仓库：仓库根仍是 Space root，`docker/` 保留 all-in-one runtime glue；它不是把 Dify 产品源码迁入 `cloud/hfs/` 的 Pattern B 项目。
 
-它不是新的部署说明，也不是把本仓库改造成另一个模板；它只记录当前仓库在范式中的分类、目录主权、runtime 获取模式、已满足的契约和仍需注意的发布态 gap。
-
-## 结论
-
-`dify-all-in-one` 属于：
+## 交付结论
 
 ```text
-Pattern A: HFS Port Repository
-Runtime mode: image-assembly
+HFS standard: 2.0
+Pattern: A / HFS Port Repository
+Lane: artifact
+Runtime mode: manifest-first artifact-at-runtime
 Space root: repo root
-Source of truth: official Dify images
-Maintained here: HFS runtime glue, ops/admin, docs, smoke and CI
-Alignment manifest: hfs-dev.toml
+Product source: BlueSkyXN/dify producer repository
+Wrapper source: this repository
 ```
 
-因此本仓库不应迁入 `cloud/hfs/`。`cloud/hfs/` 适用于自研产品仓的 HFS 适配层，即产品源码仍在仓库根维护，而 HFS 只是额外部署目标的 Pattern B。当前仓库维护的不是 Dify 产品源码，而是把官方 Dify Web/API/Plugin/Sandbox 镜像资产组装成 Hugging Face Docker Space demo 的交付包，所以 repo root 必须同时是 Hugging Face Space root 和 GitHub maintenance root。
+`hfs-dev.toml` 是最小语义登记表，只记录 Space、车道、键名、下载面和例外。它不重复 Dify component pins、checksums 或运行时不变量；这些由 artifact 的 `runtime-lock.json`、slot manifest、bootstrap 和 producer release 共同证明。
 
-## Source-of-Truth 判定
+## Artifact 边界
 
-判定问题是：
+Space image 只包含 Debian/Python、PostgreSQL、Redis、Nginx、Supervisor、ops/admin、Dify wrappers、健康检查和固定 Sandbox privilege launcher。它不包含 Dify API/Web/Agent/Plugin/Sandbox 产品 payload、上游源码、`.env*`、`local/`、生成数据或凭据。
+
+启动时 `docker/dify-artifact-bootstrap`：
+
+1. 只接受 `DIFY_ARTIFACT_MANIFEST_HF_URI` 指向的 `hf://buckets/<namespace>/hfs-dist/dify-all-in-one/<edge|release>/manifest.json`。
+2. 下载一次 manifest，并要求 `DIFY_ARTIFACT_BEARER_TOKEN`；没有 manifest、token 或合法 URI 时退出。
+3. 只下载 manifest 中声明的 `dify-runtime-<40-char-sha>.tar.gz`，校验 schema v2、压缩与解包大小、SHA-256、`runtime-lock.json` hash、component 不可变 pins 和 archive 路径。
+4. 仅在完整验证后以原子 runtime pointer 切换到 `/opt/dify/runtime`；不会扫描目录、使用直接 URL/PATH/S3、回退旧 image assembly，也不会把产品 payload 写入 `/data`。
+5. 恢复原有 `/app`、`/opt/dify/plugin-daemon`、`/conf`、`/dependencies` 的路径语义后，才继续 PostgreSQL、Redis、Dify migration 和 Supervisor 启动。
+
+`runtime-lock.json` 必须覆盖 API、Web、Agent、Plugin Daemon 与 Sandbox；API/Web/Agent 必须绑定同一 immutable fork commit。Sandbox server 是 artifact 内容，但 root-owned setuid launcher 在 wrapper image 构建期固定提供，避免把 bootstrap 提权或把容器改为 root runtime。
+
+## 发布与回退
+
+下载面固定为：
 
 ```text
-这个仓库到底在维护产品本身，还是在维护某个程序的 HFS 部署交付包？
+hfs-dist/dify-all-in-one/
+  edge/manifest.json
+  edge/dify-runtime-<commit>.tar.gz
+  release/manifest.json
+  release/dify-runtime-<commit>.tar.gz
 ```
 
-当前事实：
+发布顺序严格为 artifact 与 `SHA256SUMS.txt` 上传并 readback，最后才覆盖 manifest 并 readback。`edge` 对应已验证 main commit；`release` 只由显式、owner 批准的 promote 选择 immutable Git tag。历史 artifact 和 manifest 由 `BlueSkyXN/dify` 的 GitHub Release 保存；slot 中旧对象的清理不属于发布动作。
 
-- `README.md` 顶部包含 Hugging Face Space metadata，说明 repo root 是 Space root。
-- `Dockerfile` 用多阶段 `FROM` 引入 `langgenius/dify-web`、`langgenius/dify-api`、Plugin Daemon 和 Sandbox 镜像资产。
-- `hfs-dev.toml` 声明 Pattern A、image-assembly、repo-root Space root 和发布态 pin surface。
-- `docs/architecture.md` 中的组件来源说明：本仓库维护 runtime glue，自维护 Dify GHCR 镜像、独立官方 Plugin/Sandbox 资产和系统依赖都是构建输入。
-- `docker/` 承载 entrypoint、Nginx、Supervisor、env defaults、healthcheck、ops-service 和 admin-service。
+本仓的 `Publish Dify runtime artifact` workflow 只可 `workflow_dispatch`，并要求 `confirm_publish=PUBLISH` 与 environment approval。它从 fork 的指定 Release 下载精确 archive，发布时不使用 credential-bearing Git URL、不 force-push Space、不重启实例；完成后输出 archive/manifest readback 证据。回退是选择已验证 GitHub Release 的 exact archive 并再次走 artifact-first / manifest-last，不回滚 `/data`。
 
-所以它不是自研产品仓的 `cloud/hfs/` adapter，而是第三方/上游程序的 HFS port repository。
+## 配置和状态边界
 
-## 目录对齐
+- `.env` 是 ignored 的本地值账本，`.env.example` 只含空值或无害默认值；`HF_TOKEN` / `GH_TOKEN` 只属于本地控制面。
+- `DIFY_ARTIFACT_BEARER_TOKEN` 是 Space Secret；manifest URI、expected source ref、最大 archive 大小是 Space Variables。其余 Dify Secret/Variable 键名见 `hfs-dev.toml`，不记录值。
+- `/data`、`/persist`、PostgreSQL、Redis、Dify files、plugin state、generated env 和备份路径保持现有 runtime 责任；artifact 下载面绝不作为 mount 或状态目录。
+- 生产 Space 建议 `PERSIST_MODE=bucket` 且 `POSTGRES_BUCKET_FAILURE_MODE=exit`，避免 bucket PGDATA 失败后隐式以 runtime PostgreSQL 成功。现有 `fallback-to-runtime` 仅保留作已知 demo compatibility 行为，不能作为 artifact release 的持久化证据。
 
-当前目录应保持为 Pattern A 结构：
+## 本地门禁和证据范围
 
-```text
-repo-root/
-  README.md                 # HF Space card + GitHub 入口，含 metadata
-  README.hf-space.md        # HF Space 部署说明
-  Dockerfile                # Space build 入口
-  hfs-dev.toml              # HFS alignment manifest
-  docker/                   # 多进程 runtime glue
-  scripts/                  # build/run/smoke/static-check
-  docs/                     # 架构、配置、部署、运维、开发、发布
-  AGENTS.md                 # repo-local agent router
-  .github/workflows/        # static check gate
+```bash
+scripts/static-check.sh
+python3 /Users/sky/Github/SKY-Prompt/hfs-dev/scripts/check_hfs_alignment.py .
+git diff --check
 ```
 
-不要新增：
+静态门禁验证 registry、ignore boundary、manifest-first bootstrap、archive self-test、shell/Python 语法和既有纯函数测试。它不证明 Docker build、fork artifact producer、HF Bucket readback、Space runtime 接管、Sandbox execution、数据库迁移或 `/data` 恢复。
 
-```text
-cloud/hfs/README.md
-cloud/hfs/Dockerfile
-```
-
-对本仓库来说，把 Space root 藏进 `cloud/hfs/` 会让 Hugging Face 直推部署、GitHub 维护入口、文档链接和现有 smoke/CI 契约全部变复杂，并且违反 Pattern A 的目录主权。
-
-## Runtime 获取模式
-
-本仓库是 `image-assembly`：
-
-- Dify Web/API 来自官方上游镜像。
-- Plugin Daemon 和 Sandbox 来自官方上游镜像。
-- 本仓库把这些资产复制进单个 runtime image，并补齐 PostgreSQL、Redis、Nginx、Supervisor、ops/admin 和 HFS 运行约束。
-
-发布态要求是：构建输入必须能 pin 到不可变标识。当前开发默认值仍允许 `latest` / `main-local`，方便 demo 跟随上游；正式发布记录必须传入并记录实际使用的上游镜像 digest ref。
-
-## Shared HFS Runtime Contract
-
-当前已对齐的契约：
-
-| Contract | Current evidence |
-| --- | --- |
-| Space metadata | `README.md` frontmatter 含 `sdk: docker` 和 `app_port: 7860` |
-| Docker Space build root | repo root 有 `Dockerfile` |
-| Alignment manifest | `hfs-dev.toml` 声明 Pattern A、image-assembly 和 repo-root |
-| Single public port | `README.md app_port`、`Dockerfile EXPOSE`、`docker/nginx.conf listen` 均为 `7860` |
-| Multi-service reverse proxy | `docker/nginx.conf` 把 Web/API/Plugin/Ops/Admin 汇聚到单一入口 |
-| Runtime glue location | 多进程 glue 收在 `docker/` |
-| `/data` boundary | runtime state 经 `/data` 和 `/persist` 管理，不把 generated state 放进 repo |
-| Secrets boundary | `.env.local`、`.env.*.local`、`*.secret`、`*.key`、`*.pem` 被忽略或排除构建上下文 |
-| `/_ops` boundary | ops-service 是只读诊断面 |
-| `/_admin` boundary | admin-service 默认关闭，写操作有独立 token、CSRF/confirm、审计和白名单 |
-| Static gate | `.github/workflows/static-check.yml` 调用 `scripts/static-check.sh` |
-| Smoke | `scripts/hf-space-smoke.sh` 覆盖 `/`、`/nginx-health`、`/healthz`、`/_ops/*` 和 admin 默认关闭状态 |
-
-## Release Pin Contract
-
-`hfs-dev.toml` v2 使用结构化 `[[release_pins]]` 描述 release pin contract，并已对齐 `Dockerfile` 真实可消费的 build args。每个 pin 都声明 `name`、`type`、`source`、`required_for_release` 和 `dev_mutable_default_allowed`；image ref pin 还声明 `release_requires_digest=true`。
-
-所有镜像和 source provenance 都通过独立输入完成：
-
-```text
-BASE_IMAGE_REF
-DIFY_SOURCE_REPO
-DIFY_SOURCE_MAIN_REF
-DIFY_UPSTREAM_BASE_REF
-DIFY_WEB_IMAGE_REF
-DIFY_API_IMAGE_REF
-DIFY_AGENT_IMAGE_REF
-DIFY_AGENT_RUNTIME_IMAGE_REF
-PLUGIN_DAEMON_IMAGE_REF
-SANDBOX_IMAGE_REF
-DIFY_SANDBOX_SOURCE_REF
-```
-
-当前 self runtime contract 使用已验证的 GHCR image-specific digest：
-
-```text
-BASE_IMAGE_REF=python:3.12-slim-bookworm
-DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
-DIFY_SOURCE_MAIN_REF=fac065132df0c44f3962334cb89e4eb0d338151a
-DIFY_UPSTREAM_BASE_REF=a2d9aeff372a56d7f0f6b8b23114bfbd8ef7c397
-DIFY_WEB_IMAGE_REF=ghcr.io/blueskyxn/dify-web@sha256:7816d9d552a40094a39ec3c084daf9fb3da8431652f3424419b1577ba50866f5
-DIFY_API_IMAGE_REF=ghcr.io/blueskyxn/dify-api@sha256:e6f7f4ec93af964855d1cd274ea6f99facf650d974cdb38c60ceb78d11ffc683
-DIFY_AGENT_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-backend@sha256:70e533dd11c54f2ec744a19c27a0beae168b945a21f66fbf4ee07cd30511020c
-DIFY_AGENT_RUNTIME_IMAGE_REF=ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:e8552baf906ad725556e697424b3be2fa4134af859dbf6327e06f6b8a93d0415
-PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896a31ef84c0551245fa1876d054bc51c53c3f075ae20ccc2566
-SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
-DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
-UV_VERSION=0.11.21
-DIFY_VERSION=BlueSkyXN-dify-main-fac065132df0c44f3962334cb89e4eb0d338151a
-```
-
-self source revision 和四个 image-specific digest 已由同一 Actions release artifact 验证，使 API、Web、Agent venv 与 Agent Go runtime 保持同一 release 边界。更新时必须继续原子替换这些 pin。`DIFY_UPSTREAM_BASE_REF` 只记录已合入 self fork 的 upstream commit，不参与 `FROM`。Sandbox 的 `/conf` 和 `/dependencies` 仍来自 `SANDBOX_IMAGE_REF`，server binary 仍来自 source-pinned HFS patch build；Agent 的两个 venv 必须保持隔离。
-
-`DIFY_VERSION` 只保留为 metadata，供 runtime 展示和人工记录使用。它不是 selected image content 的证据；只改它不会改变 self GHCR artifacts。Sandbox server binary 来自 `DIFY_SANDBOX_SOURCE_REF` 加本仓库 patch，`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`，并且必须通过启动期 `sandbox_exec` 真实执行自检后才能进入可送审状态。这个自检不只看 marker，还要求 sandbox response 的 `exit_code=0` 且 `error=""`。
-
-## 对其他 HFS 项目的迁移规则
-
-统一规范时不要从 `dify-all-in-one` 直接复制目录；先按 source of truth 分类：
-
-```text
-第三方/上游程序 HFS 移植:
-  Pattern A
-  repo root == Space root
-  多服务 glue 放 docker/ 或 hfs/
-
-自研产品额外支持 HFS:
-  Pattern B
-  产品根保持产品维护语义
-  HFS 实现放 cloud/hfs/
-  cloud/hfs/ 必须能导出或同步为独立 Space root
-```
-
-再按 runtime 获取模式选择 pin 策略：
-
-```text
-self-contained             -> base image tag/digest
-image-assembly             -> upstream image digest
-source-fetch               -> git commit SHA
-artifact-at-build-time     -> release version + artifact SHA256
-artifact-at-runtime        -> artifact SHA256
-```
-
-最后套用 shared contract：Space metadata、single public port、Nginx/reverse proxy、healthcheck、smoke、`/data`、secrets、`/_ops`、`/_admin` 和 static gate。
+artifact producer、candidate Space 与生产切换仍需 owner gate：确认 fork Release 的 runtime lock、下载权限、candidate state mount、PostgreSQL RPO/隔离 restore、Plugin/Sandbox 真正启动以及最终 Space `runtime.raw.sha` readback。

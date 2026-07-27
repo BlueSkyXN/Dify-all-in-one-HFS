@@ -9,10 +9,12 @@ import http.client
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import time
+from datetime import datetime
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -64,23 +66,11 @@ DEFAULT_SERVICE_LOGS = {
 
 SAFE_CONFIG_KEYS = [
     "DIFY_VERSION",
-    "DIFY_AIO_BUILD_DIFY_VERSION",
     "DIFY_AIO_BUILD_UV_VERSION",
     "DIFY_AIO_BUILD_BASE_IMAGE_REF",
-    "DIFY_AIO_BUILD_DIFY_SOURCE_REPO",
-    "DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF",
-    "DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF",
-    "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF",
-    "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF",
-    "DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF",
-    "DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF",
-    "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF",
-    "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF",
-    "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF",
-    "DIFY_AIO_BUILD_DIFY_API_IMAGE",
-    "DIFY_AIO_BUILD_DIFY_WEB_IMAGE",
-    "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE",
-    "DIFY_AIO_BUILD_SANDBOX_IMAGE",
+    "DIFY_AIO_RUNTIME_DELIVERY",
+    "DIFY_ARTIFACT_EXPECTED_SOURCE_REF",
+    "DIFY_ARTIFACT_MAX_BYTES",
     "DEPLOY_ENV",
     "PUBLIC_URL",
     "SPACE_HOST",
@@ -988,15 +978,92 @@ def _status_payload() -> dict[str, Any]:
     return {"ok": True, "supervisor": supervisor_payload(), "health": health_payload(public=True)}
 
 
+ARTIFACT_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+ARTIFACT_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+ARTIFACT_TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
+ARTIFACT_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+ARTIFACT_INSTALL_ROOT = Path("/opt/dify/runtime")
+ARTIFACT_PROVENANCE_FIELDS = (
+    "schema_version",
+    "slot",
+    "source_kind",
+    "source_ref",
+    "artifact_ref",
+    "artifact",
+    "sha256",
+    "size_bytes",
+    "unpacked_size_bytes",
+    "runtime_lock_sha256",
+    "generated_at",
+)
+
+
+def valid_artifact_provenance(payload: Any, expected_source_ref: str) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    schema_version = payload.get("schema_version")
+    slot = payload.get("slot")
+    source_kind = payload.get("source_kind")
+    source_ref = payload.get("source_ref")
+    artifact_ref = payload.get("artifact_ref")
+    artifact = payload.get("artifact")
+    sha256 = payload.get("sha256")
+    size_bytes = payload.get("size_bytes")
+    unpacked_size_bytes = payload.get("unpacked_size_bytes")
+    runtime_lock_sha256 = payload.get("runtime_lock_sha256")
+    generated_at = payload.get("generated_at")
+    if schema_version != "2" or slot not in {"edge", "release"} or source_kind not in {"commit", "tag"}:
+        return False
+    if not isinstance(source_ref, str) or not isinstance(artifact_ref, str) or not ARTIFACT_GIT_SHA_RE.fullmatch(artifact_ref):
+        return False
+    if source_kind == "commit" and source_ref != artifact_ref:
+        return False
+    if source_kind == "tag" and (source_ref in {"", "latest", "main", "edge", "release"} or not ARTIFACT_TAG_RE.fullmatch(source_ref) or ".." in source_ref):
+        return False
+    if expected_source_ref and expected_source_ref != artifact_ref:
+        return False
+    if artifact != f"dify-runtime-{artifact_ref}.tar.gz":
+        return False
+    if not isinstance(sha256, str) or not ARTIFACT_SHA256_RE.fullmatch(sha256):
+        return False
+    if not isinstance(runtime_lock_sha256, str) or not ARTIFACT_SHA256_RE.fullmatch(runtime_lock_sha256):
+        return False
+    if not isinstance(size_bytes, str) or not size_bytes.isdigit() or int(size_bytes) <= 0:
+        return False
+    if not isinstance(unpacked_size_bytes, str) or not unpacked_size_bytes.isdigit() or int(unpacked_size_bytes) <= 0:
+        return False
+    if not isinstance(generated_at, str):
+        return False
+    try:
+        datetime.strptime(generated_at, ARTIFACT_TIMESTAMP_FORMAT)
+    except ValueError:
+        return False
+    return True
+
+
+def artifact_provenance_payload() -> dict[str, Any]:
+    root = ARTIFACT_INSTALL_ROOT
+    path = root / "MANIFEST_PROVENANCE.json"
+    if not os.path.lexists(path):
+        return {"installed": False, "status": "missing"}
+    try:
+        root_resolved = root.resolve(strict=True)
+        path_resolved = path.resolve(strict=True)
+        if path.is_symlink() or not path_resolved.is_file() or path_resolved.parent != root_resolved or path_resolved.stat().st_size > 4096:
+            return {"installed": False, "status": "invalid"}
+        payload = json.loads(path_resolved.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {"installed": False, "status": "invalid"}
+    if not valid_artifact_provenance(payload, env("DIFY_ARTIFACT_EXPECTED_SOURCE_REF")):
+        return {"installed": False, "status": "invalid"}
+    return {
+        "installed": True,
+        "status": "verified",
+        **{field: payload[field] for field in ARTIFACT_PROVENANCE_FIELDS},
+    }
+
+
 def version_payload() -> dict[str, Any]:
-    base_image_ref = env("DIFY_AIO_BUILD_BASE_IMAGE_REF")
-    dify_source_repo = env("DIFY_AIO_BUILD_DIFY_SOURCE_REPO")
-    dify_source_main_ref = env("DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF")
-    upstream_base_ref = env("DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF")
-    dify_api_image_ref = env("DIFY_AIO_BUILD_DIFY_API_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_API_IMAGE")
-    dify_web_image_ref = env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF") or env("DIFY_AIO_BUILD_DIFY_WEB_IMAGE")
-    plugin_daemon_image_ref = env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF") or env("DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE")
-    sandbox_image_ref = env("DIFY_AIO_BUILD_SANDBOX_IMAGE_REF") or env("DIFY_AIO_BUILD_SANDBOX_IMAGE")
     return {
         "service": "dify-all-in-one-ops",
         "dify_version": env("DIFY_VERSION"),
@@ -1006,24 +1073,12 @@ def version_payload() -> dict[str, Any]:
         "space_id": env("SPACE_ID"),
         "python": sys.version.split()[0],
         "build": {
-            "dify_version": env("DIFY_AIO_BUILD_DIFY_VERSION"),
+            "delivery": env("DIFY_AIO_RUNTIME_DELIVERY"),
             "uv_version": env("DIFY_AIO_BUILD_UV_VERSION"),
-            "base_image_ref": base_image_ref,
-            "dify_source_repo": dify_source_repo,
-            "dify_source_main_ref": dify_source_main_ref,
-            "upstream_base_ref": upstream_base_ref,
-            "dify_api_image_ref": dify_api_image_ref,
-            "dify_web_image_ref": dify_web_image_ref,
-            "dify_agent_image_ref": env("DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF"),
-            "dify_agent_runtime_image_ref": env("DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF"),
-            "plugin_daemon_image_ref": plugin_daemon_image_ref,
-            "sandbox_image_ref": sandbox_image_ref,
-            "sandbox_source_ref": env("DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF"),
-            "dify_api_image": dify_api_image_ref,
-            "dify_web_image": dify_web_image_ref,
-            "plugin_daemon_image": plugin_daemon_image_ref,
-            "sandbox_image": sandbox_image_ref,
+            "base_image_ref": env("DIFY_AIO_BUILD_BASE_IMAGE_REF"),
+            "artifact_expected_source_ref": env("DIFY_ARTIFACT_EXPECTED_SOURCE_REF"),
         },
+        "artifact": artifact_provenance_payload(),
         "sandbox": {
             "python_path": env("SANDBOX_PYTHON_PATH"),
             "nodejs_path": env("SANDBOX_NODEJS_PATH"),

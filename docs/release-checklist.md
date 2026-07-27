@@ -1,270 +1,128 @@
 # Release Checklist
 
-本文档用于记录一次从 GitHub PR 到 `main`，再到可选 Hugging Face Space 发布的最小证据链。它不是生产发布流程；目标是让 demo 仓库每次变更都能说明“提交了什么、验证了什么、线上是否接管”。
+本清单记录 all-in-one wrapper 与 Dify runtime artifact 的分层证据。它不是生产发布授权；任何 Space、bucket、Settings、restart、数据恢复或清理操作都需要独立 owner gate。
 
-## 发布边界
-
-默认发布顺序：
-
-```text
-feature branch -> GitHub PR -> origin/main -> optional hf/main -> HF runtime -> smoke
-```
-
-当前常见 remote 语义：
-
-```text
-origin  GitHub remote: https://github.com/BlueSkyXN/Dify-all-in-one-HFS.git
-hf      Hugging Face Space: https://huggingface.co/spaces/<space-id>
-```
-
-推送 `origin/main` 不会触发 Hugging Face Space rebuild。只有推送到实际指向 Space 的 remote，通常是 `hf main`，才会触发 Docker build。
-
-## PR 合并前
-
-记录：
-
-```text
-PR number:
-Branch:
-Base:
-Head SHA:
-Diff summary:
-Files:
-```
-
-最小检查：
+## 0. 变更前
 
 ```bash
 git status --short --branch
 scripts/static-check.sh
-python3 scripts/check-self-release-pins.py --require-final-digest
+python3 /Users/sky/Github/SKY-Prompt/hfs-dev/scripts/check_hfs_alignment.py .
 git diff --check
 ```
 
-HFS 范式记录：
-
-```text
-Classification: Pattern A / HFS Port Repository
-Runtime mode: image-assembly
-Space root: repo root
-Manifest: hfs-dev.toml
-HFS contract check: scripts/validate-hfs-contract.sh
-```
-
-发布态 build inputs 记录：
-
-```text
-BASE_IMAGE_REF:
-DIFY_SOURCE_REPO:
-DIFY_SOURCE_MAIN_REF:
-DIFY_UPSTREAM_BASE_REF:
-DIFY_API_IMAGE_REF:
-DIFY_WEB_IMAGE_REF:
-DIFY_AGENT_IMAGE_REF:
-DIFY_AGENT_RUNTIME_IMAGE_REF:
-PLUGIN_DAEMON_IMAGE_REF:
-SANDBOX_IMAGE_REF:
-DIFY_SANDBOX_SOURCE_REF:
-UV_VERSION:
-DIFY_VERSION metadata:
-All image refs use digest? yes/no:
-Mutable defaults used? yes/no + reason:
-```
-
-当前 self runtime 的 source ref 和四个 GHCR image-specific digest 已由同一次 release artifact 验证；`scripts/check-self-release-pins.py --require-final-digest` 会拒绝 placeholder 或非 digest pin。后续升级必须在 self commit、GHCR artifact digest、OCI revision 和 runtime version readback 都确认后，原子替换 source ref 与全部 image-specific digest。`DIFY_UPSTREAM_BASE_REF` 只记录已合入 fork 的 upstream commit；`DIFY_VERSION` 只作为 metadata，不是 selected image content 的证据；runtime 不再使用 targeted self API overlay。
-
-取得 workflow digest JSON artifact 后，增加 `--artifact-dir <downloaded-artifact-root>`，让同一 checker 核对四个 artifact 的 `digest`、`commit_sha` 和 `oci_revision`。
-
-`scripts/build.sh` 会透传当前 shell 中同名 build arg 环境变量；如果不用脚本，必须在 `docker build` 命令里显式传入对应 `--build-arg`。
-
-如果改动涉及 `docker/` runtime lifecycle、Nginx、Supervisor、env、ops-service、admin-service 或 build 行为，额外记录是否运行：
-
-```text
-Docker build:
-Local run:
-Local smoke:
-Reason if skipped:
-```
-
-对应命令：
-
-```bash
-scripts/build.sh
-scripts/run-demo.sh
-ALLOW_DEMO_OPS_TOKEN=true OPS_TOKEN=dify_ops_demo_token scripts/hf-space-smoke.sh http://localhost:8080
-```
-
-如果 PR 改动了 `docker/sandbox-python-requirements.txt`，至少记录目标 Python wheel 检查：
-
-```bash
-python3 -m pip download --only-binary=:all: --python-version 3.12 --implementation cp --abi cp312 --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 -r docker/sandbox-python-requirements.txt
-python3 -m pip download --only-binary=:all: --python-version 3.14 --implementation cp --abi cp314 --platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 -r docker/sandbox-python-requirements.txt
-```
-
-构建并启动容器后，还要记录真实 Sandbox import smoke。`/_ops/version` 的 requirements `package_count` 只证明清单文件内容，不能替代这一步：
-
-```bash
-SANDBOX_KEY=your-configured-sandbox-key
-docker exec dify-aio-hf-demo curl -sS -X POST http://127.0.0.1:8194/v1/sandbox/run \
-  -H "X-Api-Key: ${SANDBOX_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"language":"python3","code":"import pandas,numpy,fitz,pdfplumber,openpyxl,lxml,bs4,requests\nfrom PIL import Image\nimport docx,pptx,yaml,dateutil\nprint(\"SANDBOX_IMPORT_OK\", pandas.__version__)"}'
-docker exec dify-aio-hf-demo sh -lc 'command -v pip3; readlink -f "$(command -v pip3)"'
-docker logs dify-aio-hf-demo 2>&1 | grep -iE "already satisfied|Downloading|installing python dependencies|failed to initialize python dependencies" || true
-```
-
-如果 Space 开启 `DIFY_AGENT_ENABLED=true`，额外记录：
-
-```text
-API venv import / sys.prefix / uv pip check gate passed in Docker build? yes/no:
-dify-agent independent venv import / dual-graphon assertion / uv pip check gate passed in Docker build? yes/no:
-Known upstream uv pip check exceptions only? yes/no:
-/_ops/health.agent_backend.status:
-/_ops/health.shellctl.status:
-Agent App or workflow Agent node smoke:
-Reason if skipped:
-```
-
-`agent_backend.status=ok` 和 `shellctl.status=ok` 只能证明内部 `dify-agent` backend 与 shell layer controller 可达；真实 Agent v2 / Skills 发布验收需要再跑 Agent App 或 workflow Agent node，最好包含一次 plugin tool 或 skill 引用。
-
-如果 Space 开启 `ADMIN_ENABLED=true` 但本轮不提供 `ADMIN_TOKEN`，可以用：
-
-```bash
-SMOKE_ADMIN_ENABLED=true \
-SMOKE_OPENAPI_ENABLED=true \
-scripts/hf-space-smoke.sh https://your-space.hf.space
-```
-
-这只验证 admin UI 可达和未鉴权 API 返回 401，不验证 authenticated admin API 或写 action。需要完整 admin smoke 时仍必须设置 `ADMIN_TOKEN`。
-
-## 合并到 GitHub main
-
-合并后记录：
-
-```text
-Merge method:
-Merged PR:
-origin/main SHA:
-GitHub checks:
-```
-
-回读：
-
-```bash
-git fetch origin
-git rev-parse origin/main
-gh pr view <number> --json state,mergedAt,mergeCommit,statusCheckRollup
-```
-
-本地收口：
-
-```bash
-git switch main
-git pull --ff-only origin main
-git status --short --branch
-```
-
-## 发布到 Hugging Face Space
-
-只有需要更新 live demo 时执行。
-
-发布前确认 remote：
-
-```bash
-git remote -v
-```
-
-推送：
-
-```bash
-git push hf main
-```
-
 记录：
 
 ```text
-Expected Space SHA:
-HF push result:
-Build log checked:
-App log checked:
+Wrapper commit:
+Dify producer repository:
+Dify immutable source commit:
+Source kind/ref (commit or tag):
+GitHub Release tag and archive name:
+Candidate slot (edge or release):
+Candidate Space:
+State mount and backup baseline:
+Owner approval for publish / promote / restart / restore:
 ```
 
-回读 Space runtime：
+不要把历史 `RUNNING`、旧 GHCR digest、旧 Space SHA 或静态检查当成当前 release 证据。
 
-```bash
-hf spaces info <space-id>
-```
+## 1. Producer artifact
 
-必须确认：
+producer 必须输出唯一命名的：
 
 ```text
-runtime.stage = RUNNING
-runtime.raw.sha = <expected main sha>
+dify-runtime-<40-char-commit>.tar.gz
 ```
 
-注意：`sha` 更新只能说明 Space repo 收到了提交；`runtime.raw.sha` 等于目标提交才说明新镜像接管流量。
-
-## 发布后 smoke
-
-线上 smoke：
-
-```bash
-OPS_TOKEN=your-configured-ops-token \
-  scripts/hf-space-smoke.sh https://your-space.hf.space
-```
-
-必要时增加重试：
-
-```bash
-OPS_TOKEN=your-configured-ops-token \
-SMOKE_RETRIES=60 \
-SMOKE_DELAY=5 \
-scripts/hf-space-smoke.sh https://your-space.hf.space
-```
-
-记录：
+archive 内必须有 schema v2 `runtime-lock.json`，覆盖 API、Web、Agent、Plugin Daemon 和 Sandbox，并让 API/Web/Agent 绑定同一个 fork commit、其余组件绑定 immutable image/source pin。记录 producer build、archive SHA-256、压缩与解包 size、lock SHA-256、component pins、Sandbox privilege-launcher compatibility 和 GitHub Release asset readback。
 
 ```text
-Smoke command:
-Smoke result:
-Ops health:
-Ops errors:
-Known skipped checks:
+Producer build:
+Archive SHA-256:
+Archive size:
+Runtime lock SHA-256:
+GitHub Release asset readback:
 ```
 
-只读诊断：
+没有 archive/lock 内容、Sandbox startup 和 component compatibility 的真实 build/runtime 证据时，不能切换 consumer Space。
 
-```bash
-curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://your-space.hf.space/_ops/health
+## 2. Slot publication
 
-curl -H "X-Ops-Token: $OPS_TOKEN" \
-  https://your-space.hf.space/_ops/errors
-```
+只允许 manual `Publish Dify runtime artifact` workflow，且需 `confirm_publish=PUBLISH` 与 environment approval。workflow 不使用 whole-repo force-push 或 credential-bearing Git URL。
 
-## 发布记录模板
+严格 **manifest-last**：
+
+1. 上传 `dify-runtime-<commit>.tar.gz` 和 `SHA256SUMS.txt`；
+2. 从 bucket readback archive/checksum，确认 byte/hash；
+3. 最后覆盖 `<slot>/manifest.json`；
+4. readback manifest，确认其 artifact、commit、size、SHA-256、runtime lock hash 与 slot key；
+5. 观察后才由 owner 批准清理未引用对象。
 
 ```text
-Date:
-Operator:
-PR:
-Branch:
-Head SHA:
-Merge SHA:
-origin/main SHA:
-hf/main SHA:
-HF runtime.raw.sha:
-
-Checks:
-- GitHub Static Check:
-- Local static-check:
-- Docker build:
-- Local smoke:
-- HF runtime info:
-- HF smoke:
-
-Notes:
-- Not run:
-- Known risks:
-- Follow-up PR:
+Slot:
+Artifact upload/readback:
+Manifest upload/readback:
+Manifest source kind/ref:
+Manifest artifact_ref:
+Rollback GitHub Release tag:
 ```
+
+`edge` 可指向已验证 main commit；`release` 必须由显式 promote 选择 immutable tag。旧 slot object 删除不是本轮发布步骤。
+
+## 3. Space Settings and deployment readback
+
+本地 `.env` 是值账本；`.env.example` 只提供空值/无害默认值。Space 只登记键名：
+
+```text
+Secret: DIFY_ARTIFACT_BEARER_TOKEN
+Variable: DIFY_ARTIFACT_MANIFEST_HF_URI
+Variable: DIFY_ARTIFACT_EXPECTED_SOURCE_REF
+Variable: DIFY_ARTIFACT_MAX_BYTES
+```
+
+Secret 只核验 key presence，不能回读值。其余 Dify keys 见 `hfs-dev.toml`。确认 manifest 下载面没有挂载为 `/data`，现有 `/persist` state mount 未改名、未覆盖生成配置或业务数据。
+
+部署后先回读：
+
+```text
+Expected wrapper commit:
+Space repo SHA:
+Space runtime.stage:
+Space runtime.raw.sha:
+Selected manifest/slot:
+/_ops/version artifact provenance:
+```
+
+只有 `runtime.stage=RUNNING` 且 `runtime.raw.sha` 等于预期 wrapper commit，才可认为新 consumer image 接管；它不自动证明 artifact 或应用功能已正确。
+
+## 4. Candidate and production runtime checks
+
+在隔离 candidate state mount 完成，再由 owner 批准生产窗口：
+
+```bash
+OPS_TOKEN=<configured-token> scripts/hf-space-smoke.sh https://<space>.hf.space
+```
+
+另行记录：
+
+```text
+Manifest missing / malformed negative startup:
+Wrong archive hash / runtime lock negative startup:
+PostgreSQL migration:
+Redis and Celery:
+Dify login / application API:
+File storage:
+Plugin tool:
+Sandbox execution:
+Restart persistence:
+PostgreSQL dump and isolated restore:
+```
+
+`PERSIST_MODE=bucket` 的 release profile 应设 `POSTGRES_BUCKET_FAILURE_MODE=exit`。仅运行 legacy demo fallback 或通过 syntax check，不能作为 state restore 证据。
+
+## 5. Rollback and cleanup
+
+回退选择已验证 GitHub Release 的 exact archive，重新执行 artifact-first/readback/manifest-last，然后确认 consumer Space readback 和 smoke。只回退 payload pointer；绝不自动回滚或删除 `/data`、`/persist`、PostgreSQL、Redis、插件或 generated secrets。
+
+Settings prune、bucket/Space/object 删除、mount 重命名、factory reboot 和恢复生产数据均需要单独 owner/data-owner/release-owner 确认。

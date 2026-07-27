@@ -60,7 +60,7 @@ nginx:7860
 
 ## HFS 范式定位
 
-本仓库按本机 HFS 开发范式归类为 **Pattern A: HFS Port Repository**，runtime 获取模式为 **image-assembly**。仓库根目录就是 Hugging Face Space root，也是 GitHub 维护 root；`hfs-dev.toml` 是 alignment manifest；`docker/` 是多进程 runtime glue，不应迁入 `cloud/hfs/`。详细对齐说明见 [HFS 范式对齐](./docs/hfs-alignment.md)。
+本仓库按 HFS v2 归类为 **Pattern A: HFS Port Repository**、**artifact** 车道。仓库根目录仍是 Hugging Face Space root，`docker/` 保留多进程 runtime glue；产品 payload 不再由 Dockerfile 的业务 OCI image 组装，而是在启动时按单一 `hfs-dist/dify-all-in-one/<edge|release>/manifest.json` 下载、校验并原子安装。`hfs-dev.toml` 只登记车道、Space 和配置键名；实际 component pins/checksum 在 artifact `runtime-lock.json`、manifest 和 bootstrap 中验证。详细边界见 [HFS v2 对齐](./docs/hfs-alignment.md)。
 
 ## 直接部署到 Hugging Face Space
 
@@ -89,9 +89,9 @@ Storage: Persistent Storage / Storage Bucket
 Visibility: Private 或 Protected
 ```
 
-5. 在 Space Settings → Variables / Secrets 中按本地 `.env.local` 的分区上传配置。
+5. 在 Space Settings → Variables / Secrets 中按本地 `.env` 的分区上传配置。
 
-`.env.local` 是本地唯一配置事实源，已被 `.gitignore` 忽略。`[HF Secrets]` 区上传到 Space Secrets，`[HF Variables]` 区上传到 Space Variables；与 `docker/dify.env.runtime` 默认值一致的变量不要重复上传。
+`.env` 是本地唯一配置事实源，已被 `.gitignore` 忽略。`[HF Secrets]` 区上传到 Space Secrets，`[HF Variables]` 区上传到 Space Variables；与 `docker/dify.env.runtime` 默认值一致的变量不要重复上传。
 
 推荐 Variables：
 
@@ -145,18 +145,20 @@ PUBLIC_URL=https://your.custom.domain
 
 ## 本地构建和运行
 
+consumer image 可本地构建，但启动需要已经发布并获授权的 artifact manifest；不会使用本地目录、旧 OCI images 或 `latest` 回退。
+
 ```bash
 docker build -t dify-all-in-one-hf-space:latest .
 ```
 
 ```bash
-docker run -d \
-  --name dify-aio-hf \
-  -p 8080:7860 \
-  -v dify-hf-demo-persist:/persist \
-  --env-file docker/dify.env.demo \
-  dify-all-in-one-hf-space:latest
+DIFY_ARTIFACT_MANIFEST_HF_URI=hf://buckets/<namespace>/hfs-dist/dify-all-in-one/edge/manifest.json \
+DIFY_ARTIFACT_BEARER_TOKEN=<local-only-token> \
+DIFY_ARTIFACT_EXPECTED_SOURCE_REF=<40-char-commit> \
+scripts/run-demo.sh
 ```
+
+本地 `.env` 是 ignored 的值账本，可从 `.env.example` 创建；`HF_TOKEN` / `GH_TOKEN` 仅用于本地控制面，不能传入 Space。`docker/dify.env.demo` 的 artifact 值留空，刻意让无 artifact 配置的启动 fail-closed。
 
 打开：
 
@@ -253,7 +255,7 @@ https://your-space.hf.space/_ops/?token=<OPS_TOKEN>
 
 `/_ops/health` 会包含 `sandbox_exec` 字段。它来自容器启动后一次性内部调用 `POST /v1/sandbox/run` 的结果，用来确认 Sandbox 不只是端口存活，而是真能执行 `python3` code；判定条件包括 HTTP 200、sandbox JSON envelope 成功、`exit_code=0`、`error=""`，以及 stdout 命中 marker。默认失败只标记 degraded，不把 demo Space 直接拉挂；受控验证可设置 `SANDBOX_SELFCHECK_STRICT=true`。
 
-Sandbox server binary 使用 `DIFY_SANDBOX_SOURCE_REF` 指向的 upstream source 加一处 HFS UID/GID 兼容 patch 构建；`SANDBOX_IMAGE_REF` 仍用于提供官方 `/conf` 和 `/dependencies`。`/_ops/version` 会同时展示 image ref、source ref 和当前 `SANDBOX_UID_POOL_*` / `SANDBOX_RUN_GID` 配置。
+Sandbox server、Dify API/Web/Agent 和 Plugin Daemon 都由 manifest-first runtime artifact 的 `runtime-lock.json` 以不可变 ref 绑定。wrapper image 只保留固定的 root-owned Sandbox privilege launcher；artifact bootstrap 把 manifest 的受限 provenance 写入 `/opt/dify/runtime/MANIFEST_PROVENANCE.json`，`/_ops/version` 只回读安全字段和当前 `SANDBOX_UID_POOL_*` / `SANDBOX_RUN_GID` 配置。
 
 `/_admin/` 默认 `ADMIN_ENABLED=false`，因此返回 404。确需演示受控管理能力时，需要设置独立 `ADMIN_TOKEN`，再按需打开 `ADMIN_FILES_ENABLED` 或 `ADMIN_FILES_WRITE_ENABLED`。当前白名单 action 包括 restart service、reload nginx、run health checks、force postgres backup、ensure app API token、restore plugin installed package from cache，以及 dry-run-first provider model `read_timeout` patch；`/_admin/api/audit` 可读取最近的 admin 审计事件；`/_ops` 仍保持只读。`/_admin/` 登录页和管理页也支持 English / 中文切换，并会在浏览器本地保存选择。
 
