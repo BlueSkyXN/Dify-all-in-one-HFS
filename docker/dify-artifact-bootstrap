@@ -71,7 +71,9 @@ PY
 
   umask 077
   printf 'header = "Authorization: Bearer %s"\n' "${DIFY_ARTIFACT_BEARER_TOKEN}" > "$curl_config"
-  if ! curl --config "$curl_config" --fail --location --silent --show-error \
+  # curl strips Authorization on cross-host redirects by default. Keep cross-host
+  # credential forwarding disabled and restrict redirect protocols.
+  if ! curl --config "$curl_config" --fail --location --proto-redir =https --max-redirs 5 --silent --show-error \
     --retry 3 --retry-delay 3 --retry-connrefused --max-filesize 1048576 \
     --output "$manifest_path" "$manifest_url"; then
     log 'failed to download the selected artifact manifest.'
@@ -88,7 +90,7 @@ PY
     exit 64
   }
 
-  if ! curl --config "$curl_config" --fail --location --silent --show-error \
+  if ! curl --config "$curl_config" --fail --location --proto-redir =https --max-redirs 5 --silent --show-error \
     --retry 3 --retry-delay 3 --retry-connrefused \
     --max-filesize "${DIFY_ARTIFACT_MAX_BYTES}" \
     --output "$artifact_path" "$artifact_url"; then

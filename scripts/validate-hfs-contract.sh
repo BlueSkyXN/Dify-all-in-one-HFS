@@ -19,12 +19,12 @@ require_file() {
 
 require_grep() {
   local pattern=$1 path=$2 message=$3
-  grep -Eq "$pattern" "$path" || fail "$message"
+  grep -Eq -- "$pattern" "$path" || fail "$message"
 }
 
 require_absent() {
   local pattern=$1 path=$2 message=$3
-  if grep -Eq "$pattern" "$path"; then
+  if grep -Eq -- "$pattern" "$path"; then
     fail "$message"
   fi
 }
@@ -140,6 +140,8 @@ require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI=' docker/dify.env.demo "demo config 
 require_grep '/usr/local/bin/dify-artifact-bootstrap' docker/entrypoint.sh "entrypoint must bootstrap before Dify initialization"
 require_grep 'require_env DIFY_ARTIFACT_MANIFEST_HF_URI' docker/dify-artifact-bootstrap "bootstrap must fail closed without manifest URI"
 require_grep 'require_env DIFY_ARTIFACT_BEARER_TOKEN' docker/dify-artifact-bootstrap "bootstrap must fail closed without artifact credential"
+require_grep '--proto-redir =https --max-redirs 5' docker/dify-artifact-bootstrap "artifact redirects must stay on bounded HTTPS hops"
+require_absent '--location-trusted' docker/dify-artifact-bootstrap "artifact downloads must never forward Authorization across hosts"
 require_absent 'DIFY_ARTIFACT_(URL|PATH|S3_|SHA256)' docker/dify.env.runtime "runtime defaults must not permit direct artifact fallback inputs"
 require_absent 'DIFY_ARTIFACT_(URL|PATH|S3_|SHA256)' docker/dify-artifact-bootstrap "bootstrap must not permit direct artifact fallback inputs"
 require_absent 'DIFY_ARTIFACT_(INSTALL_ROOT|DOWNLOAD_DIR)' docker/dify.env.runtime "runtime defaults must not expose artifact filesystem controls"
