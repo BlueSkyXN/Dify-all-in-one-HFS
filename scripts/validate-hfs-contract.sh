@@ -141,6 +141,7 @@ require_grep 'COPY docker/sandbox-python-requirements.txt /dependencies/python-r
 require_grep 'pip install --no-cache-dir -r /dependencies/python-requirements.txt' Dockerfile "Dockerfile must install the approved Sandbox Python dependencies"
 require_grep 'ln -s /opt/dify/runtime/opt/dify-agent /opt/dify-agent' Dockerfile "Dockerfile must link the artifact Agent virtualenv into its runtime path"
 require_grep 'ln -s /opt/dify/runtime/usr/local/bin/shellctl /usr/local/bin/shellctl' Dockerfile "Dockerfile must link the artifact shellctl binary into its runtime path"
+require_grep 'chown -R user:user /home/user /data' Dockerfile "Dockerfile must keep the runtime home writable when the base image pre-creates it"
 require_absent '^FROM \$\{DIFY_' Dockerfile "Dockerfile must not select Dify business OCI images"
 require_absent '^ARG DIFY_(API|WEB|AGENT|SOURCE|SANDBOX|VERSION)' Dockerfile "Dockerfile must not duplicate artifact runtime pins"
 require_absent 'git fetch|git clone|dify-sandbox.git' Dockerfile "Dockerfile must not fetch Dify product source during build"
