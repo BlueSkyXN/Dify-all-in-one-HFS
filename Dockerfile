@@ -73,6 +73,14 @@ RUN apt-get update \
        "httpx[socks]==0.27.2" requests==2.32.3 jinja2==3.1.6 PySocks \
     && rm -rf /var/lib/apt/lists/*
 
+# The Sandbox discovers the host Python installation before it creates the
+# restricted execution root. Preinstall the approved dependency set so it can
+# copy a complete, immutable environment instead of repeatedly attempting a
+# large runtime install inside the Space sandbox.
+COPY docker/sandbox-python-requirements.txt /dependencies/python-requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /dependencies/python-requirements.txt \
+    && python3 -m pip check
+
 # Hugging Face Docker Spaces execute as UID 1000. All ordinary runtime code and
 # state remain rootless; only the fixed sandbox launcher retains setuid root.
 RUN groupadd --gid 1000 user \
@@ -88,6 +96,12 @@ RUN groupadd --gid 1000 user \
       /conf /dependencies /opt/dify/sandbox /opt/dify \
     && ln -s /opt/dify/runtime/app /app \
     && ln -s /opt/dify/runtime/opt/dify/plugin-daemon /opt/dify/plugin-daemon \
+    && ln -s /opt/dify/runtime/opt/dify-agent /opt/dify-agent \
+    && ln -s /opt/dify/runtime/usr/local/bin/dify-agent /usr/local/bin/dify-agent \
+    && ln -s /opt/dify/runtime/usr/local/bin/shellctl /usr/local/bin/shellctl \
+    && ln -s /opt/dify/runtime/usr/local/bin/shellctl-runner /usr/local/bin/shellctl-runner \
+    && ln -s /opt/dify/runtime/usr/local/bin/shellctl-runner-exit /usr/local/bin/shellctl-runner-exit \
+    && ln -s /opt/dify/runtime/usr/local/bin/shellctl-sanitize-pty /usr/local/bin/shellctl-sanitize-pty \
     && chown -R user:user /data /persist /tmp/dify-aio /conf /dependencies /var/sandbox /opt/dify \
     && chmod 700 /data/postgres /data/redis /data/config \
     && chmod 755 /data /data/dify /data/dify/storage /data/plugin_daemon /data/logs /data/run /data/run/postgresql \
