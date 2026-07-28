@@ -102,7 +102,7 @@ RUN groupadd --gid 1000 user \
     && ln -s /opt/dify/runtime/usr/local/bin/shellctl-runner /usr/local/bin/shellctl-runner \
     && ln -s /opt/dify/runtime/usr/local/bin/shellctl-runner-exit /usr/local/bin/shellctl-runner-exit \
     && ln -s /opt/dify/runtime/usr/local/bin/shellctl-sanitize-pty /usr/local/bin/shellctl-sanitize-pty \
-    && chown -R user:user /data /persist /tmp/dify-aio /conf /dependencies /var/sandbox /opt/dify \
+    && chown -R user:user /home/user /data /persist /tmp/dify-aio /conf /dependencies /var/sandbox /opt/dify \
     && chmod 700 /data/postgres /data/redis /data/config \
     && chmod 755 /data /data/dify /data/dify/storage /data/plugin_daemon /data/logs /data/run /data/run/postgresql \
       /data/run/nginx/client_body /data/run/nginx/proxy /data/run/nginx/fastcgi /data/run/nginx/uwsgi /data/run/nginx/scgi \
