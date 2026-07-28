@@ -48,7 +48,7 @@ PY
 }
 
 for path in \
-  README.md Dockerfile hfs-dev.toml .dockerignore .gitignore .env.example \
+  README.md Dockerfile hfs-dev.toml hfs-dev.candidate.toml .dockerignore .gitignore .env.example \
   docker/entrypoint.sh docker/dify-artifact-bootstrap docker/dify_artifact_contract.py \
   docker/sandbox-artifact-launcher.c docker/dify.env.runtime docker/dify.env.demo \
   docker/supervisord.conf docker/nginx.conf docker/healthcheck.sh \
@@ -67,6 +67,7 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 manifest = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
+candidate = tomllib.loads((root / "hfs-dev.candidate.toml").read_text(encoding="utf-8"))
 expected = {
     "standard": "2.0",
     "project": "dify-all-in-one",
@@ -77,6 +78,11 @@ expected = {
     "dist_bucket": "hfs-dist",
 }
 errors = [f"hfs-dev.toml {key} must be {value!r}, got {manifest.get(key)!r}" for key, value in expected.items() if manifest.get(key) != value]
+if candidate.get("space") != "BlueSkyXN/dify-all-in-one-v2-candidate":
+    errors.append("candidate manifest must target BlueSkyXN/dify-all-in-one-v2-candidate")
+for key in ("standard", "project", "sovereignty", "lane", "version_source", "local_only", "secrets", "variables", "dist_bucket", "seed_file", "other_objects", "deviations"):
+    if candidate.get(key) != manifest.get(key):
+        errors.append(f"candidate manifest {key} must match production manifest")
 required_secrets = {
     "DIFY_ARTIFACT_BEARER_TOKEN", "OPS_TOKEN", "DB_PASSWORD", "REDIS_PASSWORD",
     "SECRET_KEY", "PLUGIN_DAEMON_KEY", "PLUGIN_DIFY_INNER_API_KEY",

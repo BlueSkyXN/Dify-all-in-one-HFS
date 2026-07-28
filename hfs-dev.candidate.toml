@@ -1,0 +1,35 @@
+standard = "2.0"
+project = "dify-all-in-one"
+space = "BlueSkyXN/dify-all-in-one-v2-candidate"
+sovereignty = "fork"
+lane = "artifact"
+version_source = "commit"
+
+local_only = ["HF_TOKEN", "GH_TOKEN"]
+secrets = [
+  "DIFY_ARTIFACT_BEARER_TOKEN",
+  "OPS_TOKEN",
+  "DB_PASSWORD",
+  "REDIS_PASSWORD",
+  "SECRET_KEY",
+  "PLUGIN_DAEMON_KEY",
+  "PLUGIN_DIFY_INNER_API_KEY",
+  "CODE_EXECUTION_API_KEY",
+  "ADMIN_TOKEN",
+]
+variables = [
+  "DIFY_ARTIFACT_MANIFEST_HF_URI",
+  "DIFY_ARTIFACT_EXPECTED_SOURCE_REF",
+  "DIFY_ARTIFACT_MAX_BYTES",
+  "PERSIST_MODE",
+  "POSTGRES_BUCKET_FAILURE_MODE",
+  "ADMIN_ENABLED",
+]
+
+dist_bucket = "hfs-dist"
+seed_file = ""
+other_objects = []
+deviations = [
+  "base-image-version = The existing Python base tag remains a reviewed build input; release evidence records its resolved digest.",
+  "sandbox-privilege-launcher = A tiny root-owned image-built launcher preserves the upstream Sandbox setuid boundary while the server binary itself is artifact-delivered.",
+]
