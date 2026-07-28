@@ -35,6 +35,9 @@ ALLOWED_ABSOLUTE_SYMLINKS = {
     "/usr/local/bin/python3",
     "/usr/local/bin/python3.12",
 }
+ALLOWED_EXECUTABLE_SYMLINK_PATHS = {
+    "opt/dify-agent/.venv/bin/python",
+}
 
 
 class ContractError(ValueError):
@@ -272,12 +275,22 @@ def _required_runtime_paths(root: Path) -> tuple[set[Path], set[Path]]:
     return directories, executables
 
 
+def _is_valid_runtime_executable(root: Path, path: Path) -> bool:
+    if path.is_symlink():
+        relative = path.relative_to(root).as_posix()
+        return (
+            relative in ALLOWED_EXECUTABLE_SYMLINK_PATHS
+            and os.readlink(path) in ALLOWED_ABSOLUTE_SYMLINKS
+        )
+    return path.is_file() and os.access(path, os.X_OK)
+
+
 def _validate_runtime_layout(root: Path) -> None:
     directories, executables = _required_runtime_paths(root)
     regular_files = {root / "BUILD_INFO.txt", root / "runtime-lock.json"}
     if any(not path.is_dir() or path.is_symlink() for path in directories):
         raise ContractError("artifact archive is missing required runtime directories")
-    if any(not path.is_file() or path.is_symlink() or not os.access(path, os.X_OK) for path in executables):
+    if any(not _is_valid_runtime_executable(root, path) for path in executables):
         raise ContractError("artifact archive is missing required executable runtime files")
     if any(not path.is_file() or path.is_symlink() for path in regular_files):
         raise ContractError("artifact archive is missing required regular runtime files")
