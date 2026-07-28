@@ -1,12 +1,10 @@
 standard = "2.0"
 project = "dify-all-in-one"
-space = "BlueSkyXN/dify-all-in-one"
+space = "BlueSkyXN/dify-all-in-one-v2-candidate"
 sovereignty = "fork"
 lane = "artifact"
 version_source = "commit"
 
-# Values remain in the ignored local ledger. This registry records names and
-# deployment relationships only; Docker/bootstrap scripts own pin validation.
 local_only = ["HF_TOKEN", "GH_TOKEN"]
 secrets = [
   "DIFY_ARTIFACT_BEARER_TOKEN",
@@ -29,11 +27,8 @@ variables = [
 ]
 
 dist_bucket = "hfs-dist"
-# No configuration seed is distributed: entrypoint-generated state stays on
-# /data (or its existing /persist mapping) and is never overwritten by deploy.
 seed_file = ""
 other_objects = []
-
 deviations = [
   "base-image-version = The existing Python base tag remains a reviewed build input; release evidence records its resolved digest.",
   "sandbox-privilege-launcher = A tiny root-owned image-built launcher preserves the upstream Sandbox setuid boundary while the server binary itself is artifact-delivered.",

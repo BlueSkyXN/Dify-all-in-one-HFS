@@ -4,7 +4,7 @@
 
 ## HFS 范式定位
 
-本仓库按 `hfs-dev` 范式归类为 Pattern A: HFS Port Repository，runtime 获取模式为 image-assembly。仓库根目录同时是 Hugging Face Space root 和 GitHub maintenance root；`docker/` 是多进程 runtime glue，不应迁入 `cloud/hfs/`。详细判断见 [HFS Paradigm Alignment](./hfs-alignment.md)。
+本仓库按 HFS v2 归类为 Pattern A: HFS Port Repository，使用 artifact 车道的 manifest-first runtime delivery。仓库根目录同时是 Hugging Face Space root 和 GitHub maintenance root；`docker/` 是多进程 runtime glue，不应迁入 `cloud/hfs/`。启动时先从单一 manifest 安装已验证 runtime bundle，才执行原有多服务初始化。详细判断见 [HFS Paradigm Alignment](./hfs-alignment.md)。
 
 ## 组件来源
 
@@ -12,11 +12,10 @@
 
 | 类别 | 引入方式 | 组件 |
 | --- | --- | --- |
-| 自维护 Dify 镜像资产（多阶段 `COPY --from`） | API、Web、Agent backend 与 Agent runtime 均从 `BlueSkyXN/dify@DIFY_SOURCE_MAIN_REF` 构建并发布到 `ghcr.io/blueskyxn/*`；HFS 只使用 immutable digest | self Web `/app/targets`、self API `/app/api`、独立 Agent venv 与 Go shellctl runtime |
-| 独立官方 runtime 资产 | `PLUGIN_DAEMON_IMAGE_REF` / `SANDBOX_IMAGE_REF` 继续选择各自官方 digest | `langgenius/dify-plugin-daemon` 的 `/app`；`langgenius/dify-sandbox` 的 `conf` + `dependencies` |
-| Sandbox binary patch | `sandbox-builder` 从 `DIFY_SANDBOX_SOURCE_REF` 拉取上游 `dify-sandbox` source 并应用 `docker/patches/dify-sandbox-hfs-uidpool.patch` | 只替换 `/opt/dify/sandbox/main`，用于 HFS rootless UID/GID 兼容；仍保留 upstream chroot/seccomp 路径 |
-| Debian / pip / GitHub release 二进制 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install`，外加 GitHub release 校验 SHA256 | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `postgresql-15-pgvector`、`nodejs 22`、`tini`、`uv`、`tmux`、`util-linux/flock`、`shellctl` |
-| 本仓库自维护胶水 | `Dockerfile` `COPY` 自 `docker/` 与 `scripts/`，是改 Demo 行为时唯一需要改动的代码 | `entrypoint.sh`、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、`wait-for-core`、`run-postgres`、`postgres-backup-loop`、`ops_service.py`、`admin_service.py`、`healthcheck.sh`、`dify.env.runtime` 模板、`scripts/*.sh` |
+| Dify runtime artifact | fork producer 发布的 `dify-runtime-<commit>.tar.gz`；manifest 与 `runtime-lock.json` 绑定同一个 immutable commit、archive hash 和 component pins | API `/app/api`、Web `/app/targets`、独立 Agent venv/Go runtime、Plugin Daemon、Sandbox server、`/conf`、`/dependencies` |
+| 基础设施层 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install` | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `pgvector`、`nodejs 22`、`tini`、`uv`、`tmux` |
+| Sandbox privilege boundary | wrapper image 的固定 root-owned setuid launcher 仅 exec artifact 内已验证 server binary | 维持 rootless Space runtime 和现有 Sandbox chroot/seccomp 调用边界，不让 bootstrap 获得 root |
+| 本仓库自维护胶水 | Dockerfile 仅 COPY `docker/` runtime glue；artifact bootstrap 在业务初始化前完成 | `entrypoint.sh`、artifact verifier/bootstrap、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、ops/admin、healthcheck、env defaults、scripts |
 
 ## 总体拓扑
 

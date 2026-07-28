@@ -32,16 +32,16 @@ docker/dify.env.demo
 本仓库只维护一个本地私有环境配置账本：
 
 ```text
-.env.local
+.env
 ```
 
-`.env.local` 已被 `.gitignore` 忽略，适合保存 demo/test 阶段的本地固定值、Hugging Face Settings 回读状态和人工判断。它不是直接上传给 Hugging Face 或 GitHub 的 env-file，而是一个本地笔记本：记录每个变量应该放在哪个平台、属于 Secret 还是 Variable、是否建议配置、默认值、建议值、已知值和备注。
+`.env` 已被 `.gitignore` 忽略，是唯一的本地值账本，适合保存 demo/test 阶段的本地固定值、Hugging Face Settings 回读状态和人工判断。它不是直接上传给 Hugging Face 或 GitHub 的 env-file，而是一个本地笔记本：记录每个变量应该放在哪个平台、属于 Secret 还是 Variable、是否建议配置、默认值、建议值、已知值和备注。
 
-`.env.local` 也可以保存本地运维便捷信息，例如 Space ID、Space URL、当前诊断入口使用方式、最近一次远程回读时间和故障回退备注。这类信息必须明确标注为 `Local Only` 或 `本地运维`，默认不参与 HF/GH 同步；如果包含 token、账号、私有 URL 或其他敏感上下文，只能保存在本地账本里，不能进入公开文档。
+`.env` 也可以保存本地运维便捷信息，例如 Space ID、Space URL、当前诊断入口使用方式、最近一次远程回读时间和故障回退备注。这类信息必须明确标注为 `Local Only` 或 `本地运维`，默认不参与 HF/GH 同步；如果包含 token、账号、私有 URL 或其他敏感上下文，只能保存在本地账本里，不能进入公开文档。
 
 不要再维护 `.env.hf.local`、`local/hf-space.env` 或其他并行 env 快照；多份 env 很容易让 HF Settings、文档和本地判断互相漂移。
 
-`.env.local` 的每个变量使用固定卡片字段：
+`.env` 的每个变量使用固定卡片字段：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -53,7 +53,7 @@ docker/dify.env.demo
 | 已知值 | 本地账本或 Hugging Face Settings 能确认的状态。HF Secrets 是 write-only，只能确认 key 是否存在，不能回读明文。 |
 | 备注 | 变量用途、风险和什么时候需要填写。 |
 
-`.env.local` 当前按五层组织：
+`.env` 当前按五层组织：
 
 1. `HF Space / Secrets / 推荐配置`
 2. `HF Space / Secrets / 按需配置`
@@ -61,11 +61,11 @@ docker/dify.env.demo
 4. `HF Space / Variables / 按需配置`
 5. `GitHub Actions / 当前无需配置`
 
-上传到 Hugging Face 时，只复制本轮真正要生效的非空值。不要把完整 `.env.local` 批量导入，也不要把未知 secret 写成占位字符串上传。
+上传到 Hugging Face 时，只复制本轮真正要生效的非空值。不要把完整 `.env` 批量导入，也不要把未知 secret 写成占位字符串上传。
 
-文档和 PR 文案只能写规则、默认值、建议值和占位符，不能写 `.env.local` 里的真实 token、账号、密码、私有 API 地址、内部 URL 或其他已知秘密信息。公开示例统一使用 `<...>` 占位。
+文档和 PR 文案只能写规则、默认值、建议值和占位符，不能写 `.env` 里的真实 token、账号、密码、私有 API 地址、内部 URL 或其他已知秘密信息。公开示例统一使用 `<...>` 占位。
 
-初始化前推荐先在 `.env.local` 里明确选择这些值，再同步到 HF：
+初始化前推荐先在 `.env` 里明确选择这些值，再同步到 HF：
 
 | 类别 | 变量 | 说明 |
 | --- | --- | --- |
@@ -105,6 +105,19 @@ DIFY_AGENT_SERVER_SECRET_KEY
 
 其中 `SERVER_CONSOLE_API_URL` 在 all-in-one 容器内固定默认到 `http://127.0.0.1:5001`，供 Dify Web 的 server-side rendering 直接访问同容器 API；不要把它覆盖为 Hugging Face 公网域名。`CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生，`SANDBOX_API_KEY` 会从 `CODE_EXECUTION_API_KEY` 派生。`DIFY_AGENT_ENABLED=true` 时，`with-dify-env` 会派生 Agent backend base URL、Redis URL、Plugin Daemon key、Dify inner API key 和同容器 Agent Stub URL；entrypoint 会生成 Agent Stub server secret。重复上传这些变量会增加配置漂移风险。
 
+## Artifact Delivery
+
+本仓已使用 artifact 车道。Space image 不携带 Dify API/Web/Agent/Plugin/Sandbox 产品 payload；启动时必须从单一 slot manifest 获取并验证 runtime archive。不要把 archive、release bucket 或 manifest 当成 `/persist` 挂载，也不要设置旧的 direct URL/PATH/S3 回退变量。
+
+| 变量 | 类型 | 说明 |
+| --- | --- | --- |
+| `DIFY_ARTIFACT_MANIFEST_HF_URI` | Space Variable | 必填；只允许 `hf://buckets/<namespace>/hfs-dist/dify-all-in-one/<edge|release>/manifest.json`。 |
+| `DIFY_ARTIFACT_EXPECTED_SOURCE_REF` | Space Variable | 可选但 release 推荐；40 位 producer commit，启动时必须与 manifest `artifact_ref` 一致。 |
+| `DIFY_ARTIFACT_MAX_BYTES` | Space Variable | archive 下载上限，默认且最大为 `4294967296`（4 GiB）；manifest 声明超过固定上限、超过此值或非法值都会在下载前失败。 |
+| `DIFY_ARTIFACT_BEARER_TOKEN` | Space Secret | 私有 HFS dist 下载 token；不写入 seed、日志、docs 或 generated env。 |
+
+schema v2 manifest 同时声明 artifact filename、source kind/ref、artifact commit、压缩与解包 size、SHA-256、runtime lock hash 与 slot key。bootstrap 一次读取 manifest，只下载其声明的 `dify-runtime-<commit>.tar.gz`；manifest、token、archive、lock、路径、解包大小或解包任一点不匹配都会退出。解包 regular-file 总量还受固定 32 GiB 上限保护；若实际 runtime 需要突破该边界，必须先经过 producer 体积审查和单独的 consumer contract 变更。它不扫描 bucket、不会沿用旧 image assembly，也没有 direct artifact URL/S3/PATH fallback。
+
 ## Hugging Face Space Metadata
 
 `README.md` 顶部 YAML：
@@ -126,7 +139,7 @@ POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime
 
 说明：
 
-- 这些值只是当前 HF Space demo 的推荐覆盖值；完整来源应以本地 `.env.local` 为准。
+- 这些值只是当前 HF Space demo 的推荐覆盖值；完整来源应以本地 `.env` 为准。
 - 与 `docker/dify.env.runtime` 默认值一致的变量不要上传到 HF Variables。
 - `POSTGRES_BUCKET_FAILURE_MODE=exit` 适合故障演练或强制暴露 bucket live PGDATA 问题；当前 HF bucket 上 PostgreSQL 启动可能超过 `pg_ctl` 等待窗口，线上服务默认保留 `fallback-to-runtime`。
 

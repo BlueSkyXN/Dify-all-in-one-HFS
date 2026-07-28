@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '[dify-artifact-bootstrap] %s\n' "$*" >&2
+}
+
+require_env() {
+  local name=$1
+  if [ -z "${!name:-}" ]; then
+    log "${name} is required for manifest-first Dify runtime delivery."
+    exit 64
+  fi
+}
+
+main() {
+  require_env DIFY_ARTIFACT_MANIFEST_HF_URI
+  require_env DIFY_ARTIFACT_BEARER_TOKEN
+
+  # These are image-owned delivery paths, not configurable deployment inputs.
+  # State remains below /data; only the manifest URI and expected immutable ref
+  # are accepted from Space Settings.
+  local runtime_root=/opt/dify/runtime
+  local temp_root=/tmp/dify-artifact-download
+  local manifest_path="${temp_root}/manifest.json"
+  local artifact_path="${temp_root}/runtime.tar.gz"
+  local curl_config="${temp_root}/curl.conf"
+  local artifact_url
+
+  case "${DIFY_ARTIFACT_MAX_BYTES:-4294967296}" in
+    ''|*[!0-9]*)
+      log 'DIFY_ARTIFACT_MAX_BYTES must be a positive integer.'
+      exit 64
+      ;;
+  esac
+  if [ "${DIFY_ARTIFACT_MAX_BYTES}" -lt 1 ] || [ "${DIFY_ARTIFACT_MAX_BYTES}" -gt 4294967296 ]; then
+    log 'DIFY_ARTIFACT_MAX_BYTES must be between 1 and the fixed 4 GiB archive limit.'
+    exit 64
+  fi
+
+  rm -rf "$temp_root"
+  install -d -m 700 "$temp_root"
+  trap 'rm -rf "$temp_root"' EXIT
+
+  # Validate the URI before any network request. Do not log it: user
+  # namespaces and private bucket paths belong in deployment configuration.
+  local manifest_url
+  manifest_url=$(python3 - "$DIFY_ARTIFACT_MANIFEST_HF_URI" <<'PY'
+from pathlib import Path
+import sys
+
+sys.path.insert(0, "/usr/local/lib")
+from dify_artifact_contract import parse_manifest_uri
+
+try:
+    print(parse_manifest_uri(sys.argv[1])[3])
+except Exception:
+    raise SystemExit(64)
+PY
+) || {
+    log 'DIFY_ARTIFACT_MANIFEST_HF_URI is invalid.'
+    exit 64
+  }
+
+  case "$DIFY_ARTIFACT_BEARER_TOKEN" in
+    *[[:space:]]*)
+      log 'DIFY_ARTIFACT_BEARER_TOKEN must not contain whitespace.'
+      exit 64
+      ;;
+  esac
+
+  umask 077
+  printf 'header = "Authorization: Bearer %s"\n' "${DIFY_ARTIFACT_BEARER_TOKEN}" > "$curl_config"
+  # curl strips Authorization on cross-host redirects by default. Keep cross-host
+  # credential forwarding disabled and restrict redirect protocols.
+  if ! curl --config "$curl_config" --fail --location --proto-redir =https --max-redirs 5 --silent --show-error \
+    --retry 3 --retry-delay 3 --retry-connrefused --max-filesize 1048576 \
+    --output "$manifest_path" "$manifest_url"; then
+    log 'failed to download the selected artifact manifest.'
+    exit 65
+  fi
+
+  artifact_url=$(python3 /usr/local/lib/dify-artifact-contract.py \
+    --manifest "$manifest_path" \
+    --manifest-uri "$DIFY_ARTIFACT_MANIFEST_HF_URI" \
+    --expected-source-ref "${DIFY_ARTIFACT_EXPECTED_SOURCE_REF:-}" \
+    --max-bytes "${DIFY_ARTIFACT_MAX_BYTES}" \
+    --print-artifact-url) || {
+    log 'the selected artifact manifest is invalid.'
+    exit 64
+  }
+
+  if ! curl --config "$curl_config" --fail --location --proto-redir =https --max-redirs 5 --silent --show-error \
+    --retry 3 --retry-delay 3 --retry-connrefused \
+    --max-filesize "${DIFY_ARTIFACT_MAX_BYTES}" \
+    --output "$artifact_path" "$artifact_url"; then
+    log 'failed to download the manifest-selected runtime artifact.'
+    exit 65
+  fi
+
+  if ! python3 /usr/local/lib/dify-artifact-contract.py \
+    --manifest "$manifest_path" \
+    --manifest-uri "$DIFY_ARTIFACT_MANIFEST_HF_URI" \
+    --artifact "$artifact_path" \
+    --install-root "$runtime_root" \
+    --expected-source-ref "${DIFY_ARTIFACT_EXPECTED_SOURCE_REF:-}"; then
+    log 'the manifest-selected runtime artifact was rejected.'
+    exit 66
+  fi
+
+  # Product paths are image-built links so a rootless bootstrap never mutates
+  # root-owned filesystem parents. Runtime state stays below /data; no
+  # application payload is copied there.
+  if [ "$(readlink /app 2>/dev/null || true)" != "${runtime_root}/app" ] \
+    || [ "$(readlink /opt/dify/plugin-daemon 2>/dev/null || true)" != "${runtime_root}/opt/dify/plugin-daemon" ]; then
+    log 'image runtime links are missing or inconsistent.'
+    exit 70
+  fi
+  rm -rf /conf/* /dependencies/*
+  cp -a "${runtime_root}/conf/." /conf/
+  cp -a "${runtime_root}/dependencies/." /dependencies/
+  chmod +x \
+    /app/api/docker/entrypoint.sh \
+    /app/entrypoint.sh \
+    /opt/dify/plugin-daemon/commandline \
+    /opt/dify/plugin-daemon/main \
+    "${runtime_root}/opt/dify/sandbox/main"
+
+  log 'installed manifest-selected Dify runtime artifact.'
+}
+
+main "$@"

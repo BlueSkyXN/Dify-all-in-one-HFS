@@ -2,6 +2,8 @@
 
 本文档说明如何部署到 Hugging Face Docker Space、如何本地构建运行，以及如何确认发布结果。
 
+> HFS v2 artifact 车道已取代旧的 Dify image-assembly 发布方式。不要把本仓全量 push 到 Space 作为正常发布，也不要手工替换 OCI digest。producer release、artifact-first/readback/manifest-last、Space runtime readback 和 smoke 是独立证据层；详见 [Release Checklist](./release-checklist.md)。
+
 ## Hugging Face Space 部署
 
 1. 创建 Hugging Face Space。

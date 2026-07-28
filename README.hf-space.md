@@ -18,16 +18,27 @@ Storage Bucket: mount 到 /persist
 Visibility: Private 或 Protected
 ```
 
+Artifact Variables（必须按已批准 slot 填入）：
+
+```env
+DIFY_ARTIFACT_MANIFEST_HF_URI=hf://buckets/<namespace>/hfs-dist/dify-all-in-one/release/manifest.json
+DIFY_ARTIFACT_EXPECTED_SOURCE_REF=<40-char-producer-commit>
+DIFY_ARTIFACT_MAX_BYTES=4294967296
+```
+
 建议 Variables：
 
 ```env
 PERSIST_MODE=bucket
-POSTGRES_BUCKET_FAILURE_MODE=fallback-to-runtime
+POSTGRES_BUCKET_FAILURE_MODE=exit
 ```
+
+`DIFY_ARTIFACT_MANIFEST_HF_URI` 是唯一 runtime delivery 输入；缺失、错误或 manifest/archive/lock 不一致会让启动 fail-closed。不要设置 direct artifact URL、路径、S3 fallback，也不要将 hfs-dist 挂载到 `/persist`。
 
 建议 Secrets：
 
 ```env
+DIFY_ARTIFACT_BEARER_TOKEN=<用于私有 hfs-dist 下载的 token>
 OPS_TOKEN=<强随机值>
 DB_PASSWORD=<固定 demo 值或强随机值>
 REDIS_PASSWORD=<固定 demo 值或强随机值>
@@ -37,7 +48,7 @@ PLUGIN_DIFY_INNER_API_KEY=<固定 demo 值或强随机值>
 CODE_EXECUTION_API_KEY=<固定 demo 值或强随机值>
 ```
 
-本地只维护一个 `.env.local` 作为 HF 配置事实源：其中 `[HF Secrets]` 上传到 Space Secrets，`[HF Variables]` 上传到 Space Variables；与 `docker/dify.env.runtime` 默认值一致的变量不要重复上传。不要再维护 `.env.hf.local` 或 `local/hf-space.env` 这类并行 env 快照。
+本地只维护一个 `.env` 作为 HF 配置事实源：其中 `[HF Secrets]` 上传到 Space Secrets，`[HF Variables]` 上传到 Space Variables；与 `docker/dify.env.runtime` 默认值一致的变量不要重复上传。不要再维护 `.env.hf.local` 或 `local/hf-space.env` 这类并行 env 快照。
 
 不要单独上传 `SANDBOX_API_KEY` 和 `INNER_API_KEY_FOR_PLUGIN`，除非你明确要拆分内部 key。默认情况下，`SANDBOX_API_KEY` 继承 `CODE_EXECUTION_API_KEY`，`INNER_API_KEY_FOR_PLUGIN` 继承 `PLUGIN_DIFY_INNER_API_KEY`。
 

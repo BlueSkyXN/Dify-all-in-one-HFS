@@ -47,8 +47,22 @@ require_executable() {
   fi
 }
 
+check_python_syntax() {
+  python3 -B - "$@" <<'PY'
+from pathlib import Path
+import sys
+import warnings
+
+warnings.simplefilter("error", SyntaxWarning)
+for raw_path in sys.argv[1:]:
+    path = Path(raw_path)
+    compile(path.read_bytes(), str(path), "exec", dont_inherit=True)
+PY
+}
+
 bash -n \
   docker/entrypoint.sh \
+  docker/dify-artifact-bootstrap \
   docker/with-dify-env \
   docker/with-plugin-env \
   docker/with-sandbox-env \
@@ -68,6 +82,8 @@ bash -n \
 require_executable scripts/admin-smoke.sh
 require_executable scripts/build.sh
 require_executable scripts/check-self-release-pins.py
+require_executable scripts/package-dify-runtime-artifact.py
+require_executable scripts/prepare-dify-artifact-manifest.py
 require_executable scripts/hf-space-smoke.sh
 require_executable scripts/run-demo.sh
 require_executable scripts/static-check.sh
@@ -78,12 +94,16 @@ require_executable docker/run-postgres
 require_executable docker/sandbox-selfcheck
 
 scripts/validate-hfs-contract.sh
-python3 -W error::SyntaxWarning -m py_compile \
+python3 scripts/check-self-release-pins.py --require-final-digest
+check_python_syntax \
   docker/ops_service.py \
   docker/admin_service.py \
+  docker/dify_artifact_contract.py \
   docker/sandbox-selfcheck \
   scripts/check-self-release-pins.py \
+  scripts/package-dify-runtime-artifact.py \
+  scripts/prepare-dify-artifact-manifest.py \
   docker/plugin_runtime_patches/sitecustomize.py
-python3 -m unittest discover -s docker/tests -p 'test_*.py'
+python3 -B -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check
 check_changed_file_trailing_whitespace

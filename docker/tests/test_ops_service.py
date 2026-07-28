@@ -8,6 +8,7 @@ import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -76,47 +77,62 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             content = ops_service.tail_file(path, 10)
             self.assertEqual(content, "a" * 32)
 
-    def test_version_payload_reports_self_release_image_refs(self):
-        os.environ.update(
-            {
-                "DIFY_AIO_BUILD_BASE_IMAGE_REF": "python:3.12-slim-bookworm",
-                "DIFY_AIO_BUILD_DIFY_SOURCE_REPO": "https://github.com/BlueSkyXN/dify.git",
-                "DIFY_AIO_BUILD_DIFY_SOURCE_MAIN_REF": "self-sha",
-                "DIFY_AIO_BUILD_DIFY_UPSTREAM_BASE_REF": "upstream-sha",
-                "DIFY_AIO_BUILD_DIFY_API_IMAGE_REF": "ghcr.io/blueskyxn/dify-api@sha256:api",
-                "DIFY_AIO_BUILD_DIFY_WEB_IMAGE_REF": "ghcr.io/blueskyxn/dify-web@sha256:web",
-                "DIFY_AIO_BUILD_DIFY_AGENT_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent-backend@sha256:agent",
-                "DIFY_AIO_BUILD_DIFY_AGENT_RUNTIME_IMAGE_REF": "ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:runtime",
-                "DIFY_AIO_BUILD_PLUGIN_DAEMON_IMAGE_REF": "langgenius/dify-plugin-daemon@sha256:plugin",
-                "DIFY_AIO_BUILD_SANDBOX_IMAGE_REF": "langgenius/dify-sandbox@sha256:sandbox",
-                "DIFY_AIO_BUILD_DIFY_SANDBOX_SOURCE_REF": "44cdbd5",
-                "SANDBOX_UID_POOL_MIN": "1000",
-                "SANDBOX_UID_POOL_MAX": "1001",
-                "SANDBOX_RUN_GID": "1000",
-            }
-        )
+    def test_version_payload_reports_verified_artifact_provenance(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "MANIFEST_PROVENANCE.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "2",
+                        "slot": "edge",
+                        "source_kind": "commit",
+                        "source_ref": "a" * 40,
+                        "artifact_ref": "a" * 40,
+                        "artifact": f"dify-runtime-{'a' * 40}.tar.gz",
+                        "sha256": "b" * 64,
+                        "size_bytes": "123",
+                        "unpacked_size_bytes": "456",
+                        "runtime_lock_sha256": "c" * 64,
+                        "generated_at": "2026-07-26T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            os.environ.update(
+                {
+                    "DIFY_AIO_BUILD_BASE_IMAGE_REF": "python:3.12-slim-bookworm",
+                    "DIFY_AIO_BUILD_UV_VERSION": "0.11.21",
+                    "DIFY_AIO_RUNTIME_DELIVERY": "manifest-first-artifact",
+                    "DIFY_ARTIFACT_EXPECTED_SOURCE_REF": "a" * 40,
+                }
+            )
+            with patch.object(ops_service, "ARTIFACT_INSTALL_ROOT", root):
+                version = ops_service.version_payload()
 
-        build = ops_service.version_payload()["build"]
-        sandbox = ops_service.version_payload()["sandbox"]
+        self.assertEqual(version["build"]["delivery"], "manifest-first-artifact")
+        self.assertEqual(version["build"]["base_image_ref"], "python:3.12-slim-bookworm")
+        self.assertEqual(version["artifact"]["status"], "verified")
+        self.assertEqual(version["artifact"]["artifact_ref"], "a" * 40)
+        self.assertNotIn("namespace", version["artifact"])
 
-        self.assertEqual(build["base_image_ref"], "python:3.12-slim-bookworm")
-        self.assertEqual(build["dify_source_repo"], "https://github.com/BlueSkyXN/dify.git")
-        self.assertEqual(build["dify_source_main_ref"], "self-sha")
-        self.assertEqual(build["upstream_base_ref"], "upstream-sha")
-        self.assertEqual(build["dify_api_image_ref"], "ghcr.io/blueskyxn/dify-api@sha256:api")
-        self.assertEqual(build["dify_web_image_ref"], "ghcr.io/blueskyxn/dify-web@sha256:web")
-        self.assertEqual(build["dify_agent_image_ref"], "ghcr.io/blueskyxn/dify-agent-backend@sha256:agent")
-        self.assertEqual(
-            build["dify_agent_runtime_image_ref"],
-            "ghcr.io/blueskyxn/dify-agent-local-sandbox@sha256:runtime",
-        )
-        self.assertEqual(build["plugin_daemon_image_ref"], "langgenius/dify-plugin-daemon@sha256:plugin")
-        self.assertEqual(build["sandbox_image_ref"], "langgenius/dify-sandbox@sha256:sandbox")
-        self.assertEqual(build["sandbox_source_ref"], "44cdbd5")
-        self.assertEqual(build["dify_api_image"], build["dify_api_image_ref"])
-        self.assertEqual(sandbox["uid_pool_min"], "1000")
-        self.assertEqual(sandbox["uid_pool_max"], "1001")
-        self.assertEqual(sandbox["run_gid"], "1000")
+    def test_artifact_provenance_reports_missing_and_invalid_without_leaking_payload(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with patch.object(ops_service, "ARTIFACT_INSTALL_ROOT", root):
+                self.assertEqual(ops_service.artifact_provenance_payload(), {"installed": False, "status": "missing"})
+
+                (root / "MANIFEST_PROVENANCE.json").write_text(
+                    json.dumps({"artifact_ref": "not-a-commit", "token": "must-not-leak"}),
+                    encoding="utf-8",
+                )
+                payload = ops_service.artifact_provenance_payload()
+                (root / "MANIFEST_PROVENANCE.json").unlink()
+                (root / "MANIFEST_PROVENANCE.json").symlink_to(root / "missing-provenance.json")
+                dangling_link_payload = ops_service.artifact_provenance_payload()
+
+        self.assertEqual(payload, {"installed": False, "status": "invalid"})
+        self.assertEqual(dangling_link_payload, {"installed": False, "status": "invalid"})
+        self.assertNotIn("must-not-leak", json.dumps(payload))
 
     def test_sandbox_selfcheck_payload_reads_sanitized_result(self):
         with tempfile.TemporaryDirectory() as tmpdir:
