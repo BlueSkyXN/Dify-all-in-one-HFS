@@ -281,8 +281,6 @@ def _is_valid_runtime_executable(root: Path, path: Path) -> bool:
         return (
             relative in ALLOWED_EXECUTABLE_SYMLINK_PATHS
             and os.readlink(path) in ALLOWED_ABSOLUTE_SYMLINKS
-            and path.is_file()
-            and os.access(path, os.X_OK)
         )
     return path.is_file() and os.access(path, os.X_OK)
 
