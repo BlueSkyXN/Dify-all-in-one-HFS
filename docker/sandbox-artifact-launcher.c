@@ -9,6 +9,7 @@
  * upstream privilege boundary without granting the bootstrap root access.
  */
 int main(int argc, char *argv[]) {
+    (void)argc;
     const char *target = "/opt/dify/runtime/opt/dify/sandbox/main";
     if (access(target, X_OK) != 0) {
         fprintf(stderr, "Dify sandbox artifact executable is unavailable: %s\n", target);
