@@ -41,6 +41,9 @@ class ArtifactContractTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
             path.chmod(0o755)
+        agent_python = root / "opt/dify-agent/.venv/bin/python"
+        agent_python.unlink()
+        agent_python.symlink_to("/usr/local/bin/python3")
 
     def test_pack_prepare_and_validate_manifest_selected_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
