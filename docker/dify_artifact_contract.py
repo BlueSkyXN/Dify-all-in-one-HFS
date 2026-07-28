@@ -207,11 +207,11 @@ def _validate_runtime_lock(root: Path, provenance: dict[str, str]) -> None:
         raise ContractError("runtime-lock.json provenance does not match the selected artifact")
     source = lock.get("source")
     if not isinstance(source, dict) or source != {
-        "kind": provenance["source_kind"],
-        "ref": provenance["source_ref"],
+        "kind": "commit",
+        "ref": provenance["artifact_ref"],
         "repository": PRODUCER_REPOSITORY,
     }:
-        raise ContractError("runtime-lock.json source provenance does not match the selected manifest")
+        raise ContractError("runtime-lock.json source provenance does not match the immutable artifact commit")
     components = lock.get("components")
     if not isinstance(components, dict):
         raise ContractError("runtime-lock.json components must be an object")

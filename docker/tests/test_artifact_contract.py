@@ -112,6 +112,45 @@ class ArtifactContractTest(unittest.TestCase):
             self.assertTrue((install_root / "MANIFEST_PROVENANCE.json").is_file())
             prepared_payload = json.loads(prepared.read_text(encoding="utf-8"))
             self.assertEqual(prepared_payload["artifact_ref"], SOURCE_REF)
+
+            release_manifest = temporary_path / "release-manifest.json"
+            release_tag = "hfs-runtime-" + SOURCE_REF[:12]
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts/prepare-dify-artifact-manifest.py"),
+                    "--artifact", str(artifact),
+                    "--slot", "release",
+                    "--source-kind", "tag",
+                    "--source-ref", release_tag,
+                    "--artifact-ref", SOURCE_REF,
+                    "--generated-at", "2026-07-26T00:00:00Z",
+                    "--output", str(release_manifest),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            release_install_root = temporary_path / "release-installed"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "docker/dify_artifact_contract.py"),
+                    "--manifest", str(release_manifest),
+                    "--manifest-uri", "hf://buckets/example/hfs-dist/dify-all-in-one/release/manifest.json",
+                    "--artifact", str(artifact),
+                    "--install-root", str(release_install_root),
+                    "--expected-source-ref", SOURCE_REF,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            release_provenance = json.loads((release_install_root / "MANIFEST_PROVENANCE.json").read_text(encoding="utf-8"))
+            self.assertEqual(release_provenance["source_kind"], "tag")
+            self.assertEqual(release_provenance["source_ref"], release_tag)
+            self.assertEqual(release_provenance["artifact_ref"], SOURCE_REF)
+
             over_limit = subprocess.run(
                 [
                     sys.executable,
