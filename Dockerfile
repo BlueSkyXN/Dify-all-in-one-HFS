@@ -101,7 +101,7 @@ RUN mkdir -p /etc/dify /usr/local/lib
 COPY docker/dify.env.runtime /etc/dify/dify.env.runtime
 COPY docker/entrypoint.sh /usr/local/bin/dify-all-in-one-entrypoint
 COPY docker/dify-artifact-bootstrap /usr/local/bin/dify-artifact-bootstrap
-COPY docker/dify_artifact_contract.py /usr/local/lib/dify-artifact-contract.py
+COPY docker/dify_artifact_contract.py /usr/local/lib/dify_artifact_contract.py
 COPY docker/with-dify-env /usr/local/bin/with-dify-env
 COPY docker/with-plugin-env /usr/local/bin/with-plugin-env
 COPY docker/plugin_runtime_patches /opt/dify/plugin-runtime-patches
@@ -140,7 +140,7 @@ RUN cp "$(readlink -f /usr/local/bin/python3)" /opt/dify/sandbox/python3-sandbox
       /usr/local/bin/dify-admin-service \
       /usr/local/bin/dify-demo-healthcheck \
       /usr/local/bin/wait-for-core \
-      /usr/local/lib/dify-artifact-contract.py \
+      /usr/local/lib/dify_artifact_contract.py \
     && chmod -R 755 /var/sandbox
 
 USER user

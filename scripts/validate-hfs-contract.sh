@@ -134,6 +134,8 @@ PY
 require_grep '^FROM \$\{BASE_IMAGE_REF\} AS runtime$' Dockerfile "Dockerfile must use the declared base runtime image"
 require_grep 'DIFY_AIO_RUNTIME_DELIVERY=manifest-first-artifact' Dockerfile "Dockerfile must expose artifact delivery provenance"
 require_grep 'dify-artifact-bootstrap' Dockerfile "Dockerfile must install the artifact bootstrap"
+require_grep '/usr/local/lib/dify_artifact_contract.py' Dockerfile "Dockerfile must install the verifier at its importable module path"
+require_absent '/usr/local/lib/dify-artifact-contract.py' Dockerfile "Dockerfile must not install the verifier under a non-importable hyphenated name"
 require_grep 'sandbox-artifact-launcher' Dockerfile "Dockerfile must retain the fixed Sandbox privilege launcher"
 require_absent '^FROM \$\{DIFY_' Dockerfile "Dockerfile must not select Dify business OCI images"
 require_absent '^ARG DIFY_(API|WEB|AGENT|SOURCE|SANDBOX|VERSION)' Dockerfile "Dockerfile must not duplicate artifact runtime pins"

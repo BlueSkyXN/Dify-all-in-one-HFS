@@ -80,7 +80,7 @@ PY
     exit 65
   fi
 
-  artifact_url=$(python3 /usr/local/lib/dify-artifact-contract.py \
+  artifact_url=$(python3 /usr/local/lib/dify_artifact_contract.py \
     --manifest "$manifest_path" \
     --manifest-uri "$DIFY_ARTIFACT_MANIFEST_HF_URI" \
     --expected-source-ref "${DIFY_ARTIFACT_EXPECTED_SOURCE_REF:-}" \
@@ -98,7 +98,7 @@ PY
     exit 65
   fi
 
-  if ! python3 /usr/local/lib/dify-artifact-contract.py \
+  if ! python3 /usr/local/lib/dify_artifact_contract.py \
     --manifest "$manifest_path" \
     --manifest-uri "$DIFY_ARTIFACT_MANIFEST_HF_URI" \
     --artifact "$artifact_path" \
