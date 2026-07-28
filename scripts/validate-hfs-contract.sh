@@ -150,6 +150,7 @@ require_grep 'require_env DIFY_ARTIFACT_MANIFEST_HF_URI' docker/dify-artifact-bo
 require_grep 'require_env DIFY_ARTIFACT_BEARER_TOKEN' docker/dify-artifact-bootstrap "bootstrap must fail closed without artifact credential"
 require_grep '--proto-redir =https --max-redirs 5' docker/dify-artifact-bootstrap "artifact redirects must stay on bounded HTTPS hops"
 require_absent '--location-trusted' docker/dify-artifact-bootstrap "artifact downloads must never forward Authorization across hosts"
+require_grep "trap 'rm -rf /tmp/dify-artifact-download' EXIT" docker/dify-artifact-bootstrap "artifact cleanup must not reference function-local variables from the EXIT trap"
 require_absent 'DIFY_ARTIFACT_(URL|PATH|S3_|SHA256)' docker/dify.env.runtime "runtime defaults must not permit direct artifact fallback inputs"
 require_absent 'DIFY_ARTIFACT_(URL|PATH|S3_|SHA256)' docker/dify-artifact-bootstrap "bootstrap must not permit direct artifact fallback inputs"
 require_absent 'DIFY_ARTIFACT_(INSTALL_ROOT|DOWNLOAD_DIR)' docker/dify.env.runtime "runtime defaults must not expose artifact filesystem controls"

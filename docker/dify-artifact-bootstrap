@@ -40,7 +40,10 @@ main() {
 
   rm -rf "$temp_root"
   install -d -m 700 "$temp_root"
-  trap 'rm -rf "$temp_root"' EXIT
+  # EXIT runs after main returns, when Bash has already discarded local
+  # variables. Keep the image-owned path literal so nounset cannot turn a
+  # successful bootstrap into a runtime failure during cleanup.
+  trap 'rm -rf /tmp/dify-artifact-download' EXIT
 
   # Validate the URI before any network request. Do not log it: user
   # namespaces and private bucket paths belong in deployment configuration.
