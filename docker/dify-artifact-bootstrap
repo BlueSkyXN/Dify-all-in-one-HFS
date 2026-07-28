@@ -114,11 +114,23 @@ PY
   # Product paths are image-built links so a rootless bootstrap never mutates
   # root-owned filesystem parents. Runtime state stays below /data; no
   # application payload is copied there.
-  if [ "$(readlink /app 2>/dev/null || true)" != "${runtime_root}/app" ] \
-    || [ "$(readlink /opt/dify/plugin-daemon 2>/dev/null || true)" != "${runtime_root}/opt/dify/plugin-daemon" ]; then
-    log 'image runtime links are missing or inconsistent.'
-    exit 70
-  fi
+  local link_spec link_path link_target
+  for link_spec in \
+    "/app=${runtime_root}/app" \
+    "/opt/dify/plugin-daemon=${runtime_root}/opt/dify/plugin-daemon" \
+    "/opt/dify-agent=${runtime_root}/opt/dify-agent" \
+    "/usr/local/bin/dify-agent=${runtime_root}/usr/local/bin/dify-agent" \
+    "/usr/local/bin/shellctl=${runtime_root}/usr/local/bin/shellctl" \
+    "/usr/local/bin/shellctl-runner=${runtime_root}/usr/local/bin/shellctl-runner" \
+    "/usr/local/bin/shellctl-runner-exit=${runtime_root}/usr/local/bin/shellctl-runner-exit" \
+    "/usr/local/bin/shellctl-sanitize-pty=${runtime_root}/usr/local/bin/shellctl-sanitize-pty"; do
+    link_path=${link_spec%%=*}
+    link_target=${link_spec#*=}
+    if [ "$(readlink "$link_path" 2>/dev/null || true)" != "$link_target" ]; then
+      log "image runtime link is missing or inconsistent: ${link_path}"
+      exit 70
+    fi
+  done
   rm -rf /conf/* /dependencies/*
   cp -a "${runtime_root}/conf/." /conf/
   cp -a "${runtime_root}/dependencies/." /dependencies/
