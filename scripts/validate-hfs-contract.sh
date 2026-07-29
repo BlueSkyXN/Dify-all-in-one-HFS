@@ -49,10 +49,12 @@ PY
 
 for path in \
   README.md Dockerfile hfs-dev.toml hfs-dev.candidate.toml .dockerignore .gitignore .env.example \
+  hfs-space-bundle.json .github/workflows/deploy-hfs-formal.yml \
+  .github/workflows/publish-dify-runtime-artifact.yml \
   docker/entrypoint.sh docker/dify-artifact-bootstrap docker/dify_artifact_contract.py \
   docker/sandbox-artifact-launcher.c docker/dify.env.runtime docker/dify.env.demo \
   docker/supervisord.conf docker/nginx.conf docker/healthcheck.sh \
-  scripts/package-dify-runtime-artifact.py scripts/prepare-dify-artifact-manifest.py scripts/validate-hfs-contract.sh \
+  scripts/package-dify-runtime-artifact.py scripts/prepare-dify-artifact-manifest.py scripts/export_hfs_space_bundle.py scripts/validate-hfs-contract.sh \
   scripts/static-check.sh scripts/hf-space-smoke.sh docs/hfs-alignment.md \
   docs/configuration.md docs/deployment.md docs/release-checklist.md; do
   require_file "$path"
@@ -80,24 +82,50 @@ expected = {
 errors = [f"hfs-dev.toml {key} must be {value!r}, got {manifest.get(key)!r}" for key, value in expected.items() if manifest.get(key) != value]
 if candidate.get("space") != "BlueSkyXN/dify-all-in-one-v2-candidate":
     errors.append("candidate manifest must target BlueSkyXN/dify-all-in-one-v2-candidate")
-for key in ("standard", "project", "sovereignty", "lane", "version_source", "local_only", "secrets", "variables", "dist_bucket", "seed_file", "other_objects", "deviations"):
+for key in ("standard", "project", "sovereignty", "lane", "version_source", "local_only", "secrets", "optional_secrets", "variables", "dist_bucket", "seed_file", "other_objects", "deviations"):
     if candidate.get(key) != manifest.get(key):
         errors.append(f"candidate manifest {key} must match production manifest")
 required_secrets = {
     "DIFY_ARTIFACT_BEARER_TOKEN", "OPS_TOKEN", "DB_PASSWORD", "REDIS_PASSWORD",
     "SECRET_KEY", "PLUGIN_DAEMON_KEY", "PLUGIN_DIFY_INNER_API_KEY",
-    "CODE_EXECUTION_API_KEY", "ADMIN_TOKEN",
+    "CODE_EXECUTION_API_KEY", "SANDBOX_API_KEY", "DIFY_AGENT_SERVER_SECRET_KEY",
+    "DIFY_AGENT_SHELLCTL_AUTH_TOKEN",
 }
+optional_secrets = {"ADMIN_TOKEN"}
 required_variables = {
     "DIFY_ARTIFACT_MANIFEST_HF_URI", "DIFY_ARTIFACT_EXPECTED_SOURCE_REF",
     "DIFY_ARTIFACT_MAX_BYTES", "PERSIST_MODE", "POSTGRES_BUCKET_FAILURE_MODE", "ADMIN_ENABLED",
+    "ADMIN_FILES_DESTRUCTIVE_ENABLED", "ADMIN_FILES_ENABLED", "ADMIN_FILES_ROOT",
+    "ADMIN_FILES_WRITE_ENABLED", "AGENT_DRIVE_MANIFEST_ENABLED",
+    "DEVICE_FLOW_APPROVE_RATE_LIMIT_PER_HOUR", "DIFY_AGENT_ENABLED", "ENABLE_AGENT_V2",
+    "ENABLE_COLLABORATION_MODE", "ENABLE_OAUTH_BEARER", "ENABLE_WORKFLOW_RUN_CLEANUP_TASK",
+    "NEXT_PUBLIC_ENABLE_AGENT_V2", "NEXT_PUBLIC_ENABLE_COLLABORATION_MODE",
+    "NEXT_PUBLIC_SOCKET_URL", "OPENAPI_ENABLED", "OPENAPI_KNOWN_CLIENT_IDS",
+    "OPENAPI_RATE_LIMIT_PER_TOKEN", "PLUGIN_CWD_PERSISTENCE",
+    "PLUGIN_PYTHON_ENV_INIT_TIMEOUT", "PLUGIN_SSL_EOF_MAX_RETRIES", "PLUGIN_UV_CACHE_DIR",
+    "SANDBOX_ENABLE_NETWORK", "SANDBOX_SELFCHECK_STRICT", "WORKFLOW_LOG_CLEANUP_ENABLED",
 }
-for field, expected_keys in (("secrets", required_secrets), ("variables", required_variables)):
+for field, expected_keys in (
+    ("secrets", required_secrets),
+    ("optional_secrets", optional_secrets),
+    ("variables", required_variables),
+):
     actual = manifest.get(field)
     if not isinstance(actual, list) or set(actual) != expected_keys:
         errors.append(f"hfs-dev.toml {field} must register exactly the approved key names")
 if manifest.get("local_only") != ["HF_TOKEN", "GH_TOKEN"]:
     errors.append("hfs-dev.toml local_only must keep control-plane credentials separate")
+classified = {
+    "local_only": set(manifest.get("local_only", [])),
+    "secrets": required_secrets,
+    "optional_secrets": optional_secrets,
+    "variables": required_variables,
+}
+names = tuple(classified)
+for index, left in enumerate(names):
+    for right in names[index + 1:]:
+        if classified[left] & classified[right]:
+            errors.append(f"hfs-dev.toml {left} and {right} must not overlap")
 if manifest.get("seed_file") != "" or manifest.get("other_objects") != []:
     errors.append("dify artifact lane must not declare generated runtime state as a distributable seed")
 if errors:
@@ -175,6 +203,26 @@ require_grep 'manifest-first' docs/hfs-alignment.md "HFS docs must describe mani
 require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' docs/configuration.md "configuration docs must list the manifest variable"
 require_grep 'manifest-last' docs/release-checklist.md "release checklist must require manifest-last evidence"
 require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' scripts/run-demo.sh "local runner must pass explicit artifact controls"
+require_grep 'FORMAL_SPACE: BlueSkyXN/dify-all-in-one' .github/workflows/deploy-hfs-formal.yml "formal workflow must hard-code the canonical Space"
+require_grep 'environment: hfs-production' .github/workflows/deploy-hfs-formal.yml "formal workflow must use the scoped production environment"
+require_grep 'PUBLISH_FORMAL' .github/workflows/deploy-hfs-formal.yml "formal workflow must require exact upload confirmation"
+require_grep 'export_hfs_space_bundle\.py export' .github/workflows/deploy-hfs-formal.yml "formal workflow must use the strict exporter"
+require_grep 'source-commit "\$SOURCE_REF"' .github/workflows/deploy-hfs-formal.yml "formal workflow must authorize every verifier against the locked source commit"
+require_grep 'HF_CLI_VERSION: "1\.5\.0"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin huggingface_hub 1.5.0"
+require_grep 'HF_CLI_CLICK_VERSION: "8\.3\.3"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin click 8.3.3"
+require_grep 'huggingface_hub==\$\{HF_CLI_VERSION\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must install the pinned Hugging Face client"
+require_grep 'click==\$\{HF_CLI_CLICK_VERSION\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must install the direct module CLI dependency"
+require_grep 'python3 -m huggingface_hub\.cli\.hf --help' .github/workflows/deploy-hfs-formal.yml "formal workflow must exercise the module CLI"
+require_grep 'python3 -m huggingface_hub\.cli\.hf upload --help' .github/workflows/deploy-hfs-formal.yml "formal workflow must exercise the upload command"
+require_grep 'deployed_revision = info\.sha' .github/workflows/deploy-hfs-formal.yml "formal workflow must capture the immutable uploaded Space revision"
+require_grep 'revision=deployed_revision' .github/workflows/deploy-hfs-formal.yml "formal workflow must read back the immutable uploaded revision"
+require_grep 'runtime\.stage == "RUNNING"' .github/workflows/deploy-hfs-formal.yml "formal workflow must wait for a running canonical Space"
+require_grep 'runtime\.raw\.get\("sha"\) == deployed_revision' .github/workflows/deploy-hfs-formal.yml "formal workflow must bind runtime to the uploaded revision"
+require_grep 'runtime\.stage in \{"BUILD_ERROR", "RUNTIME_ERROR"\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must fail closed on Space build and runtime errors"
+require_grep 'huggingface_hub==1\.5\.0' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin huggingface_hub 1.5.0"
+require_grep 'click==8\.3\.3' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin click 8.3.3"
+require_grep 'python -m huggingface_hub\.cli\.hf --help' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must exercise the module CLI"
+require_grep 'python -m huggingface_hub\.cli\.hf buckets --help' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must exercise the buckets command"
 require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"

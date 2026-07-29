@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "wrapper_repository": "https://github.com/BlueSkyXN/Dify-all-in-one-HFS",
+  "profiles": {
+    "formal": {
+      "manifest": "hfs-dev.toml",
+      "space": "BlueSkyXN/dify-all-in-one"
+    }
+  },
+  "source_to_bundle": {
+    ".dockerignore": ".dockerignore",
+    ".gitattributes": ".gitattributes",
+    "Dockerfile": "Dockerfile",
+    "LICENSE": "LICENSE",
+    "README.md": "README.md",
+    "hfs-dev.toml": "hfs-dev.toml",
+    "docker/admin_service.py": "docker/admin_service.py",
+    "docker/dify-artifact-bootstrap": "docker/dify-artifact-bootstrap",
+    "docker/dify.env.runtime": "docker/dify.env.runtime",
+    "docker/dify_artifact_contract.py": "docker/dify_artifact_contract.py",
+    "docker/entrypoint.sh": "docker/entrypoint.sh",
+    "docker/healthcheck.sh": "docker/healthcheck.sh",
+    "docker/nginx.conf": "docker/nginx.conf",
+    "docker/ops_service.py": "docker/ops_service.py",
+    "docker/plugin_runtime_patches/sitecustomize.py": "docker/plugin_runtime_patches/sitecustomize.py",
+    "docker/postgres-backup-loop": "docker/postgres-backup-loop",
+    "docker/run-dify-agent": "docker/run-dify-agent",
+    "docker/run-postgres": "docker/run-postgres",
+    "docker/run-shellctl": "docker/run-shellctl",
+    "docker/sandbox-artifact-launcher.c": "docker/sandbox-artifact-launcher.c",
+    "docker/sandbox-python-requirements.txt": "docker/sandbox-python-requirements.txt",
+    "docker/sandbox-selfcheck": "docker/sandbox-selfcheck",
+    "docker/supervisord.conf": "docker/supervisord.conf",
+    "docker/wait-for-core": "docker/wait-for-core",
+    "docker/with-dify-env": "docker/with-dify-env",
+    "docker/with-plugin-env": "docker/with-plugin-env",
+    "docker/with-sandbox-env": "docker/with-sandbox-env"
+  }
+}
