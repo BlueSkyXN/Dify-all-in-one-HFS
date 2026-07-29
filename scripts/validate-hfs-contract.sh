@@ -50,6 +50,7 @@ PY
 for path in \
   README.md Dockerfile hfs-dev.toml hfs-dev.candidate.toml .dockerignore .gitignore .env.example \
   hfs-space-bundle.json .github/workflows/deploy-hfs-formal.yml \
+  .github/workflows/publish-dify-runtime-artifact.yml \
   docker/entrypoint.sh docker/dify-artifact-bootstrap docker/dify_artifact_contract.py \
   docker/sandbox-artifact-launcher.c docker/dify.env.runtime docker/dify.env.demo \
   docker/supervisord.conf docker/nginx.conf docker/healthcheck.sh \
@@ -206,6 +207,16 @@ require_grep 'FORMAL_SPACE: BlueSkyXN/dify-all-in-one' .github/workflows/deploy-
 require_grep 'environment: hfs-production' .github/workflows/deploy-hfs-formal.yml "formal workflow must use the scoped production environment"
 require_grep 'PUBLISH_FORMAL' .github/workflows/deploy-hfs-formal.yml "formal workflow must require exact upload confirmation"
 require_grep 'export_hfs_space_bundle\.py export' .github/workflows/deploy-hfs-formal.yml "formal workflow must use the strict exporter"
+require_grep 'HF_CLI_VERSION: "1\.5\.0"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin huggingface_hub 1.5.0"
+require_grep 'HF_CLI_CLICK_VERSION: "8\.3\.1"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin click 8.3.1"
+require_grep 'huggingface_hub==\$\{HF_CLI_VERSION\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must install the pinned Hugging Face client"
+require_grep 'click==\$\{HF_CLI_CLICK_VERSION\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must install the direct module CLI dependency"
+require_grep 'python3 -m huggingface_hub\.cli\.hf --help' .github/workflows/deploy-hfs-formal.yml "formal workflow must exercise the module CLI"
+require_grep 'python3 -m huggingface_hub\.cli\.hf upload --help' .github/workflows/deploy-hfs-formal.yml "formal workflow must exercise the upload command"
+require_grep 'huggingface_hub==1\.5\.0' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin huggingface_hub 1.5.0"
+require_grep 'click==8\.3\.1' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin click 8.3.1"
+require_grep 'python -m huggingface_hub\.cli\.hf --help' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must exercise the module CLI"
+require_grep 'python -m huggingface_hub\.cli\.hf buckets --help' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must exercise the buckets command"
 require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"
