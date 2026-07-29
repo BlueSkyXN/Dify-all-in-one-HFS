@@ -5,7 +5,6 @@ import hashlib
 import io
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,18 +27,22 @@ SOURCE_COMMIT = subprocess.check_output(
     ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
     text=True,
 ).strip()
-HISTORICAL_COMMIT = subprocess.check_output(
-    ["git", "-C", str(ROOT), "rev-parse", "HEAD^"],
-    text=True,
-).strip()
-TREE_OBJECT = subprocess.check_output(
-    ["git", "-C", str(ROOT), "rev-parse", "HEAD^{tree}"],
-    text=True,
-).strip()
 
 
 def sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def run_git(repository: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repository), *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(f"Git fixture command failed: git {' '.join(args)}")
+    return result.stdout.strip()
 
 
 class HfsExporterTests(unittest.TestCase):
@@ -82,24 +85,45 @@ class HfsExporterTests(unittest.TestCase):
         self.rewrite_checksums(directory)
         return directory
 
-    def run_verifier(self, bundle: Path, source_commit: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
-                sys.executable,
-                str(ROOT / "scripts" / "export_hfs_space_bundle.py"),
-                "verify",
-                "--source-commit",
-                source_commit,
-                "--profile",
-                "formal",
-                "--bundle",
-                str(bundle),
-            ],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
+    def make_source_repository(self, directory: Path) -> tuple[Path, str, str, str, str]:
+        repository = directory / "source-repository"
+        repository.mkdir()
+        run_git(repository, "init", "--quiet")
+        run_git(repository, "config", "user.name", "HFS Test")
+        run_git(repository, "config", "user.email", "hfs-test@example.invalid")
+        run_git(repository, "config", "commit.gpgsign", "false")
+        run_git(repository, "config", "tag.gpgsign", "false")
+        run_git(repository, "config", "core.autocrlf", "false")
+
+        config = load_config()
+        profile = config["profiles"]["formal"]
+        source_paths = set(config["source_to_bundle"]) | {profile["manifest"]}
+        for source_path in sorted(source_paths):
+            target = repository / source_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(exporter.blob(SOURCE_COMMIT, source_path))
+            target.chmod(exporter.tree_mode(SOURCE_COMMIT, source_path))
+
+        run_git(repository, "add", "--all")
+        run_git(repository, "commit", "--quiet", "-m", "alternate wrapper source")
+        alternate_commit = run_git(repository, "rev-parse", "HEAD")
+
+        (repository / ".authorized-revision").write_text("authorized\n", encoding="utf-8")
+        run_git(repository, "add", ".authorized-revision")
+        run_git(repository, "commit", "--quiet", "-m", "authorized wrapper source")
+        authorized_commit = run_git(repository, "rev-parse", "HEAD")
+        tree_object = run_git(repository, "rev-parse", "HEAD^{tree}")
+        run_git(
+            repository,
+            "tag",
+            "-a",
+            "alternate-wrapper",
+            "-m",
+            "alternate wrapper tag",
+            alternate_commit,
         )
+        tag_object = run_git(repository, "rev-parse", "refs/tags/alternate-wrapper")
+        return repository, alternate_commit, authorized_commit, tree_object, tag_object
 
     def rewrite_checksums(self, bundle: Path) -> None:
         expected = expected_paths(load_config())
@@ -181,24 +205,28 @@ COPY docker/entrypoint.sh /opt/dify/entrypoint.sh
 
     def test_verify_rejects_complete_historical_bundle_for_current_authorization(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            bundle = self.make_bundle(Path(temporary), HISTORICAL_COMMIT)
-            result = self.run_verifier(bundle, SOURCE_COMMIT)
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("wrapper source commit does not match authorized source commit", result.stderr)
+            root = Path(temporary)
+            repository, alternate, authorized, _tree, _tag = self.make_source_repository(root)
+            with mock.patch.object(exporter, "REPO_ROOT", repository):
+                bundle = self.make_bundle(root / "bundle", alternate)
+                with self.assertRaisesRegex(
+                    BundleError,
+                    "wrapper source commit does not match authorized source commit",
+                ):
+                    verify_bundle(bundle, "formal", authorized)
 
     def test_verify_rejects_non_commit_authorization_objects(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            bundle = self.make_bundle(Path(temporary))
-            result = self.run_verifier(bundle, TREE_OBJECT)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("must identify a Git commit", result.stderr)
-
-        validator = getattr(exporter, "require_commit_object", None)
-        self.assertIsNotNone(validator)
-        with mock.patch.object(exporter, "_git", return_value="tag\n"):
-            with self.assertRaisesRegex(BundleError, "must identify a Git commit"):
-                validator("b" * 40)
+            root = Path(temporary)
+            repository, alternate, _authorized, tree_object, tag_object = self.make_source_repository(root)
+            with mock.patch.object(exporter, "REPO_ROOT", repository):
+                bundle = self.make_bundle(root / "bundle", alternate)
+                for object_sha in (tree_object, tag_object):
+                    with self.subTest(object_sha=object_sha), self.assertRaisesRegex(
+                        BundleError,
+                        "must identify a Git commit",
+                    ):
+                        verify_bundle(bundle, "formal", object_sha)
 
 
 class WorkflowContractTests(unittest.TestCase):
