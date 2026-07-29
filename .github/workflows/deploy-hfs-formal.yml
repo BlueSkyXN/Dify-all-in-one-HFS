@@ -62,6 +62,7 @@ jobs:
             --profile formal \
             --output "$RUNNER_TEMP/hfs-formal-bundle"
           python3 scripts/export_hfs_space_bundle.py verify \
+            --source-commit "$SOURCE_REF" \
             --profile formal \
             --bundle "$RUNNER_TEMP/hfs-formal-bundle"
 
@@ -104,6 +105,7 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           python3 scripts/export_hfs_space_bundle.py verify \
+            --source-commit "$SOURCE_REF" \
             --profile formal \
             --bundle "$RUNNER_TEMP/hfs-formal-bundle"
           python3 -m huggingface_hub.cli.hf upload \
@@ -117,6 +119,7 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           python3 scripts/export_hfs_space_bundle.py verify \
+            --source-commit "$SOURCE_REF" \
             --profile formal \
             --bundle "$RUNNER_TEMP/hfs-formal-bundle"
           python3 - <<'PY'

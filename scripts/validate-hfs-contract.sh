@@ -207,6 +207,7 @@ require_grep 'FORMAL_SPACE: BlueSkyXN/dify-all-in-one' .github/workflows/deploy-
 require_grep 'environment: hfs-production' .github/workflows/deploy-hfs-formal.yml "formal workflow must use the scoped production environment"
 require_grep 'PUBLISH_FORMAL' .github/workflows/deploy-hfs-formal.yml "formal workflow must require exact upload confirmation"
 require_grep 'export_hfs_space_bundle\.py export' .github/workflows/deploy-hfs-formal.yml "formal workflow must use the strict exporter"
+require_grep 'source-commit "\$SOURCE_REF"' .github/workflows/deploy-hfs-formal.yml "formal workflow must authorize every verifier against the locked source commit"
 require_grep 'HF_CLI_VERSION: "1\.5\.0"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin huggingface_hub 1.5.0"
 require_grep 'HF_CLI_CLICK_VERSION: "8\.3\.1"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin click 8.3.1"
 require_grep 'huggingface_hub==\$\{HF_CLI_VERSION\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must install the pinned Hugging Face client"
