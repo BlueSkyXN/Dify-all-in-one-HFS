@@ -108,28 +108,62 @@ jobs:
             --repo-type space --revision main \
             --commit-message "Deploy verified formal wrapper ${SOURCE_REF}"
 
-      - name: Complete readback and factory restart
+      - name: Read back every file and factory restart
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SOURCE_REF: ${{ inputs.source_ref }}
         run: |
-          python3 -m huggingface_hub.cli.hf download \
-            "$FORMAL_SPACE" --repo-type space --revision main \
-            --local-dir "$RUNNER_TEMP/hfs-formal-readback" >/dev/null
-          rm -rf "$RUNNER_TEMP/hfs-formal-readback/.cache"
-          python3 scripts/export_hfs_space_bundle.py verify \
-            --profile formal \
-            --bundle "$RUNNER_TEMP/hfs-formal-readback"
-          cmp "$RUNNER_TEMP/hfs-formal-bundle/BUILD_SOURCE.json" "$RUNNER_TEMP/hfs-formal-readback/BUILD_SOURCE.json"
-          cmp "$RUNNER_TEMP/hfs-formal-bundle/SHA256SUMS" "$RUNNER_TEMP/hfs-formal-readback/SHA256SUMS"
           python3 - <<'PY'
+          import hashlib
+          import json
           import os
+          import re
+          import time
           from pathlib import Path
-          from huggingface_hub import HfApi
+          from huggingface_hub import HfApi, hf_hub_download
 
-          api = HfApi(token=os.environ["HF_TOKEN"])
+          token = os.environ["HF_TOKEN"]
+          space = os.environ["FORMAL_SPACE"]
+          bundle = Path(os.environ["RUNNER_TEMP"], "hfs-formal-bundle")
           expected = set(Path(os.environ["RUNNER_TEMP"], "hfs-formal-paths").read_text().splitlines())
-          actual = set(api.list_repo_files(os.environ["FORMAL_SPACE"], repo_type="space", token=os.environ["HF_TOKEN"]))
+          api = HfApi(token=token)
+          info = api.space_info(space, token=token)
+          if info.private is not True:
+              raise SystemExit("canonical Space must remain private after upload")
+          deployed_revision = info.sha
+          if not isinstance(deployed_revision, str) or re.fullmatch(r"[0-9a-f]{40}", deployed_revision) is None:
+              raise SystemExit("canonical Space did not expose an immutable deployed revision")
+          actual = set(api.list_repo_files(space, revision=deployed_revision, repo_type="space", token=token))
           if actual != expected:
               raise SystemExit("canonical repository path readback does not match the formal allowlist")
-          api.restart_space(os.environ["FORMAL_SPACE"], factory_reboot=True)
+          for relative in sorted(expected):
+              downloaded = Path(
+                  hf_hub_download(
+                      space,
+                      filename=relative,
+                      revision=deployed_revision,
+                      repo_type="space",
+                      token=token,
+                  )
+              )
+              if hashlib.sha256(downloaded.read_bytes()).digest() != hashlib.sha256((bundle / relative).read_bytes()).digest():
+                  raise SystemExit(f"canonical readback mismatch: {relative}")
+          provenance = json.loads((bundle / "BUILD_SOURCE.json").read_text(encoding="utf-8"))
+          if provenance.get("wrapper_source_commit") != os.environ["SOURCE_REF"]:
+              raise SystemExit("formal wrapper provenance does not match exact GitHub main input")
+          api.restart_space(space, factory_reboot=True)
+          deadline = time.monotonic() + 1800
+          while True:
+              runtime = api.get_space_runtime(space, token=token)
+              if runtime.stage == "RUNNING" and runtime.raw.get("sha") == deployed_revision:
+                  print(f"canonical runtime readback passed: repo_sha={deployed_revision}")
+                  break
+              if runtime.stage in {"BUILD_ERROR", "RUNTIME_ERROR"}:
+                  raise SystemExit(f"canonical Space failed after deploy: {runtime.stage}")
+              if time.monotonic() >= deadline:
+                  raise SystemExit(
+                      f"canonical runtime did not converge to deployed revision {deployed_revision}: "
+                      f"stage={runtime.stage} runtime_sha={runtime.raw.get('sha')}"
+                  )
+              time.sleep(15)
           PY

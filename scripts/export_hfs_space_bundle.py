@@ -133,6 +133,16 @@ def validate_manifest(payload: bytes, expected_space: str) -> None:
         raise BundleError("selected manifest does not identify HFS 2.0 and the fixed profile Space")
 
 
+def source_entry(source_path: str, bundle_path: str, payload: bytes, mode: int) -> dict[str, Any]:
+    return {
+        "source_path": source_path,
+        "bundle_path": bundle_path,
+        "mode": f"{mode:04o}",
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
 def write_checksums(bundle: Path, paths: set[str]) -> None:
     lines = []
     for relative in sorted(paths - {"SHA256SUMS"}):
@@ -160,14 +170,7 @@ def export_bundle(source_commit: str, profile_name: str, output: Path) -> None:
         if source_path == selected_manifest:
             validate_manifest(payload, profile["space"])
         write_file(output / bundle_path, payload, mode)
-        source_entries.append(
-            {
-                "source_path": source_path,
-                "bundle_path": bundle_path,
-                "mode": f"{mode:04o}",
-                "sha256": hashlib.sha256(payload).hexdigest(),
-            }
-        )
+        source_entries.append(source_entry(source_path, bundle_path, payload, mode))
 
     evidence = {
         "schema_version": 1,
@@ -242,6 +245,17 @@ def validate_dockerfile_sources(dockerfile: str, files: set[str]) -> None:
                 raise BundleError(f"Dockerfile local source is absent from the allowlist: {source}")
 
 
+def expected_source_entries(bundle: Path, config: dict[str, Any]) -> list[dict[str, Any]]:
+    entries = []
+    for source_path, bundle_path in config["source_to_bundle"].items():
+        path = bundle / bundle_path
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode not in {0o644, 0o755}:
+            raise BundleError(f"bundle file has an unsupported mode: {bundle_path}")
+        entries.append(source_entry(source_path, bundle_path, path.read_bytes(), mode))
+    return entries
+
+
 def verify_bundle(bundle: Path, profile_name: str) -> None:
     config = load_config()
     profile = config["profiles"].get(profile_name)
@@ -292,6 +306,8 @@ def verify_bundle(bundle: Path, profile_name: str) -> None:
         or evidence.get("profile") != profile_name
     ):
         raise BundleError("BUILD_SOURCE.json does not match the fixed release profile")
+    if evidence.get("source_files") != expected_source_entries(bundle, config):
+        raise BundleError("BUILD_SOURCE.json source file inventory does not match bundle bytes and modes")
 
     for relative in sorted(files - {"SHA256SUMS"}):
         try:
