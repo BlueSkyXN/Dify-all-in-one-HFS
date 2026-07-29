@@ -213,12 +213,14 @@ def validate_dockerfile_sources(dockerfile: str, files: set[str]) -> None:
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        if not re.match(r"(?i)^(?:COPY|ADD)(?:\s|$)", stripped):
+            continue
         try:
             tokens = shlex.split(stripped)
         except ValueError as exc:
             raise BundleError(f"Dockerfile line {number} is not parseable") from exc
-        if not tokens or tokens[0].upper() not in {"COPY", "ADD"}:
-            continue
+        if not tokens:
+            raise BundleError(f"Dockerfile line {number} is not parseable")
         arguments = tokens[1:]
         from_stage = False
         while arguments and arguments[0].startswith("--"):
