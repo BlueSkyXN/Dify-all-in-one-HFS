@@ -1,9 +1,13 @@
-standard = "2.0"
+standard = "2.1"
 project = "dify-all-in-one"
 space = "BlueSkyXN/dify-all-in-one"
+project_class = "preview"
+target_role = "primary"
 sovereignty = "fork"
 lane = "artifact"
 version_source = "commit"
+env_file = ".env"
+secret_files = []
 
 # Values remain in the ignored local ledger. This registry records names and
 # deployment relationships only; Docker/bootstrap scripts own pin validation.

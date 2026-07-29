@@ -1,9 +1,13 @@
-standard = "2.0"
+standard = "2.1"
 project = "dify-all-in-one"
 space = "BlueSkyXN/dify-all-in-one-v2-candidate"
+project_class = "preview"
+target_role = "candidate"
 sovereignty = "fork"
 lane = "artifact"
 version_source = "commit"
+env_file = "local/hfs-targets/candidate.env"
+secret_files = []
 
 local_only = ["HF_TOKEN", "GH_TOKEN"]
 secrets = [

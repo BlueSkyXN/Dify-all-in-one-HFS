@@ -15,6 +15,17 @@ pinned: false
 
 > 该工程不是生产部署方案。生产环境应回到官方 Docker Compose、Kubernetes，或企业内网的拆分式部署。
 
+## HFS v2.1 Preview 定位
+
+本项目在 HFS 中明确分类为 `project_class = "preview"`；`hfs-dev.toml` 指向当前
+canonical Space，并以 `target_role = "primary"` 登记。日常 Preview 变更允许直接更新
+这个 canonical Space，不要求先经过 candidate、promotion 或 Release。现存
+`hfs-dev.candidate.toml` 只用于高风险变更的可选隔离验证，不是常规前置门禁。
+
+Space Secret 必须先写入 manifest 声明的、Git ignored 的本地明文来源：canonical 使用
+`.env`，candidate 使用 `local/hfs-targets/candidate.env`。HF Secret 是部署副本，不能成为
+唯一事实源；任何本地值文件都不得提交到 Git 或进入 Docker context。
+
 ## 文档入口
 
 - [完整工程文档](./docs/README.md)
@@ -60,7 +71,7 @@ nginx:7860
 
 ## HFS 范式定位
 
-本仓库按 HFS v2 归类为 **Pattern A: HFS Port Repository**、**artifact** 车道。仓库根目录仍是 Hugging Face Space root，`docker/` 保留多进程 runtime glue；产品 payload 不再由 Dockerfile 的业务 OCI image 组装，而是在启动时按单一 `hfs-dist/dify-all-in-one/<edge|release>/manifest.json` 下载、校验并原子安装。`hfs-dev.toml` 只登记车道、Space 和配置键名；实际 component pins/checksum 在 artifact `runtime-lock.json`、manifest 和 bootstrap 中验证。详细边界见 [HFS v2 对齐](./docs/hfs-alignment.md)。
+本仓库按 HFS v2.1 归类为 **Pattern A: HFS Port Repository**、**artifact** 车道。仓库根目录仍是 Hugging Face Space root，`docker/` 保留多进程 runtime glue；产品 payload 不再由 Dockerfile 的业务 OCI image 组装，而是在启动时按单一 `hfs-dist/dify-all-in-one/<edge|release>/manifest.json` 下载、校验并原子安装。`hfs-dev.toml` 只登记车道、Space 和配置键名；实际 component pins/checksum 在 artifact `runtime-lock.json`、manifest 和 bootstrap 中验证。详细边界见 [HFS v2.1 对齐](./docs/hfs-alignment.md)。
 
 ## 直接部署到 Hugging Face Space
 

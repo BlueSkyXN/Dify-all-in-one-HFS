@@ -69,20 +69,32 @@ root = Path(sys.argv[1])
 manifest = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
 candidate = tomllib.loads((root / "hfs-dev.candidate.toml").read_text(encoding="utf-8"))
 expected = {
-    "standard": "2.0",
+    "standard": "2.1",
     "project": "dify-all-in-one",
     "space": "BlueSkyXN/dify-all-in-one",
+    "project_class": "preview",
+    "target_role": "primary",
     "sovereignty": "fork",
     "lane": "artifact",
     "version_source": "commit",
+    "env_file": ".env",
     "dist_bucket": "hfs-dist",
 }
 errors = [f"hfs-dev.toml {key} must be {value!r}, got {manifest.get(key)!r}" for key, value in expected.items() if manifest.get(key) != value]
-if candidate.get("space") != "BlueSkyXN/dify-all-in-one-v2-candidate":
-    errors.append("candidate manifest must target BlueSkyXN/dify-all-in-one-v2-candidate")
-for key in ("standard", "project", "sovereignty", "lane", "version_source", "local_only", "secrets", "variables", "dist_bucket", "seed_file", "other_objects", "deviations"):
+candidate_expected = {
+    "space": "BlueSkyXN/dify-all-in-one-v2-candidate",
+    "project_class": "preview",
+    "target_role": "candidate",
+    "env_file": "local/hfs-targets/candidate.env",
+}
+for key, value in candidate_expected.items():
+    if candidate.get(key) != value:
+        errors.append(f"candidate manifest {key} must be {value!r}")
+for key in ("standard", "project", "project_class", "sovereignty", "lane", "version_source", "secret_files", "local_only", "secrets", "variables", "dist_bucket", "seed_file", "other_objects", "deviations"):
     if candidate.get(key) != manifest.get(key):
-        errors.append(f"candidate manifest {key} must match production manifest")
+        errors.append(f"candidate manifest {key} must match primary manifest")
+if manifest.get("secret_files") != []:
+    errors.append("dify preview manifest must not register structured secret files")
 required_secrets = {
     "DIFY_ARTIFACT_BEARER_TOKEN", "OPS_TOKEN", "DB_PASSWORD", "REDIS_PASSWORD",
     "SECRET_KEY", "PLUGIN_DAEMON_KEY", "PLUGIN_DIFY_INNER_API_KEY",
