@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import stat
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,10 @@ from scripts.export_hfs_space_bundle import (
 
 ROOT = Path(__file__).resolve().parents[2]
 FORMAL_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-hfs-formal.yml"
+SOURCE_COMMIT = subprocess.check_output(
+    ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+    text=True,
+).strip()
 
 
 def sha256(payload: bytes) -> str:
@@ -50,7 +55,7 @@ class HfsExporterTests(unittest.TestCase):
         evidence = {
             "schema_version": 1,
             "source_kind": "git-commit",
-            "wrapper_source_commit": "a" * 40,
+            "wrapper_source_commit": SOURCE_COMMIT,
             "wrapper_source_repository": config["wrapper_repository"],
             "target_space": profile["space"],
             "manifest_profile": profile["manifest"],
@@ -115,6 +120,28 @@ COPY docker/entrypoint.sh /opt/dify/entrypoint.sh
                 with self.assertRaisesRegex(BundleError, "source file inventory"):
                     verify_bundle(bundle, "formal")
 
+    def test_verify_rejects_coordinated_payload_inventory_and_checksum_forgery(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_bundle(Path(temporary))
+            config = load_config()
+            _source_path, bundle_path = next(iter(config["source_to_bundle"].items()))
+            target = bundle / bundle_path
+            forged_payload = target.read_bytes() + b"\nforged\n"
+            target.write_bytes(forged_payload)
+
+            evidence_path = bundle / "BUILD_SOURCE.json"
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence["source_files"][0]["bytes"] = len(forged_payload)
+            evidence["source_files"][0]["sha256"] = sha256(forged_payload)
+            evidence_path.write_text(
+                json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            self.rewrite_checksums(bundle)
+
+            with self.assertRaisesRegex(BundleError, "wrapper source commit"):
+                verify_bundle(bundle, "formal")
+
 
 class WorkflowContractTests(unittest.TestCase):
     def test_formal_workflow_uses_immutable_readback_and_runtime_gate(self) -> None:
@@ -129,6 +156,7 @@ class WorkflowContractTests(unittest.TestCase):
             "time.monotonic() + 1800",
         ):
             self.assertIn(required, workflow)
+        self.assertGreaterEqual(workflow.count("export_hfs_space_bundle.py verify"), 3)
 
 
 if __name__ == "__main__":

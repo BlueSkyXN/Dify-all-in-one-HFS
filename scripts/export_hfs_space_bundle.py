@@ -245,7 +245,7 @@ def validate_dockerfile_sources(dockerfile: str, files: set[str]) -> None:
                 raise BundleError(f"Dockerfile local source is absent from the allowlist: {source}")
 
 
-def expected_source_entries(bundle: Path, config: dict[str, Any]) -> list[dict[str, Any]]:
+def bundle_source_entries(bundle: Path, config: dict[str, Any]) -> list[dict[str, Any]]:
     entries = []
     for source_path, bundle_path in config["source_to_bundle"].items():
         path = bundle / bundle_path
@@ -254,6 +254,18 @@ def expected_source_entries(bundle: Path, config: dict[str, Any]) -> list[dict[s
             raise BundleError(f"bundle file has an unsupported mode: {bundle_path}")
         entries.append(source_entry(source_path, bundle_path, path.read_bytes(), mode))
     return entries
+
+
+def git_source_entries(source_commit: str, config: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        source_entry(
+            source_path,
+            bundle_path,
+            blob(source_commit, source_path),
+            tree_mode(source_commit, source_path),
+        )
+        for source_path, bundle_path in config["source_to_bundle"].items()
+    ]
 
 
 def verify_bundle(bundle: Path, profile_name: str) -> None:
@@ -306,8 +318,12 @@ def verify_bundle(bundle: Path, profile_name: str) -> None:
         or evidence.get("profile") != profile_name
     ):
         raise BundleError("BUILD_SOURCE.json does not match the fixed release profile")
-    if evidence.get("source_files") != expected_source_entries(bundle, config):
-        raise BundleError("BUILD_SOURCE.json source file inventory does not match bundle bytes and modes")
+    source_commit = str(evidence["wrapper_source_commit"])
+    committed_entries = git_source_entries(source_commit, config)
+    if evidence.get("source_files") != committed_entries:
+        raise BundleError("BUILD_SOURCE.json source file inventory does not match the wrapper source commit")
+    if bundle_source_entries(bundle, config) != committed_entries:
+        raise BundleError("bundle source files do not match the wrapper source commit bytes and modes")
 
     for relative in sorted(files - {"SHA256SUMS"}):
         try:

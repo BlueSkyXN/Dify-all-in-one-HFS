@@ -103,6 +103,9 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
+          python3 scripts/export_hfs_space_bundle.py verify \
+            --profile formal \
+            --bundle "$RUNNER_TEMP/hfs-formal-bundle"
           python3 -m huggingface_hub.cli.hf upload \
             "$FORMAL_SPACE" "$RUNNER_TEMP/hfs-formal-bundle" . \
             --repo-type space --revision main \
@@ -113,6 +116,9 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SOURCE_REF: ${{ inputs.source_ref }}
         run: |
+          python3 scripts/export_hfs_space_bundle.py verify \
+            --profile formal \
+            --bundle "$RUNNER_TEMP/hfs-formal-bundle"
           python3 - <<'PY'
           import hashlib
           import json
