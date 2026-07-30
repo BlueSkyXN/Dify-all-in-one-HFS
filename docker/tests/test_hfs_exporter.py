@@ -16,6 +16,7 @@ from scripts.export_hfs_space_bundle import (
     BundleError,
     expected_paths,
     load_config,
+    validate_manifest,
     validate_dockerfile_sources,
     verify_bundle,
 )
@@ -149,6 +150,16 @@ COPY docker/entrypoint.sh /opt/dify/entrypoint.sh
                 "COPY docker/missing.sh /opt/dify/missing.sh\n",
                 {"docker/entrypoint.sh"},
             )
+
+    def test_manifest_validation_rejects_non_preview_profile(self) -> None:
+        payload = exporter.blob(SOURCE_COMMIT, "hfs-dev.toml").replace(
+            b'project_class = "preview"',
+            b'project_class = "production"',
+            1,
+        )
+
+        with self.assertRaisesRegex(BundleError, "HFS 2.1 Preview primary profile"):
+            validate_manifest(payload, "BlueSkyXN/dify-all-in-one")
 
     def test_verify_accepts_complete_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -137,8 +137,16 @@ def validate_manifest(payload: bytes, expected_space: str) -> None:
         manifest = tomllib.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise BundleError("selected manifest is not valid UTF-8 TOML") from exc
-    if manifest.get("standard") != "2.0" or manifest.get("space") != expected_space:
-        raise BundleError("selected manifest does not identify HFS 2.0 and the fixed profile Space")
+    expected = {
+        "standard": "2.1",
+        "space": expected_space,
+        "project_class": "preview",
+        "target_role": "primary",
+        "env_file": ".env",
+        "secret_files": [],
+    }
+    if any(manifest.get(key) != value for key, value in expected.items()):
+        raise BundleError("selected manifest does not identify the fixed HFS 2.1 Preview primary profile")
 
 
 def source_entry(source_path: str, bundle_path: str, payload: bytes, mode: int) -> dict[str, Any]:

@@ -1,11 +1,13 @@
-# HFS v2 对齐
+# HFS v2.1 对齐
 
 `dify-all-in-one` 是 Hugging Face Docker Space 的 **Pattern A / port** 仓库：仓库根仍是 Space root，`docker/` 保留 all-in-one runtime glue；它不是把 Dify 产品源码迁入 `cloud/hfs/` 的 Pattern B 项目。
 
 ## 交付结论
 
 ```text
-HFS standard: 2.0
+HFS standard: 2.1
+Project class: preview
+Canonical target role: primary
 Pattern: A / HFS Port Repository
 Lane: artifact
 Runtime mode: manifest-first artifact-at-runtime
@@ -15,6 +17,11 @@ Wrapper source: this repository
 ```
 
 `hfs-dev.toml` 是最小语义登记表，只记录 Space、车道、键名、下载面和例外。它不重复 Dify component pins、checksums 或运行时不变量；这些由 artifact 的 `runtime-lock.json`、slot manifest、bootstrap 和 producer release 共同证明。
+
+Preview 日常变更可以直接更新 canonical Space；candidate 只保留为高风险变更的可选隔离验证。
+Secret 仍必须以本地明文文件为先：canonical 使用 `.env`，candidate 使用
+`local/hfs-targets/candidate.env`，两者都必须保持 Git ignored，不能从 HF Secret 反向当作
+唯一事实源。
 
 ## Artifact 边界
 
