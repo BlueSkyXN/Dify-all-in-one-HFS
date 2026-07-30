@@ -46,11 +46,14 @@ SECRET_KEY=<固定 demo 值或强随机值>
 PLUGIN_DAEMON_KEY=<固定 demo 值或强随机值>
 PLUGIN_DIFY_INNER_API_KEY=<固定 demo 值或强随机值>
 CODE_EXECUTION_API_KEY=<固定 demo 值或强随机值>
+SANDBOX_API_KEY=<与 CODE_EXECUTION_API_KEY 相同的新值>
+DIFY_AGENT_SERVER_SECRET_KEY=<强随机值>
+DIFY_AGENT_SHELLCTL_AUTH_TOKEN=<强随机值>
 ```
 
 本地只维护一个 `.env` 作为 HF 配置事实源：其中 `[HF Secrets]` 上传到 Space Secrets，`[HF Variables]` 上传到 Space Variables；与 `docker/dify.env.runtime` 默认值一致的变量不要重复上传。不要再维护 `.env.hf.local` 或 `local/hf-space.env` 这类并行 env 快照。
 
-不要单独上传 `SANDBOX_API_KEY` 和 `INNER_API_KEY_FOR_PLUGIN`，除非你明确要拆分内部 key。默认情况下，`SANDBOX_API_KEY` 继承 `CODE_EXECUTION_API_KEY`，`INNER_API_KEY_FOR_PLUGIN` 继承 `PLUGIN_DIFY_INNER_API_KEY`。
+formal clean profile 显式登记 `SANDBOX_API_KEY`，并要求它与 `CODE_EXECUTION_API_KEY` 使用同一新生成值；`INNER_API_KEY_FOR_PLUGIN` 仍从 `PLUGIN_DIFY_INNER_API_KEY` 派生，不单独上传。
 
 bucket-lite 模式下会持久化：
 

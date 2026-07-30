@@ -103,6 +103,7 @@ check_python_syntax \
   scripts/check-self-release-pins.py \
   scripts/package-dify-runtime-artifact.py \
   scripts/prepare-dify-artifact-manifest.py \
+  scripts/export_hfs_space_bundle.py \
   docker/plugin_runtime_patches/sitecustomize.py
 python3 -B -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check
