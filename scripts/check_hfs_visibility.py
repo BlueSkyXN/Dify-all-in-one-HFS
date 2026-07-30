@@ -76,12 +76,29 @@ def registered_bucket_ids(manifest: Mapping[str, Any], space: str) -> set[str]:
     return {f"{storage_owner}/{name}" for name in names}
 
 
+def token_namespace(api: Any, token: str) -> str:
+    try:
+        identity = api.whoami(token=token)
+    except Exception as exc:
+        raise VisibilityContractError(
+            f"Token owner readback failed without response details: {type(exc).__name__}"
+        ) from None
+    name = identity.get("name") if isinstance(identity, Mapping) else None
+    if not isinstance(name, str) or not name:
+        raise VisibilityContractError("Token owner readback omitted the account namespace")
+    return name
+
+
 def exact_space_visibility(api: Any, space: str, token: str) -> str:
     namespace, _ = _space_parts(space)
+    owner = token_namespace(api, token)
+    kwargs: dict[str, Any] = {"token": token}
+    if namespace.casefold() != owner.casefold():
+        kwargs["namespace"] = namespace
     try:
         matches = [
             repo
-            for repo in api.list_user_repos(namespace=namespace, token=token)
+            for repo in api.list_user_repos(**kwargs)
             if getattr(repo, "id", None) == space and getattr(repo, "type", None) == "space"
         ]
     except Exception as exc:

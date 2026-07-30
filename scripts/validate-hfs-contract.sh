@@ -238,7 +238,10 @@ require_grep 'python3 -m huggingface_hub\.cli\.hf upload --help' .github/workflo
 require_grep 'repos settings --help.*grep -- --protected' .github/workflows/deploy-hfs-formal.yml "formal workflow must verify Protected visibility support"
 require_grep 'space-variable-uri DIFY_ARTIFACT_MANIFEST_HF_URI' .github/workflows/deploy-hfs-formal.yml "formal workflow must check the configured artifact Bucket"
 require_absent 'info\.private' .github/workflows/deploy-hfs-formal.yml "SpaceInfo.private must not stand in for exact Protected settings readback"
-require_grep 'list_user_repos\(namespace=namespace, token=token\)' scripts/check_hfs_visibility.py "visibility checker must use the repository settings surface"
+require_grep 'api\.whoami\(token=token\)' scripts/check_hfs_visibility.py "visibility checker must resolve the token owner"
+require_grep 'namespace\.casefold\(\) != owner\.casefold\(\)' scripts/check_hfs_visibility.py "visibility checker must distinguish owner and organization namespaces"
+require_grep 'kwargs\["namespace"\] = namespace' scripts/check_hfs_visibility.py "visibility checker must scope only cross-namespace repository settings reads"
+require_grep 'api\.list_user_repos\(\*\*kwargs\)' scripts/check_hfs_visibility.py "visibility checker must use the repository settings surface"
 require_grep 'getattr\(repo, "id", None\) == space.*getattr\(repo, "type", None\) == "space"' scripts/check_hfs_visibility.py "visibility checker must bind exact repository ID and Space type"
 require_grep 'api\.bucket_info\(bucket_id, token=token\)' scripts/check_hfs_visibility.py "visibility checker must read each Bucket setting"
 formal_visibility_checks=$(grep -c 'scripts/check_hfs_visibility\.py' .github/workflows/deploy-hfs-formal.yml || true)

@@ -55,7 +55,8 @@ hfs-dist/dify-all-in-one/
 
 `Deploy canonical HFS wrapper` 使用 Python 3.11、`huggingface_hub==1.25.1` 与
 `click==8.4.2`。它在首次 Space 写入前和 wrapper upload 后，通过
-`list_user_repos(namespace=...)` 返回的 exact repository ID、exact `space` repo type 与
+`whoami` 解析 token owner：目标是 owner 本人时调用 `list_user_repos(token=...)`，仅跨
+namespace 时传 `namespace=...`，再用 exact repository ID、exact `space` repo type 与
 `visibility=protected` 做 settings readback；同时检查登记的 `hfs-dist` 和 Space 当前
 `DIFY_ARTIFACT_MANIFEST_HF_URI` 实际使用的 Bucket 都是 Private。该检查只读，不创建、
 修改或删除 Space/Bucket。

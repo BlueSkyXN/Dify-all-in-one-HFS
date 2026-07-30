@@ -32,6 +32,12 @@ class FakeApi:
         }
         self.repo_calls: list[tuple[str | None, str | None]] = []
         self.bucket_calls: list[str] = []
+        self.identity_calls: list[str | None] = []
+        self.token_owner = "BlueSkyXN"
+
+    def whoami(self, *, token: str | None = None):
+        self.identity_calls.append(token)
+        return {"name": self.token_owner}
 
     def list_user_repos(self, namespace: str | None = None, *, token: str | None = None):
         self.repo_calls.append((namespace, token))
@@ -59,7 +65,7 @@ def manifest() -> dict[str, object]:
 
 
 class VisibilityContractTests(unittest.TestCase):
-    def test_exact_space_type_and_visibility_are_required(self) -> None:
+    def test_owner_path_omits_namespace_and_requires_exact_space_type(self) -> None:
         api = FakeApi()
         api.repos.insert(
             0,
@@ -72,7 +78,32 @@ class VisibilityContractTests(unittest.TestCase):
         )
         self.assertEqual(selected, "BlueSkyXN/dify-all-in-one")
         self.assertEqual(bucket_ids, {"BlueSkyXN/hfs-dist"})
+        self.assertEqual(api.identity_calls, ["token"])
+        self.assertEqual(api.repo_calls, [(None, "token")])
+
+    def test_cross_namespace_path_uses_explicit_org_namespace(self) -> None:
+        api = FakeApi()
+        api.token_owner = "token-user"
+        visibility.verify_visibility_contract(api, manifest(), "token")
+        self.assertEqual(api.identity_calls, ["token"])
         self.assertEqual(api.repo_calls, [("BlueSkyXN", "token")])
+
+    def test_owner_readback_error_does_not_expose_token_or_response(self) -> None:
+        api = FakeApi()
+        secret_token = "hf_example-secret-token-that-must-not-appear"
+        response_text = "private response body that must not appear"
+
+        def fail_whoami(*, token: str | None = None):
+            del token
+            raise RuntimeError(response_text)
+
+        api.whoami = fail_whoami
+        with self.assertRaises(visibility.VisibilityContractError) as caught:
+            visibility.verify_visibility_contract(api, manifest(), secret_token)
+        message = str(caught.exception)
+        self.assertIn("RuntimeError", message)
+        self.assertNotIn(secret_token, message)
+        self.assertNotIn(response_text, message)
 
     def test_private_space_is_not_accepted_as_protected(self) -> None:
         api = FakeApi()

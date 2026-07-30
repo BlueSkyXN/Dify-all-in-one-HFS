@@ -448,7 +448,7 @@ HFS v2.1 visibility 只读门禁。
 
 职责：
 
-- 通过 `list_user_repos(namespace=...)` 的 exact repository ID、exact `space` repo type 与 `visibility` 字段确认 Space 为 Protected；不使用 `SpaceInfo.private` 推断。
+- 先用 `whoami` 解析 token owner；owner 本人使用 `list_user_repos(token=...)`，仅跨 namespace 时传 `namespace=...`，再以 exact repository ID、exact `space` repo type 与 `visibility` 字段确认 Space 为 Protected；不使用 `SpaceInfo.private` 推断。
 - 通过 structured `bucket_info` 确认 manifest 登记 Bucket、formal workflow 显式 URI Bucket 和 Space 当前 artifact manifest URI Bucket 都为 Private。
 - 支持 Space wrapper workflow 的 Protected/Private 完整检查，以及 bucket publish token 使用的 `--buckets-only` 检查；不创建或修改任何远端资源。
 - `scripts/tests/test_hfs_visibility.py` 使用 fake API 覆盖 exact repo type、Private/Protected 区分、Bucket fail-closed 与 URI 解析。
