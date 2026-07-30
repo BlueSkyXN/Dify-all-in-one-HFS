@@ -54,7 +54,8 @@ for path in \
   docker/entrypoint.sh docker/dify-artifact-bootstrap docker/dify_artifact_contract.py \
   docker/sandbox-artifact-launcher.c docker/dify.env.runtime docker/dify.env.demo \
   docker/supervisord.conf docker/nginx.conf docker/healthcheck.sh \
-  scripts/package-dify-runtime-artifact.py scripts/prepare-dify-artifact-manifest.py scripts/export_hfs_space_bundle.py scripts/validate-hfs-contract.sh \
+  scripts/package-dify-runtime-artifact.py scripts/prepare-dify-artifact-manifest.py scripts/export_hfs_space_bundle.py \
+  scripts/check_hfs_visibility.py scripts/tests/test_hfs_visibility.py scripts/validate-hfs-contract.sh \
   scripts/static-check.sh scripts/hf-space-smoke.sh docs/hfs-alignment.md \
   docs/configuration.md docs/deployment.md docs/release-checklist.md; do
   require_file "$path"
@@ -74,6 +75,8 @@ expected = {
     "standard": "2.1",
     "project": "dify-all-in-one",
     "space": "BlueSkyXN/dify-all-in-one",
+    "space_visibility": "protected",
+    "bucket_visibility": "private",
     "project_class": "preview",
     "target_role": "primary",
     "sovereignty": "fork",
@@ -92,7 +95,7 @@ candidate_expected = {
 for key, value in candidate_expected.items():
     if candidate.get(key) != value:
         errors.append(f"candidate manifest {key} must be {value!r}")
-for key in ("standard", "project", "project_class", "sovereignty", "lane", "version_source", "secret_files", "local_only", "secrets", "optional_secrets", "variables", "dist_bucket", "seed_file", "other_objects", "deviations"):
+for key in ("standard", "project", "space_visibility", "bucket_visibility", "project_class", "sovereignty", "lane", "version_source", "secret_files", "local_only", "secrets", "optional_secrets", "variables", "dist_bucket", "seed_file", "other_objects", "deviations"):
     if candidate.get(key) != manifest.get(key):
         errors.append(f"candidate manifest {key} must match primary manifest")
 if manifest.get("secret_files") != []:
@@ -226,21 +229,33 @@ require_grep 'environment: hfs-production' .github/workflows/deploy-hfs-formal.y
 require_grep 'PUBLISH_FORMAL' .github/workflows/deploy-hfs-formal.yml "formal workflow must require exact upload confirmation"
 require_grep 'export_hfs_space_bundle\.py export' .github/workflows/deploy-hfs-formal.yml "formal workflow must use the strict exporter"
 require_grep 'source-commit "\$SOURCE_REF"' .github/workflows/deploy-hfs-formal.yml "formal workflow must authorize every verifier against the locked source commit"
-require_grep 'HF_CLI_VERSION: "1\.5\.0"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin huggingface_hub 1.5.0"
-require_grep 'HF_CLI_CLICK_VERSION: "8\.3\.3"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin click 8.3.3"
+require_grep 'HF_CLI_VERSION: "1\.25\.1"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin huggingface_hub 1.25.1"
+require_grep 'HF_CLI_CLICK_VERSION: "8\.4\.2"' .github/workflows/deploy-hfs-formal.yml "formal workflow must pin click 8.4.2"
 require_grep 'huggingface_hub==\$\{HF_CLI_VERSION\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must install the pinned Hugging Face client"
 require_grep 'click==\$\{HF_CLI_CLICK_VERSION\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must install the direct module CLI dependency"
 require_grep 'python3 -m huggingface_hub\.cli\.hf --help' .github/workflows/deploy-hfs-formal.yml "formal workflow must exercise the module CLI"
 require_grep 'python3 -m huggingface_hub\.cli\.hf upload --help' .github/workflows/deploy-hfs-formal.yml "formal workflow must exercise the upload command"
+require_grep 'repos settings --help.*grep -- --protected' .github/workflows/deploy-hfs-formal.yml "formal workflow must verify Protected visibility support"
+require_grep 'space-variable-uri DIFY_ARTIFACT_MANIFEST_HF_URI' .github/workflows/deploy-hfs-formal.yml "formal workflow must check the configured artifact Bucket"
+require_absent 'info\.private' .github/workflows/deploy-hfs-formal.yml "SpaceInfo.private must not stand in for exact Protected settings readback"
+require_grep 'list_user_repos\(namespace=namespace, token=token\)' scripts/check_hfs_visibility.py "visibility checker must use the repository settings surface"
+require_grep 'getattr\(repo, "id", None\) == space.*getattr\(repo, "type", None\) == "space"' scripts/check_hfs_visibility.py "visibility checker must bind exact repository ID and Space type"
+require_grep 'api\.bucket_info\(bucket_id, token=token\)' scripts/check_hfs_visibility.py "visibility checker must read each Bucket setting"
+formal_visibility_checks=$(grep -c 'scripts/check_hfs_visibility\.py' .github/workflows/deploy-hfs-formal.yml || true)
+[ "$formal_visibility_checks" -ge 2 ] || fail "formal workflow must check visibility before and after upload"
 require_grep 'deployed_revision = info\.sha' .github/workflows/deploy-hfs-formal.yml "formal workflow must capture the immutable uploaded Space revision"
 require_grep 'revision=deployed_revision' .github/workflows/deploy-hfs-formal.yml "formal workflow must read back the immutable uploaded revision"
 require_grep 'runtime\.stage == "RUNNING"' .github/workflows/deploy-hfs-formal.yml "formal workflow must wait for a running canonical Space"
 require_grep 'runtime\.raw\.get\("sha"\) == deployed_revision' .github/workflows/deploy-hfs-formal.yml "formal workflow must bind runtime to the uploaded revision"
 require_grep 'runtime\.stage in \{"BUILD_ERROR", "RUNTIME_ERROR"\}' .github/workflows/deploy-hfs-formal.yml "formal workflow must fail closed on Space build and runtime errors"
-require_grep 'huggingface_hub==1\.5\.0' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin huggingface_hub 1.5.0"
-require_grep 'click==8\.3\.3' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin click 8.3.3"
+require_grep 'huggingface_hub==1\.25\.1' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin huggingface_hub 1.25.1"
+require_grep 'click==8\.4\.2' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must pin click 8.4.2"
 require_grep 'python -m huggingface_hub\.cli\.hf --help' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must exercise the module CLI"
 require_grep 'python -m huggingface_hub\.cli\.hf buckets --help' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must exercise the buckets command"
+require_grep 'repos settings --help.*grep -- --protected' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must verify Protected visibility support"
+require_grep '--bucket-uri "\$HF_ARTIFACT_BUCKET_URI"' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must check the formal-use Bucket"
+artifact_visibility_checks=$(grep -c 'scripts/check_hfs_visibility\.py' .github/workflows/publish-dify-runtime-artifact.yml || true)
+[ "$artifact_visibility_checks" -ge 2 ] || fail "artifact workflow must check Private Buckets before and after publication"
 require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"
@@ -270,6 +285,7 @@ for unsafe_uri in (
     raise SystemExit("FAIL hfs-contract: artifact URI parser accepted an unsafe path or query")
 PY
 python3 docker/dify_artifact_contract.py --self-test
+python3 -B -m unittest discover -s scripts/tests -p 'test_*.py'
 python3 -B - <<'PY'
 from pathlib import Path
 import warnings
@@ -279,6 +295,8 @@ for raw_path in (
     "docker/dify_artifact_contract.py",
     "scripts/package-dify-runtime-artifact.py",
     "scripts/prepare-dify-artifact-manifest.py",
+    "scripts/check_hfs_visibility.py",
+    "scripts/tests/test_hfs_visibility.py",
 ):
     path = Path(raw_path)
     compile(path.read_bytes(), str(path), "exec", dont_inherit=True)

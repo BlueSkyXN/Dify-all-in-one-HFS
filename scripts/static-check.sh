@@ -101,9 +101,11 @@ check_python_syntax \
   docker/dify_artifact_contract.py \
   docker/sandbox-selfcheck \
   scripts/check-self-release-pins.py \
+  scripts/check_hfs_visibility.py \
   scripts/package-dify-runtime-artifact.py \
   scripts/prepare-dify-artifact-manifest.py \
   scripts/export_hfs_space_bundle.py \
+  scripts/tests/test_hfs_visibility.py \
   docker/plugin_runtime_patches/sitecustomize.py
 python3 -B -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check

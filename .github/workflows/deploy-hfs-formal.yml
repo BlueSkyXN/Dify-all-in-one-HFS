@@ -21,8 +21,8 @@ concurrency:
 
 env:
   FORMAL_SPACE: BlueSkyXN/dify-all-in-one
-  HF_CLI_VERSION: "1.5.0"
-  HF_CLI_CLICK_VERSION: "8.3.3"
+  HF_CLI_VERSION: "1.25.1"
+  HF_CLI_CLICK_VERSION: "8.4.2"
 
 jobs:
   deploy:
@@ -77,12 +77,17 @@ jobs:
           python3 -m huggingface_hub.cli.hf version
           python3 -m huggingface_hub.cli.hf --help >/dev/null
           python3 -m huggingface_hub.cli.hf upload --help >/dev/null
+          python3 -m huggingface_hub.cli.hf repos settings --help | grep -- --protected
 
-      - name: Require existing private canonical Space and a thin path set
+      - name: Require existing Protected Space, Private Buckets, and a thin path set
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           test -n "${HF_TOKEN:-}" || { echo "HF_TOKEN environment Secret is required" >&2; exit 2; }
+          python3 scripts/check_hfs_visibility.py \
+            --manifest hfs-dev.toml \
+            --space "$FORMAL_SPACE" \
+            --space-variable-uri DIFY_ARTIFACT_MANIFEST_HF_URI
           python3 scripts/export_hfs_space_bundle.py paths --profile formal > "$RUNNER_TEMP/hfs-formal-paths"
           python3 - <<'PY'
           import os
@@ -91,10 +96,7 @@ jobs:
 
           api = HfApi(token=os.environ["HF_TOKEN"])
           expected = set(Path(os.environ["RUNNER_TEMP"], "hfs-formal-paths").read_text().splitlines())
-          info = api.space_info(os.environ["FORMAL_SPACE"], token=os.environ["HF_TOKEN"])
           actual = set(api.list_repo_files(os.environ["FORMAL_SPACE"], repo_type="space", token=os.environ["HF_TOKEN"]))
-          if info.private is not True:
-              raise SystemExit("canonical Space must already exist and be private")
           if actual - expected:
               raise SystemExit("canonical Space contains a path outside the formal bundle allowlist")
           PY
@@ -112,6 +114,15 @@ jobs:
             "$FORMAL_SPACE" "$RUNNER_TEMP/hfs-formal-bundle" . \
             --repo-type space --revision main \
             --commit-message "Deploy verified formal wrapper ${SOURCE_REF}"
+
+      - name: Read back Protected Space and Private Buckets after upload
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python3 scripts/check_hfs_visibility.py \
+            --manifest hfs-dev.toml \
+            --space "$FORMAL_SPACE" \
+            --space-variable-uri DIFY_ARTIFACT_MANIFEST_HF_URI
 
       - name: Read back every file and factory restart
         env:
@@ -137,8 +148,6 @@ jobs:
           expected = set(Path(os.environ["RUNNER_TEMP"], "hfs-formal-paths").read_text().splitlines())
           api = HfApi(token=token)
           info = api.space_info(space, token=token)
-          if info.private is not True:
-              raise SystemExit("canonical Space must remain private after upload")
           deployed_revision = info.sha
           if not isinstance(deployed_revision, str) or re.fullmatch(r"[0-9a-f]{40}", deployed_revision) is None:
               raise SystemExit("canonical Space did not expose an immutable deployed revision")

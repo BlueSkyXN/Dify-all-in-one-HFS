@@ -442,6 +442,17 @@ env-file=docker/dify.env.demo
 - `ADMIN_EXPECTED_ENABLED=true` 时验证 root、token 鉴权、cookie session CSRF、action catalog、audit endpoint、`confirm=true` 和 file manager 边界。
 - 默认不执行真实 admin action；只有 `ADMIN_SMOKE_ACTIONS=true` 时才调用 `run-health-checks`。
 
+### `scripts/check_hfs_visibility.py`
+
+HFS v2.1 visibility 只读门禁。
+
+职责：
+
+- 通过 `list_user_repos(namespace=...)` 的 exact repository ID、exact `space` repo type 与 `visibility` 字段确认 Space 为 Protected；不使用 `SpaceInfo.private` 推断。
+- 通过 structured `bucket_info` 确认 manifest 登记 Bucket、formal workflow 显式 URI Bucket 和 Space 当前 artifact manifest URI Bucket 都为 Private。
+- 支持 Space wrapper workflow 的 Protected/Private 完整检查，以及 bucket publish token 使用的 `--buckets-only` 检查；不创建或修改任何远端资源。
+- `scripts/tests/test_hfs_visibility.py` 使用 fake API 覆盖 exact repo type、Private/Protected 区分、Bucket fail-closed 与 URI 解析。
+
 ### `scripts/validate-hfs-contract.sh`
 
 HFS 范式结构契约检查脚本。
@@ -451,7 +462,7 @@ HFS 范式结构契约检查脚本。
 - 验证 `hfs-dev.toml` 声明 Pattern A / artifact / repo-root 的最小 HFS v2 semantic registry。
 - 检查 `README.md app_port`、`Dockerfile EXPOSE` 和 `docker/nginx.conf listen` 端口一致。
 - 检查 Dockerfile 安装 manifest-first bootstrap 与固定 Sandbox launcher，同时拒绝残留的 Dify 产品 OCI `FROM`、`COPY --from` 和 source fetch 路径。
-- 检查 manifest URI allowlist、runtime artifact verifier、producer packaging/manifest scripts 和 workflow 的 manual-confirm/readback 边界。
+- 检查 manifest URI allowlist、runtime artifact verifier、producer packaging/manifest scripts、Protected/Private visibility preflight/readback 和 workflow 的 manual-confirm/readback 边界。
 - 检查 `SERVER_CONSOLE_API_URL` 的同容器 SSR 默认值、demo env 和显式覆盖语义。
 - 检查多服务 runtime glue 位于 `docker/`，而不是把 Space root 藏进 `cloud/hfs/`。
 - 检查 `.dockerignore` 排除 `local/`、`.env*` 和常见 secret 文件。

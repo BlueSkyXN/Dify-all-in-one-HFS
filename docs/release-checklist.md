@@ -51,6 +51,10 @@ GitHub Release asset readback:
 
 只允许 manual `Publish Dify runtime artifact` workflow，且需 `confirm_publish=PUBLISH` 与 environment approval。workflow 不使用 whole-repo force-push 或 credential-bearing Git URL。
 
+首次 Bucket 写入前必须通过 structured `bucket_info` 确认 `hfs-dev.toml` 登记的
+Bucket 与 `HF_ARTIFACT_BUCKET_URI` 选择的 formal-use Bucket 都是 Private；manifest-last
+写入并 readback 后再次检查。`bucket_visibility = "private"` 只是期望值，不代替远端读回。
+
 严格 **manifest-last**：
 
 1. 上传 `dify-runtime-<commit>.tar.gz` 和 `SHA256SUMS.txt`；
@@ -71,6 +75,19 @@ Rollback GitHub Release tag:
 `edge` 可指向已验证 main commit；`release` 必须由显式 promote 选择 immutable tag。旧 slot object 删除不是本轮发布步骤。
 
 ## 3. Space Settings and deployment readback
+
+`hfs-dev.toml` 与 candidate manifest 必须显式声明：
+
+```toml
+space_visibility = "protected"
+bucket_visibility = "private"
+```
+
+首次 Space 写入前和 wrapper upload 后，使用 pinned `huggingface_hub==1.25.1` 的
+repository settings surface，按 exact repository ID 与 exact `repo_type=space` 确认
+`visibility=protected`。不要以 `SpaceInfo.private=true` 代替，因为它不能区分 Protected
+与 Private。同步确认登记 Bucket，以及 `DIFY_ARTIFACT_MANIFEST_HF_URI` 当前指向的
+formal-use Bucket，均为 Private。
 
 本地 `.env` 是值账本；`.env.example` 只提供空值/无害默认值。Space 只登记键名：
 
