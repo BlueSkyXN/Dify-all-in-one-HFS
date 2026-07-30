@@ -173,6 +173,7 @@ PY
 # Artifact delivery must not silently retain the old image-assembly product path.
 require_grep '^FROM \$\{BASE_IMAGE_REF\} AS runtime$' Dockerfile "Dockerfile must use the declared base runtime image"
 require_grep 'DIFY_AIO_RUNTIME_DELIVERY=manifest-first-artifact' Dockerfile "Dockerfile must expose artifact delivery provenance"
+require_grep 'NLTK_DATA=/opt/dify/runtime/usr/local/share/nltk_data' Dockerfile "Dockerfile must point API processes at artifact-delivered NLTK data"
 require_grep 'dify-artifact-bootstrap' Dockerfile "Dockerfile must install the artifact bootstrap"
 require_grep '/usr/local/lib/dify_artifact_contract.py' Dockerfile "Dockerfile must install the verifier at its importable module path"
 require_absent '/usr/local/lib/dify-artifact-contract.py' Dockerfile "Dockerfile must not install the verifier under a non-importable hyphenated name"
@@ -212,6 +213,11 @@ require_grep '^/\.env\.\*$' .gitignore ".gitignore must exclude named local env 
 require_grep '^!\.env\.example$' .gitignore ".gitignore must retain the harmless .env.example template"
 
 require_grep 'manifest-first' docs/hfs-alignment.md "HFS docs must describe manifest-first artifact delivery"
+require_grep 'punkt_tab' scripts/package-dify-runtime-artifact.py "runtime packager must include NLTK 3.10 resources"
+require_grep 'averaged_perceptron_tagger_eng' docker/dify_artifact_contract.py "artifact contract must validate NLTK 3.10 tagger data"
+require_grep '^export DISABLE_TELEMETRY=\$\{DISABLE_TELEMETRY:-true\}$' docker/dify.env.runtime "runtime defaults must keep Community Telemetry disabled"
+require_grep '^export DIFY_AGENT_RUNTIME_BACKEND=\$\{DIFY_AGENT_RUNTIME_BACKEND:-local\}$' docker/dify.env.runtime "runtime defaults must use the canonical local Agent backend"
+require_grep 'export AGENT_BACKEND_API_TOKEN=\$\{AGENT_BACKEND_API_TOKEN:-\$\{DIFY_AGENT_API_TOKEN:-\}\}' docker/with-dify-env "API and Agent backend must share the derived loopback bearer token"
 require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' docs/configuration.md "configuration docs must list the manifest variable"
 require_grep 'manifest-last' docs/release-checklist.md "release checklist must require manifest-last evidence"
 require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' scripts/run-demo.sh "local runner must pass explicit artifact controls"

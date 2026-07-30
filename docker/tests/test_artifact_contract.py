@@ -33,9 +33,19 @@ class ArtifactContractTest(unittest.TestCase):
             "opt/dify/plugin-daemon/main",
             "opt/dify/sandbox/main",
         }
-        directories = {"app/targets/next", "app/targets/vinext", "conf", "dependencies"}
+        directories = {
+            "app/targets/next",
+            "app/targets/vinext",
+            "conf",
+            "dependencies",
+            "usr/local/share/nltk_data/tokenizers/punkt_tab",
+            "usr/local/share/nltk_data/taggers/averaged_perceptron_tagger_eng",
+            "usr/local/share/nltk_data/corpora/stopwords",
+        }
         for directory in directories:
             (root / directory).mkdir(parents=True, exist_ok=True)
+            if "nltk_data" in Path(directory).parts:
+                (root / directory / "fixture.txt").write_text("ok", encoding="utf-8")
         for relative in files:
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +120,9 @@ class ArtifactContractTest(unittest.TestCase):
             )
             self.assertTrue(install_root.is_symlink())
             self.assertTrue((install_root / "MANIFEST_PROVENANCE.json").is_file())
+            self.assertTrue(
+                (install_root / "usr/local/share/nltk_data/tokenizers/punkt_tab/fixture.txt").is_file()
+            )
             prepared_payload = json.loads(prepared.read_text(encoding="utf-8"))
             self.assertEqual(prepared_payload["artifact_ref"], SOURCE_REF)
 
