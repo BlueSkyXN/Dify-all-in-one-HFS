@@ -109,6 +109,7 @@ def populate_runtime_tree(source: Path, destination: Path, lock: dict[str, Any],
         "usr/local/bin/shellctl-runner-exit",
         "usr/local/bin/shellctl-sanitize-pty",
         "usr/local/bin/dify-agent",
+        "usr/local/share/nltk_data",
         "conf",
         "dependencies",
     )
@@ -136,6 +137,14 @@ def populate_runtime_tree(source: Path, destination: Path, lock: dict[str, Any],
         require_path(destination, item, executable=True)
     require_path(destination, "app/targets/next")
     require_path(destination, "app/targets/vinext")
+    for item in (
+        "usr/local/share/nltk_data/tokenizers/punkt_tab",
+        "usr/local/share/nltk_data/taggers/averaged_perceptron_tagger_eng",
+        "usr/local/share/nltk_data/corpora/stopwords",
+    ):
+        resource = require_path(destination, item)
+        if not resource.is_dir() or not any(path.is_file() for path in resource.rglob("*")):
+            raise ValueError(f"runtime payload NLTK resource must contain regular files: {item}")
     (destination / "runtime-lock.json").write_text(json.dumps(lock, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     (destination / "BUILD_INFO.txt").write_text(
         "\n".join(

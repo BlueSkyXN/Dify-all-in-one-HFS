@@ -34,6 +34,7 @@ ENV DIFY_AIO_BUILD_BASE_IMAGE_REF=${BASE_IMAGE_REF} \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PYTHONIOENCODING=utf-8 \
+    NLTK_DATA=/opt/dify/runtime/usr/local/share/nltk_data \
     HOME=/home/user \
     HF_HOME=/tmp/dify-aio/hf-cache \
     HF_HUB_CACHE=/tmp/dify-aio/hf-cache/hub

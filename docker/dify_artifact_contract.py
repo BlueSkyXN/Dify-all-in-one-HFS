@@ -257,6 +257,9 @@ def _required_runtime_paths(root: Path) -> tuple[set[Path], set[Path]]:
         root / "app/targets/vinext",
         root / "conf",
         root / "dependencies",
+        root / "usr/local/share/nltk_data/tokenizers/punkt_tab",
+        root / "usr/local/share/nltk_data/taggers/averaged_perceptron_tagger_eng",
+        root / "usr/local/share/nltk_data/corpora/stopwords",
     }
     executables = {
         root / "app/api/.venv/bin/flask",
@@ -294,6 +297,16 @@ def _validate_runtime_layout(root: Path) -> None:
         raise ContractError("artifact archive is missing required executable runtime files")
     if any(not path.is_file() or path.is_symlink() for path in regular_files):
         raise ContractError("artifact archive is missing required regular runtime files")
+    nltk_directories = {
+        root / "usr/local/share/nltk_data/tokenizers/punkt_tab",
+        root / "usr/local/share/nltk_data/taggers/averaged_perceptron_tagger_eng",
+        root / "usr/local/share/nltk_data/corpora/stopwords",
+    }
+    if any(
+        not any(item.is_file() and not item.is_symlink() for item in path.rglob("*"))
+        for path in nltk_directories
+    ):
+        raise ContractError("artifact archive is missing required NLTK 3.10 resource files")
 
 
 def _read_validated_members(archive: tarfile.TarFile, artifact_root: str, expected_unpacked_size: int) -> list[tarfile.TarInfo]:
@@ -404,6 +417,9 @@ def self_test() -> None:
         directories, executables = _required_runtime_paths(root)
         for path in directories:
             path.mkdir(parents=True, exist_ok=True)
+        for path in directories:
+            if "nltk_data" in path.parts:
+                (path / "fixture.txt").write_text("ok", encoding="utf-8")
         for path in executables | {root / "BUILD_INFO.txt", root / "runtime-lock.json"}:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("ok", encoding="utf-8")

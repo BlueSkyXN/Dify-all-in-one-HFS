@@ -172,7 +172,8 @@ NEXT_PUBLIC_SOCKET_URL=wss://<your-space-host>
 DIFY_AGENT_ENABLED=true
 AGENT_DRIVE_MANIFEST_ENABLED=true
 AGENT_SHELL_ENABLED=true
-DIFY_AGENT_SHELLCTL_ENTRYPOINT=http://127.0.0.1:5004
+DIFY_AGENT_RUNTIME_BACKEND=local
+DIFY_AGENT_LOCAL_SANDBOX_ENDPOINT=http://127.0.0.1:5004
 ```
 
 通常不要额外上传下面这些派生值；它们由 `with-dify-env` 在 `DIFY_AGENT_ENABLED=true` 时从同容器默认值和 generated secrets 派生：
@@ -186,9 +187,11 @@ DIFY_AGENT_INNER_API_URL=http://127.0.0.1:5001
 DIFY_AGENT_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
 DIFY_AGENT_STUB_API_BASE_URL=http://127.0.0.1:5005/agent-stub
 DIFY_AGENT_SERVER_SECRET_KEY=<generated-in-/data/config/generated.env>
+DIFY_AGENT_API_TOKEN=<derived-from-DIFY_AGENT_SERVER_SECRET_KEY>
+AGENT_BACKEND_API_TOKEN=${DIFY_AGENT_API_TOKEN}
 ```
 
-旧的 `DIFY_AGENT_DIFY_API_BASE_URL`、`DIFY_AGENT_DIFY_API_INNER_API_KEY` 和 `DIFY_AGENT_STUB_URL` 仍作为兼容 alias 接受，但最新 self fork 实际读取的是上面的 canonical 变量；新配置不要继续上传旧名。
+`DIFY_AGENT_SHELLCTL_ENTRYPOINT`、`DIFY_AGENT_SHELLCTL_AUTH_TOKEN`、`DIFY_AGENT_DIFY_API_BASE_URL`、`DIFY_AGENT_DIFY_API_INNER_API_KEY` 和 `DIFY_AGENT_STUB_URL` 仍作为兼容 alias 接受，但最新 self fork 实际读取的是上面的 canonical 变量；新配置不要继续上传旧名。API 与 Agent backend 的内部 Bearer token 由 wrapper 从既有 `DIFY_AGENT_SERVER_SECRET_KEY` 单向派生，不需要新增或修改 HF Secret。
 
 可按需覆盖的非 secret 开关：
 
@@ -210,8 +213,8 @@ DIFY_AGENT_SERVER_SECRET_KEY=<generated-in-/data/config/generated.env>
 | `AGENT_DRIVE_MANIFEST_ENABLED` | `true` | drive manifest 开关；让 Agent runtime 接收 Skills & Files drive manifest 声明 |
 | `DIFY_AGENT_INNER_API_URL` | `http://127.0.0.1:5001` | Agent backend 调用同容器 Dify `/inner/api/...` 的 canonical base URL |
 | `DIFY_AGENT_STUB_API_BASE_URL` | `http://127.0.0.1:5005/agent-stub` | 注入 shell job 的同容器 Agent Stub API；只保持 loopback，不经 Nginx 暴露 |
-| `DIFY_AGENT_SHELL_PROVIDER` | `shellctl` | self runtime 的 shell provider；使用同容器 Go shellctl，不启用 enterprise gateway |
-| `DIFY_AGENT_SHELLCTL_ENTRYPOINT` | `http://127.0.0.1:5004` | Agent shell layer 的内部 shellctl endpoint；只能保持 loopback，不要暴露到 Nginx 或公网 |
+| `DIFY_AGENT_RUNTIME_BACKEND` | `local` | Agent Working Environment runtime backend；本 all-in-one 只使用同容器 local backend |
+| `DIFY_AGENT_LOCAL_SANDBOX_ENDPOINT` | `http://127.0.0.1:5004` | local runtime 的 shellctl endpoint；只能保持 loopback，不要暴露到 Nginx 或公网 |
 | `DIFY_AGENT_REDIS_PREFIX` | `dify-agent` | Agent backend Redis key prefix |
 
 `DIFY_AGENT_SERVER_SECRET_KEY` 未设置时仍由 entrypoint 生成并持久化到 `/data/config/generated.env`；formal clean profile 则从 HF Secret 显式注入新值。它用于 Agent Stub token 派生，`/_ops` 只返回 presence boolean，不返回原文。`SERVER_WORKER_CLASS` 和 `API_WEBSOCKET_WORKER_CLASS` 默认使用 `geventwebsocket.gunicorn.workers.GeventWebSocketWorker`，Nginx 保留 `/socket.io/` WebSocket upgrade headers。`/_ops/health` 会暴露 `agent_backend` 和 `shellctl` 只读状态。`DIFY_AGENT_ENABLED=false` 时状态为 `disabled` 且不降级；设置为 `true` 后，`run-dify-agent` 会先等待 Redis、Plugin Daemon、Dify API health，以及 `AGENT_SHELL_ENABLED=true` 时的 shellctl，再按 `DIFY_AGENT_STARTUP_DELAY_SECONDS` 延迟启动，并检查 `127.0.0.1:${DIFY_AGENT_PORT}` TCP 可达。启动期间或失败时会使 `/_ops/health` 标记 degraded。这个探针只证明 backend 与 shellctl 进程可达，不等价于完整 Agent App / workflow Agent node 已通过真实工具调用验证。
@@ -371,6 +374,7 @@ bucket-lite 会优先尝试 `/persist/postgres` live PGDATA，并在失败时 fa
 | `NEXT_PUBLIC_BATCH_CONCURRENCY` | `5` | 前端批量并发 |
 | `TEXT_GENERATION_TIMEOUT_MS` | `120000` | 文本生成 timeout |
 | `NEXT_TELEMETRY_DISABLED` | `1` | 关闭 Next telemetry |
+| `DISABLE_TELEMETRY` | `true` | 延续 demo 的 telemetry-off 默认，关闭 upstream Community Telemetry install/heartbeat 上报 |
 | `MARKETPLACE_API_URL` | `https://marketplace.dify.ai` | Marketplace API |
 | `MARKETPLACE_URL` | `https://marketplace.dify.ai` | Marketplace Web |
 | `MARKETPLACE_ENABLED` | `true` | 是否启用 Marketplace |

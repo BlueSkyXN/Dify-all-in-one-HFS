@@ -27,6 +27,13 @@ is_true() {
 
 if is_true "${DIFY_AGENT_ENABLED:-false}"; then
   export AGENT_BACKEND_BASE_URL=${AGENT_BACKEND_BASE_URL:-http://${DIFY_AGENT_HOST:-127.0.0.1}:${DIFY_AGENT_PORT:-5005}}
+  if [ -z "${DIFY_AGENT_API_TOKEN:-}" ] && [ -n "${DIFY_AGENT_SERVER_SECRET_KEY:-}" ]; then
+    DIFY_AGENT_API_TOKEN=$(
+      /usr/bin/python3 -c 'import hashlib, os; print(hashlib.sha256(("dify-agent-api:" + os.environ["DIFY_AGENT_SERVER_SECRET_KEY"]).encode()).hexdigest())'
+    )
+    export DIFY_AGENT_API_TOKEN
+  fi
+  export AGENT_BACKEND_API_TOKEN=${AGENT_BACKEND_API_TOKEN:-${DIFY_AGENT_API_TOKEN:-}}
   if [ -z "${DIFY_AGENT_REDIS_URL:-}" ]; then
     redis_password_encoded=$(
       /usr/bin/python3 -c 'from urllib.parse import quote; import os; print(quote(os.environ.get("REDIS_PASSWORD", ""), safe=""))'

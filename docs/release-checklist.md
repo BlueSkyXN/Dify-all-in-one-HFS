@@ -35,7 +35,7 @@ producer 必须输出唯一命名的：
 dify-runtime-<40-char-commit>.tar.gz
 ```
 
-archive 内必须有 schema v2 `runtime-lock.json`，覆盖 API、Web、Agent、Plugin Daemon 和 Sandbox，并让 API/Web/Agent 绑定同一个 fork commit、其余组件绑定 immutable image/source pin。记录 producer build、archive SHA-256、压缩与解包 size、lock SHA-256、component pins、Sandbox privilege-launcher compatibility 和 GitHub Release asset readback。
+archive 内必须有 schema v2 `runtime-lock.json`，覆盖 API、Web、Agent、Plugin Daemon 和 Sandbox，并让 API/Web/Agent 绑定同一个 fork commit、其余组件绑定 immutable image/source pin。archive 还必须携带并验证 NLTK 3.10 所需的 `punkt_tab`、`averaged_perceptron_tagger_eng` 和 `stopwords` data。记录 producer build、archive SHA-256、压缩与解包 size、lock SHA-256、component pins、Sandbox privilege-launcher compatibility 和 GitHub Release asset readback。
 
 ```text
 Producer build:
