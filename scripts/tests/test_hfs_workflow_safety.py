@@ -21,10 +21,19 @@ class WorkflowSafetyContractTests(unittest.TestCase):
         )
         self.assertIn('[[ "$CONFIRM_FACTORY_REBOOT" == FACTORY_REBOOT ]]', self.formal)
 
+    def test_formal_requires_verified_artifact_binding_before_reboot(self) -> None:
+        self.assertIn("confirm_artifact_binding:", self.formal)
+        self.assertIn('[[ "$CONFIRM_ARTIFACT_BINDING" == BIND_ARTIFACT ]]', self.formal)
+        binding = self.formal.index("scripts/deploy_hfs_formal.py bind-artifact")
+        reboot = self.formal.index("scripts/deploy_hfs_formal.py reboot")
+        self.assertLess(binding, reboot)
+        self.assertIn('--artifact-ref "$ARTIFACT_REF"', self.formal[binding:])
+
     def test_formal_upload_uses_cas_helper_instead_of_unconditional_cli_upload(
         self,
     ) -> None:
         self.assertIn("scripts/deploy_hfs_formal.py upload", self.formal)
+        self.assertIn("scripts/deploy_hfs_formal.py bind-artifact", self.formal)
         self.assertIn("scripts/deploy_hfs_formal.py reboot", self.formal)
         self.assertNotIn("huggingface_hub.cli.hf upload", self.formal)
 
