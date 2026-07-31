@@ -12,22 +12,25 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
-MANIFEST_URI_RE = re.compile(
-    r"^hf://buckets/([A-Za-z0-9][A-Za-z0-9._-]*)/hfs-dist/"
-    r"dify-all-in-one/release/manifest\.json$"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docker"))
+from dify_artifact_contract import (
+    MAX_ARCHIVE_BYTES,
+    ContractError,
+    load_manifest,
+    parse_manifest_uri,
 )
+
+GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 EXPECTED_ARTIFACT_VARIABLE = "DIFY_ARTIFACT_EXPECTED_SOURCE_REF"
 MANIFEST_URI_VARIABLE = "DIFY_ARTIFACT_MANIFEST_HF_URI"
-MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
+MAX_BYTES_VARIABLE = "DIFY_ARTIFACT_MAX_BYTES"
 
 
 class FormalDeploymentError(RuntimeError):
@@ -108,6 +111,20 @@ def _space_variable_value(variables: object, name: str) -> str:
     return value
 
 
+def _artifact_max_bytes(variables: object) -> int:
+    value = _space_variable_value(variables, MAX_BYTES_VARIABLE)
+    if re.fullmatch(r"[0-9]+", value) is None:
+        raise FormalDeploymentError(
+            "DIFY_ARTIFACT_MAX_BYTES must be an ASCII positive integer"
+        )
+    max_bytes = int(value)
+    if not 0 < max_bytes <= MAX_ARCHIVE_BYTES:
+        raise FormalDeploymentError(
+            "DIFY_ARTIFACT_MAX_BYTES exceeds the runtime artifact safety boundary"
+        )
+    return max_bytes
+
+
 def _current_space_sha(api: Any, *, token: str, space: str, label: str) -> str:
     try:
         return _require_git_sha(
@@ -124,16 +141,17 @@ def _current_space_sha(api: Any, *, token: str, space: str, label: str) -> str:
 
 def _artifact_manifest(
     api: Any, *, token: str, space: str, artifact_ref: str
-) -> dict[str, Any]:
+) -> tuple[dict[str, str], str, int]:
     try:
         variables = api.get_space_variables(space, token=token)
         manifest_uri = _space_variable_value(variables, MANIFEST_URI_VARIABLE)
-        match = MANIFEST_URI_RE.fullmatch(manifest_uri)
-        if match is None:
+        max_bytes = _artifact_max_bytes(variables)
+        namespace, bucket, slot, _manifest_url = parse_manifest_uri(manifest_uri)
+        if slot != "release":
             raise FormalDeploymentError(
                 "formal artifact manifest Variable must select the exact Private release lane"
             )
-        bucket_id = f"{match.group(1)}/hfs-dist"
+        bucket_id = f"{namespace}/{bucket}"
         remote_path = "dify-all-in-one/release/manifest.json"
         with tempfile.TemporaryDirectory() as temporary:
             manifest_path = Path(temporary) / "manifest.json"
@@ -143,43 +161,76 @@ def _artifact_manifest(
                 raise_on_missing_files=True,
                 token=token,
             )
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            provenance = load_manifest(
+                manifest_path,
+                manifest_uri,
+                expected_source_ref=artifact_ref,
+                max_bytes=max_bytes,
+            )
+            if provenance["source_kind"] != "tag":
+                raise FormalDeploymentError(
+                    "formal release manifest must select an immutable tag"
+                )
     except FormalDeploymentError:
         raise
+    except ContractError:
+        raise FormalDeploymentError(
+            "formal release manifest does not satisfy the runtime artifact contract"
+        ) from None
     except Exception as exc:
         raise FormalDeploymentError(
             f"formal artifact manifest readback failed without response details: {type(exc).__name__}"
         ) from None
 
-    artifact = f"dify-runtime-{artifact_ref}.tar.gz"
-    source_ref = payload.get("source_ref") if isinstance(payload, dict) else None
+    return provenance, manifest_uri, max_bytes
+
+
+def _variables_after_manifest(
+    api: Any,
+    *,
+    token: str,
+    space: str,
+    manifest_uri: str,
+    max_bytes: int,
+) -> dict[str, Any]:
+    try:
+        variables = api.get_space_variables(space, token=token)
+        if (
+            _space_variable_value(variables, MANIFEST_URI_VARIABLE) != manifest_uri
+            or _artifact_max_bytes(variables) != max_bytes
+        ):
+            raise FormalDeploymentError(
+                "artifact selection Variables changed during manifest verification"
+            )
+        return variables
+    except FormalDeploymentError:
+        raise
+    except Exception as exc:
+        raise FormalDeploymentError(
+            f"artifact binding readback failed without response details: {type(exc).__name__}"
+        ) from None
+
+
+def _require_space_revision(
+    api: Any,
+    *,
+    token: str,
+    space: str,
+    deployed_revision: str,
+    action: str,
+) -> None:
     if (
-        not isinstance(payload, dict)
-        or payload.get("schema_version") != 2
-        or payload.get("project") != "dify-all-in-one"
-        or payload.get("slot") != "release"
-        or payload.get("source_kind") != "tag"
-        or not isinstance(source_ref, str)
-        or source_ref in {"", "latest", "main", "edge", "release"}
-        or TAG_RE.fullmatch(source_ref) is None
-        or ".." in source_ref
-        or payload.get("artifact_ref") != artifact_ref
-        or payload.get("artifact") != artifact
-        or payload.get("artifact_key") != f"dify-all-in-one/release/{artifact}"
-        or payload.get("manifest_key") != "dify-all-in-one/release/manifest.json"
-        or not isinstance(payload.get("sha256"), str)
-        or SHA256_RE.fullmatch(payload["sha256"]) is None
-        or not isinstance(payload.get("runtime_lock_sha256"), str)
-        or SHA256_RE.fullmatch(payload["runtime_lock_sha256"]) is None
-        or type(payload.get("size_bytes")) is not int
-        or not 0 < payload["size_bytes"] <= MAX_ARCHIVE_BYTES
-        or type(payload.get("unpacked_size_bytes")) is not int
-        or payload["unpacked_size_bytes"] <= 0
+        _current_space_sha(
+            api,
+            token=token,
+            space=space,
+            label="current Space revision",
+        )
+        != deployed_revision
     ):
         raise FormalDeploymentError(
-            "formal release manifest does not select the exact authorized artifact"
+            f"Space main changed after verified upload; refusing {action}"
         )
-    return payload
 
 
 def verify_formal_artifact_binding(
@@ -192,32 +243,35 @@ def verify_formal_artifact_binding(
 ) -> None:
     deployed_revision = _require_git_sha(deployed_revision, "deployed_revision")
     artifact_ref = _require_git_sha(artifact_ref, "artifact_ref")
-    if (
-        _current_space_sha(
-            api,
-            token=token,
-            space=space,
-            label="current Space revision",
-        )
-        != deployed_revision
-    ):
-        raise FormalDeploymentError(
-            "Space main changed after verified upload; refusing artifact binding or reboot"
-        )
-    _artifact_manifest(api, token=token, space=space, artifact_ref=artifact_ref)
-    try:
-        variables = api.get_space_variables(space, token=token)
-        expected_ref = _space_variable_value(variables, EXPECTED_ARTIFACT_VARIABLE)
-    except FormalDeploymentError:
-        raise
-    except Exception as exc:
-        raise FormalDeploymentError(
-            f"artifact binding readback failed without response details: {type(exc).__name__}"
-        ) from None
+    _require_space_revision(
+        api,
+        token=token,
+        space=space,
+        deployed_revision=deployed_revision,
+        action="artifact binding or reboot",
+    )
+    _provenance, manifest_uri, max_bytes = _artifact_manifest(
+        api, token=token, space=space, artifact_ref=artifact_ref
+    )
+    variables = _variables_after_manifest(
+        api,
+        token=token,
+        space=space,
+        manifest_uri=manifest_uri,
+        max_bytes=max_bytes,
+    )
+    expected_ref = _space_variable_value(variables, EXPECTED_ARTIFACT_VARIABLE)
     if expected_ref != artifact_ref:
         raise FormalDeploymentError(
             "Space expected artifact Variable does not match the verified release manifest"
         )
+    _require_space_revision(
+        api,
+        token=token,
+        space=space,
+        deployed_revision=deployed_revision,
+        action="artifact binding or reboot",
+    )
 
 
 def bind_formal_artifact(
@@ -235,36 +289,57 @@ def bind_formal_artifact(
         raise FormalDeploymentError(
             "artifact Variable update requires the exact BIND_ARTIFACT confirmation"
         )
-    if (
-        _current_space_sha(
+    _require_space_revision(
+        api,
+        token=token,
+        space=space,
+        deployed_revision=deployed_revision,
+        action="artifact binding",
+    )
+    _provenance, manifest_uri, max_bytes = _artifact_manifest(
+        api, token=token, space=space, artifact_ref=artifact_ref
+    )
+    variables = _variables_after_manifest(
+        api,
+        token=token,
+        space=space,
+        manifest_uri=manifest_uri,
+        max_bytes=max_bytes,
+    )
+    current_ref = _space_variable_value(variables, EXPECTED_ARTIFACT_VARIABLE)
+    if current_ref != artifact_ref:
+        # Cross-resource atomicity is unavailable. Re-validate the mutable
+        # manifest/settings and Space HEAD immediately before the one Variable write.
+        _provenance, manifest_uri, max_bytes = _artifact_manifest(
+            api, token=token, space=space, artifact_ref=artifact_ref
+        )
+        variables = _variables_after_manifest(
             api,
             token=token,
             space=space,
-            label="current Space revision",
+            manifest_uri=manifest_uri,
+            max_bytes=max_bytes,
         )
-        != deployed_revision
-    ):
-        raise FormalDeploymentError(
-            "Space main changed after verified upload; refusing artifact binding"
+        _require_space_revision(
+            api,
+            token=token,
+            space=space,
+            deployed_revision=deployed_revision,
+            action="artifact binding",
         )
-    _artifact_manifest(api, token=token, space=space, artifact_ref=artifact_ref)
-    try:
-        variables = api.get_space_variables(space, token=token)
-        current_ref = _space_variable_value(variables, EXPECTED_ARTIFACT_VARIABLE)
-        if current_ref != artifact_ref:
-            api.add_space_variable(
-                space,
-                EXPECTED_ARTIFACT_VARIABLE,
-                artifact_ref,
-                description="Exact Dify runtime artifact commit selected by the formal release manifest.",
-                token=token,
-            )
-    except FormalDeploymentError:
-        raise
-    except Exception as exc:
-        raise FormalDeploymentError(
-            f"artifact binding update failed without response details: {type(exc).__name__}"
-        ) from None
+        if _space_variable_value(variables, EXPECTED_ARTIFACT_VARIABLE) != artifact_ref:
+            try:
+                api.add_space_variable(
+                    space,
+                    EXPECTED_ARTIFACT_VARIABLE,
+                    artifact_ref,
+                    description="Exact Dify runtime artifact commit selected by the formal release manifest.",
+                    token=token,
+                )
+            except Exception as exc:
+                raise FormalDeploymentError(
+                    f"artifact binding update failed without response details: {type(exc).__name__}"
+                ) from None
     verify_formal_artifact_binding(
         api,
         token=token,

@@ -101,6 +101,10 @@ readback。`confirm_upload=PUBLISH_FORMAL` 只授权 repository write；另需
 Private Bucket release manifest、expected-source Variable 与 Space `main`；任一项漂移都必须
 失败且不得重启。`hfs-production` Environment 只允许 `main`。
 
+Bucket、Space Settings 和 Space Git repository 不提供跨资源事务。formal helper 会在 Variable
+写入前立即重读 manifest、Settings 和 Space SHA，写入后再完整回读；如果后置回读失败，必须把
+Variable 视为可能已局部更新并停止在 reboot 前，不得把该次 run 当成部署成功。
+
 本地 `.env` 是值账本；`.env.example` 只提供空值/无害默认值。Space 只登记键名：
 
 ```text

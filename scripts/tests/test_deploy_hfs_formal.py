@@ -28,6 +28,7 @@ RELEASE_TAG = "hfs-artifact-9885d17ba8f4"
 class FakeApi:
     def __init__(self) -> None:
         self.current_sha = PREFLIGHT_SHA
+        self.sha_responses: list[str] = []
         self.expected_paths = {"BUILD_SOURCE.json", "README.md"}
         self.create_calls: list[dict[str, object]] = []
         self.restart_calls: list[tuple[str, str, bool]] = []
@@ -37,6 +38,7 @@ class FakeApi:
                 value="hf://buckets/BlueSkyXN/hfs-dist/dify-all-in-one/release/manifest.json"
             ),
             formal.EXPECTED_ARTIFACT_VARIABLE: SimpleNamespace(value=ARTIFACT_REF),
+            formal.MAX_BYTES_VARIABLE: SimpleNamespace(value=str(4 * 1024**3)),
         }
         self.variable_updates: list[tuple[str, str, str]] = []
         self.manifest = {
@@ -51,12 +53,15 @@ class FakeApi:
             "size_bytes": 1024,
             "unpacked_size_bytes": 2048,
             "runtime_lock_sha256": "7" * 64,
+            "generated_at": "2026-07-31T00:00:00Z",
             "artifact_key": f"dify-all-in-one/release/dify-runtime-{ARTIFACT_REF}.tar.gz",
             "manifest_key": "dify-all-in-one/release/manifest.json",
         }
 
     def space_info(self, _space: str, *, token: str):
         del token
+        if self.sha_responses:
+            return SimpleNamespace(sha=self.sha_responses.pop(0))
         return SimpleNamespace(sha=self.current_sha)
 
     def list_repo_files(
@@ -294,7 +299,7 @@ class FormalDeploymentTests(unittest.TestCase):
         api.current_sha = DEPLOYED_SHA
         api.manifest["artifact_ref"] = OLD_ARTIFACT_REF
         with self.assertRaisesRegex(
-            formal.FormalDeploymentError, "exact authorized artifact"
+            formal.FormalDeploymentError, "runtime artifact contract"
         ):
             formal.bind_formal_artifact(
                 api,
@@ -324,6 +329,112 @@ class FormalDeploymentTests(unittest.TestCase):
                 confirmation="FACTORY_REBOOT",
             )
         self.assertFalse(api.restart_calls)
+
+    def test_binding_uses_the_runtime_manifest_contract(self) -> None:
+        invalid_manifests = {
+            "missing generated_at": lambda payload: payload.pop("generated_at"),
+            "invalid generated_at": lambda payload: payload.__setitem__(
+                "generated_at", "2026-02-30T00:00:00Z"
+            ),
+            "excessive unpacked size": lambda payload: payload.__setitem__(
+                "unpacked_size_bytes", 32 * 1024**3 + 1
+            ),
+        }
+        for label, mutate in invalid_manifests.items():
+            with self.subTest(label=label):
+                api = FakeApi()
+                api.current_sha = DEPLOYED_SHA
+                api.variables[formal.EXPECTED_ARTIFACT_VARIABLE] = SimpleNamespace(
+                    value=OLD_ARTIFACT_REF
+                )
+                mutate(api.manifest)
+                with self.assertRaisesRegex(
+                    formal.FormalDeploymentError, "runtime artifact contract"
+                ):
+                    formal.bind_formal_artifact(
+                        api,
+                        token="token",
+                        space="BlueSkyXN/dify-all-in-one",
+                        deployed_revision=DEPLOYED_SHA,
+                        artifact_ref=ARTIFACT_REF,
+                        confirmation="BIND_ARTIFACT",
+                    )
+                self.assertFalse(api.variable_updates)
+
+    def test_binding_honors_the_effective_space_archive_limit(self) -> None:
+        api = FakeApi()
+        api.current_sha = DEPLOYED_SHA
+        api.variables[formal.EXPECTED_ARTIFACT_VARIABLE] = SimpleNamespace(
+            value=OLD_ARTIFACT_REF
+        )
+        api.variables[formal.MAX_BYTES_VARIABLE] = SimpleNamespace(value="512")
+        with self.assertRaisesRegex(
+            formal.FormalDeploymentError, "runtime artifact contract"
+        ):
+            formal.bind_formal_artifact(
+                api,
+                token="token",
+                space="BlueSkyXN/dify-all-in-one",
+                deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
+                confirmation="BIND_ARTIFACT",
+            )
+        self.assertFalse(api.variable_updates)
+
+    def test_binding_rejects_a_commit_manifest_in_the_release_lane(self) -> None:
+        api = FakeApi()
+        api.current_sha = DEPLOYED_SHA
+        api.variables[formal.EXPECTED_ARTIFACT_VARIABLE] = SimpleNamespace(
+            value=OLD_ARTIFACT_REF
+        )
+        api.manifest["source_kind"] = "commit"
+        api.manifest["source_ref"] = ARTIFACT_REF
+        with self.assertRaisesRegex(formal.FormalDeploymentError, "immutable tag"):
+            formal.bind_formal_artifact(
+                api,
+                token="token",
+                space="BlueSkyXN/dify-all-in-one",
+                deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
+                confirmation="BIND_ARTIFACT",
+            )
+        self.assertFalse(api.variable_updates)
+
+    def test_reboot_rejects_space_head_drift_after_manifest_readback(self) -> None:
+        api = FakeApi()
+        api.sha_responses = [DEPLOYED_SHA, PREFLIGHT_SHA]
+        with self.assertRaisesRegex(
+            formal.FormalDeploymentError, "changed after verified upload"
+        ):
+            formal.reboot_formal_space(
+                api,
+                token="token",
+                space="BlueSkyXN/dify-all-in-one",
+                deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
+                confirmation="FACTORY_REBOOT",
+            )
+        self.assertFalse(api.restart_calls)
+
+    def test_binding_rejects_space_head_drift_immediately_before_write(self) -> None:
+        api = FakeApi()
+        api.current_sha = DEPLOYED_SHA
+        api.sha_responses = [DEPLOYED_SHA, PREFLIGHT_SHA]
+        api.variables[formal.EXPECTED_ARTIFACT_VARIABLE] = SimpleNamespace(
+            value=OLD_ARTIFACT_REF
+        )
+        with self.assertRaisesRegex(
+            formal.FormalDeploymentError, "changed after verified upload"
+        ):
+            formal.bind_formal_artifact(
+                api,
+                token="token",
+                space="BlueSkyXN/dify-all-in-one",
+                deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
+                confirmation="BIND_ARTIFACT",
+            )
+        self.assertFalse(api.variable_updates)
 
 
 if __name__ == "__main__":
