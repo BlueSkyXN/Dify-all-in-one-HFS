@@ -57,7 +57,19 @@ jobs:
       - name: Checkout wrapper revision
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Authorize exact wrapper main
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]]
 
       - name: Install pinned HFS bucket client
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -65,11 +77,12 @@ jobs:
           python-version: "3.11"
       - run: |
           python -m pip install --disable-pip-version-check \
-            "huggingface_hub==1.5.0" \
-            "click==8.3.3"
+            "huggingface_hub==1.25.1" \
+            "click==8.4.2"
           python -m huggingface_hub.cli.hf version
           python -m huggingface_hub.cli.hf --help >/dev/null
           python -m huggingface_hub.cli.hf buckets --help >/dev/null
+          python -m huggingface_hub.cli.hf repos settings --help | grep -- --protected
 
       - name: Validate approved manual inputs
         run: |
@@ -107,6 +120,10 @@ jobs:
             exit 2
           }
           [[ -n "${HF_TOKEN}" ]] || { echo "HF_ARTIFACT_BUCKET_TOKEN is required" >&2; exit 2; }
+          python scripts/check_hfs_visibility.py \
+            --manifest hfs-dev.toml \
+            --bucket-uri "$HF_ARTIFACT_BUCKET_URI" \
+            --buckets-only
 
       - name: Download exact producer release asset
         env:
@@ -162,6 +179,10 @@ jobs:
           mkdir -p dist/readback
           python -m huggingface_hub.cli.hf buckets cp "${slot_prefix}/manifest.json" dist/readback/manifest.json
           cmp dist/input/manifest.json dist/readback/manifest.json
+          python scripts/check_hfs_visibility.py \
+            --manifest hfs-dev.toml \
+            --bucket-uri "$HF_ARTIFACT_BUCKET_URI" \
+            --buckets-only
           {
             echo "### Dify runtime artifact published"
             echo "- slot: ${SLOT}"

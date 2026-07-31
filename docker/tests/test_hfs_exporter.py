@@ -24,6 +24,7 @@ from scripts.export_hfs_space_bundle import (
 
 ROOT = Path(__file__).resolve().parents[2]
 FORMAL_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-hfs-formal.yml"
+FORMAL_DEPLOY_HELPER = ROOT / "scripts" / "deploy_hfs_formal.py"
 SOURCE_COMMIT = subprocess.check_output(
     ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
     text=True,
@@ -243,18 +244,26 @@ COPY docker/entrypoint.sh /opt/dify/entrypoint.sh
 class WorkflowContractTests(unittest.TestCase):
     def test_formal_workflow_uses_immutable_readback_and_runtime_gate(self) -> None:
         workflow = FORMAL_WORKFLOW.read_text(encoding="utf-8")
+        helper = FORMAL_DEPLOY_HELPER.read_text(encoding="utf-8")
         for required in (
-            "deployed_revision = info.sha",
-            "revision=deployed_revision",
-            "hf_hub_download",
-            'runtime.stage == "RUNNING"',
-            'runtime.raw.get("sha") == deployed_revision',
-            'runtime.stage in {"BUILD_ERROR", "RUNTIME_ERROR"}',
-            "time.monotonic() + 1800",
+            "scripts/deploy_hfs_formal.py upload",
+            "scripts/deploy_hfs_formal.py reboot",
+            "steps.upload.outputs.deployed_revision",
         ):
             self.assertIn(required, workflow)
+        for required in (
+            "parent_commit=preflight_sha",
+            "api.create_commit(",
+            "revision=deployed_revision",
+            "hf_hub_download",
+            'stage == "RUNNING" and runtime_sha == deployed_revision',
+            'stage in {"BUILD_ERROR", "RUNTIME_ERROR"}',
+            "monotonic() + timeout_seconds",
+            'default=1800',
+        ):
+            self.assertIn(required, helper)
         verify_commands = workflow.split("export_hfs_space_bundle.py verify")[1:]
-        self.assertEqual(len(verify_commands), 3)
+        self.assertEqual(len(verify_commands), 2)
         for command in verify_commands:
             self.assertIn('--source-commit "$SOURCE_REF"', command.split("\n\n", 1)[0])
 

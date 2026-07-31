@@ -16,7 +16,7 @@ Product source: BlueSkyXN/dify producer repository
 Wrapper source: this repository
 ```
 
-`hfs-dev.toml` 是最小语义登记表，只记录 Space、车道、键名、下载面和例外。它不重复 Dify component pins、checksums 或运行时不变量；这些由 artifact 的 `runtime-lock.json`、slot manifest、bootstrap 和 producer release 共同证明。
+`hfs-dev.toml` 是最小语义登记表，只记录 Space、车道、键名、下载面和例外。primary 与 candidate 都显式声明 `space_visibility = "protected"` 和 `bucket_visibility = "private"`；`SpaceInfo.private=true` 同时覆盖 Protected/Private，不能作为 Protected 证据。登记表不重复 Dify component pins、checksums 或运行时不变量；这些由 artifact 的 `runtime-lock.json`、slot manifest、bootstrap 和 producer release 共同证明。
 
 Preview 日常变更可以直接更新 canonical Space；candidate 只保留为高风险变更的可选隔离验证。
 Secret 仍必须以本地明文文件为先：canonical 使用 `.env`，candidate 使用
@@ -51,7 +51,20 @@ hfs-dist/dify-all-in-one/
 
 发布顺序严格为 artifact 与 `SHA256SUMS.txt` 上传并 readback，最后才覆盖 manifest 并 readback。`edge` 对应已验证 main commit；`release` 只由显式、owner 批准的 promote 选择 immutable Git tag。历史 artifact 和 manifest 由 `BlueSkyXN/dify` 的 GitHub Release 保存；slot 中旧对象的清理不属于发布动作。
 
-本仓的 `Publish Dify runtime artifact` workflow 只可 `workflow_dispatch`，并要求 `confirm_publish=PUBLISH` 与 environment approval。它从 fork 的指定 Release 下载精确 archive，发布时不使用 credential-bearing Git URL、不 force-push Space、不重启实例；完成后输出 archive/manifest readback 证据。回退是选择已验证 GitHub Release 的 exact archive 并再次走 artifact-first / manifest-last，不回滚 `/data`。
+本仓的 `Publish Dify runtime artifact` workflow 只可从 GitHub `main` 手工触发，要求 `confirm_publish=PUBLISH`，并由 `dify-runtime-artifact-publish` Environment 的 main-only deployment policy 在平台侧限制 ref。它从 fork 的指定 Release 下载精确 archive，在首次 Bucket 写入前和 manifest-last 写入后确认所有登记 Bucket 及 `HF_ARTIFACT_BUCKET_URI` 指向的 formal-use Bucket 都是 Private；发布时不使用 credential-bearing Git URL、不 force-push Space、不重启实例。完成后输出 archive/manifest readback 证据。回退是选择已验证 GitHub Release 的 exact archive 并再次走 artifact-first / manifest-last，不回滚 `/data`。
+
+`Deploy canonical HFS wrapper` 使用 Python 3.11、`huggingface_hub==1.25.1` 与
+`click==8.4.2`。它在首次 Space 写入前和 wrapper upload 后，通过
+`whoami` 解析 token owner：目标是 owner 本人时调用 `list_user_repos(token=...)`，仅跨
+namespace 时传 `namespace=...`，再用 exact repository ID、exact `space` repo type 与
+`visibility=protected` 做 settings readback；同时检查登记的 `hfs-dist` 和 Space 当前
+`DIFY_ARTIFACT_MANIFEST_HF_URI` 实际使用的 Bucket 都是 Private。该检查只读，不创建、
+修改或删除 Space/Bucket。
+
+formal upload 使用 preflight Space `main` SHA 作为 `parent_commit` 做单次 CAS commit，
+再按返回的 immutable revision 逐文件 readback。`PUBLISH_FORMAL` 只授权 repository
+write，`FACTORY_REBOOT` 单独授权 factory reboot；reboot 前必须再次确认 Space `main`
+仍等于已验证 revision。`hfs-production` Environment 只允许 `main` 进入 deployment job。
 
 ## 配置和状态边界
 
