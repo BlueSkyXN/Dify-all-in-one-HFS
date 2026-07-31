@@ -123,6 +123,24 @@ class ArtifactContractTest(unittest.TestCase):
             self.assertTrue(
                 (install_root / "usr/local/share/nltk_data/tokenizers/punkt_tab/fixture.txt").is_file()
             )
+            self.assertFalse(any(temporary_path.glob(".installed-legacy-*")))
+            first_release = install_root.resolve()
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "docker/dify_artifact_contract.py"),
+                    "--manifest", str(prepared),
+                    "--manifest-uri", "hf://buckets/example/hfs-dist/dify-all-in-one/edge/manifest.json",
+                    "--artifact", str(artifact),
+                    "--install-root", str(install_root),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertTrue(install_root.is_symlink())
+            self.assertNotEqual(install_root.resolve(), first_release)
+            self.assertFalse(first_release.exists())
             prepared_payload = json.loads(prepared.read_text(encoding="utf-8"))
             self.assertEqual(prepared_payload["artifact_ref"], SOURCE_REF)
 
