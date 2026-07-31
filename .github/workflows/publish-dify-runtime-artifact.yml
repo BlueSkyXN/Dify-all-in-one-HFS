@@ -57,7 +57,19 @@ jobs:
       - name: Checkout wrapper revision
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Authorize exact wrapper main
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]]
 
       - name: Install pinned HFS bucket client
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6

@@ -453,6 +453,18 @@ HFS v2.1 visibility 只读门禁。
 - 支持 Space wrapper workflow 的 Protected/Private 完整检查，以及 bucket publish token 使用的 `--buckets-only` 检查；不创建或修改任何远端资源。
 - `scripts/tests/test_hfs_visibility.py` 使用 fake API 覆盖 exact repo type、Private/Protected 区分、Bucket fail-closed 与 URI 解析。
 
+### `scripts/deploy_hfs_formal.py`
+
+formal HFS wrapper 的 CAS upload 与独立 factory reboot 门禁。
+
+职责：
+
+- 以 preflight Space `main` SHA 作为 `parent_commit`，用单次 structured commit 上传 formal exporter bundle。
+- 按提交返回的 immutable revision 校验完整路径集合、逐文件 SHA-256 与 `BUILD_SOURCE.json`。
+- 仅在收到独立 `FACTORY_REBOOT` 确认且 Space `main` 未漂移时执行 factory reboot，并等待 runtime SHA 收敛。
+- `scripts/tests/test_deploy_hfs_formal.py` 覆盖 CAS parent、未知路径、hash mismatch、独立确认和 reboot 前漂移。
+- `scripts/tests/test_hfs_workflow_safety.py` 固定 formal/artifact workflow 的双确认、CAS helper 和 exact-main 合同。
+
 ### `scripts/validate-hfs-contract.sh`
 
 HFS 范式结构契约检查脚本。

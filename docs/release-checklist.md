@@ -49,7 +49,10 @@ GitHub Release asset readback:
 
 ## 2. Slot publication
 
-只允许 manual `Publish Dify runtime artifact` workflow，且需 `confirm_publish=PUBLISH` 与 environment approval。workflow 不使用 whole-repo force-push 或 credential-bearing Git URL。
+只允许从 GitHub `main` 手工运行 `Publish Dify runtime artifact` workflow，且需
+`confirm_publish=PUBLISH`。`dify-runtime-artifact-publish` Environment 必须使用 main-only
+deployment branch policy；单人仓库未配置独立 reviewer 时，不得把该门禁描述成双人 approval。
+workflow 不使用 whole-repo force-push 或 credential-bearing Git URL。
 
 首次 Bucket 写入前必须通过 structured `bucket_info` 确认 `hfs-dev.toml` 登记的
 Bucket 与 `HF_ARTIFACT_BUCKET_URI` 选择的 formal-use Bucket 都是 Private；manifest-last
@@ -88,6 +91,12 @@ repository settings surface，按 exact repository ID 与 exact `repo_type=space
 `visibility=protected`。不要以 `SpaceInfo.private=true` 代替，因为它不能区分 Protected
 与 Private。同步确认登记 Bucket，以及 `DIFY_ARTIFACT_MANIFEST_HF_URI` 当前指向的
 formal-use Bucket，均为 Private。
+
+formal wrapper 写入必须使用 preflight Space `main` SHA 作为 `parent_commit`，以单次
+CAS commit 写入 exporter allowlist，并按返回的 immutable revision 完成完整路径与 hash
+readback。`confirm_upload=PUBLISH_FORMAL` 只授权 repository write；另需
+`confirm_factory_reboot=FACTORY_REBOOT` 才能重启。reboot 前再次读取 Space `main`，若已
+偏离刚验证的 revision，必须失败且不得重启。`hfs-production` Environment 只允许 `main`。
 
 本地 `.env` 是值账本；`.env.example` 只提供空值/无害默认值。Space 只登记键名：
 

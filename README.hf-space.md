@@ -23,6 +23,8 @@ Protected 是本仓 HFS v2.1 的明确 Space contract；不能用 `SpaceInfo.pri
 代替，因为这个布尔值无法区分 Protected 与 Private。formal workflow 会通过 exact
 repository ID 和 `repo_type=space` 的 settings surface 在首次写入前、写入后读回
 Protected，并同时确认登记 Bucket 与当前 artifact manifest 使用的 Bucket 都是 Private。
+formal wrapper 写入还必须以 preflight Space SHA 作为 `parent_commit`；upload 与
+`factory reboot` 使用两个独立确认词，并在 reboot 前再次确认 Space `main` 未漂移。
 
 Artifact Variables（必须按已批准 slot 填入）：
 

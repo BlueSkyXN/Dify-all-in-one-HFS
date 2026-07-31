@@ -8,7 +8,11 @@ on:
         required: true
         type: string
       confirm_upload:
-        description: Type PUBLISH_FORMAL to authorize the canonical Space write
+        description: Type PUBLISH_FORMAL to authorize the canonical Space repository write
+        required: true
+        type: string
+      confirm_factory_reboot:
+        description: Type FACTORY_REBOOT to separately authorize the canonical Space factory reboot
         required: true
         type: string
 
@@ -34,15 +38,18 @@ jobs:
         with:
           ref: ${{ inputs.source_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Authorize exact main
         env:
           SOURCE_REF: ${{ inputs.source_ref }}
           CONFIRM_UPLOAD: ${{ inputs.confirm_upload }}
+          CONFIRM_FACTORY_REBOOT: ${{ inputs.confirm_factory_reboot }}
         run: |
           set -euo pipefail
           [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CONFIRM_UPLOAD" == PUBLISH_FORMAL ]]
+          [[ "$CONFIRM_FACTORY_REBOOT" == FACTORY_REBOOT ]]
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" == "$SOURCE_REF" ]]
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
@@ -76,7 +83,6 @@ jobs:
             "click==${HF_CLI_CLICK_VERSION}"
           python3 -m huggingface_hub.cli.hf version
           python3 -m huggingface_hub.cli.hf --help >/dev/null
-          python3 -m huggingface_hub.cli.hf upload --help >/dev/null
           python3 -m huggingface_hub.cli.hf repos settings --help | grep -- --protected
 
       - name: Require existing Protected Space, Private Buckets, and a thin path set
@@ -89,19 +95,9 @@ jobs:
             --space "$FORMAL_SPACE" \
             --space-variable-uri DIFY_ARTIFACT_MANIFEST_HF_URI
           python3 scripts/export_hfs_space_bundle.py paths --profile formal > "$RUNNER_TEMP/hfs-formal-paths"
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          from huggingface_hub import HfApi
 
-          api = HfApi(token=os.environ["HF_TOKEN"])
-          expected = set(Path(os.environ["RUNNER_TEMP"], "hfs-formal-paths").read_text().splitlines())
-          actual = set(api.list_repo_files(os.environ["FORMAL_SPACE"], repo_type="space", token=os.environ["HF_TOKEN"]))
-          if actual - expected:
-              raise SystemExit("canonical Space contains a path outside the formal bundle allowlist")
-          PY
-
-      - name: Upload only the verified wrapper
+      - name: CAS-upload only the verified wrapper
+        id: upload
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SOURCE_REF: ${{ inputs.source_ref }}
@@ -110,10 +106,12 @@ jobs:
             --source-commit "$SOURCE_REF" \
             --profile formal \
             --bundle "$RUNNER_TEMP/hfs-formal-bundle"
-          python3 -m huggingface_hub.cli.hf upload \
-            "$FORMAL_SPACE" "$RUNNER_TEMP/hfs-formal-bundle" . \
-            --repo-type space --revision main \
-            --commit-message "Deploy verified formal wrapper ${SOURCE_REF}"
+          python3 scripts/deploy_hfs_formal.py upload \
+            --space "$FORMAL_SPACE" \
+            --bundle "$RUNNER_TEMP/hfs-formal-bundle" \
+            --paths-file "$RUNNER_TEMP/hfs-formal-paths" \
+            --source-ref "$SOURCE_REF" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Read back Protected Space and Private Buckets after upload
         env:
@@ -124,64 +122,13 @@ jobs:
             --space "$FORMAL_SPACE" \
             --space-variable-uri DIFY_ARTIFACT_MANIFEST_HF_URI
 
-      - name: Read back every file and factory restart
+      - name: Factory-reboot the unchanged verified revision
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SOURCE_REF: ${{ inputs.source_ref }}
+          DEPLOYED_REVISION: ${{ steps.upload.outputs.deployed_revision }}
+          CONFIRM_FACTORY_REBOOT: ${{ inputs.confirm_factory_reboot }}
         run: |
-          python3 scripts/export_hfs_space_bundle.py verify \
-            --source-commit "$SOURCE_REF" \
-            --profile formal \
-            --bundle "$RUNNER_TEMP/hfs-formal-bundle"
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          import re
-          import time
-          from pathlib import Path
-          from huggingface_hub import HfApi, hf_hub_download
-
-          token = os.environ["HF_TOKEN"]
-          space = os.environ["FORMAL_SPACE"]
-          bundle = Path(os.environ["RUNNER_TEMP"], "hfs-formal-bundle")
-          expected = set(Path(os.environ["RUNNER_TEMP"], "hfs-formal-paths").read_text().splitlines())
-          api = HfApi(token=token)
-          info = api.space_info(space, token=token)
-          deployed_revision = info.sha
-          if not isinstance(deployed_revision, str) or re.fullmatch(r"[0-9a-f]{40}", deployed_revision) is None:
-              raise SystemExit("canonical Space did not expose an immutable deployed revision")
-          actual = set(api.list_repo_files(space, revision=deployed_revision, repo_type="space", token=token))
-          if actual != expected:
-              raise SystemExit("canonical repository path readback does not match the formal allowlist")
-          for relative in sorted(expected):
-              downloaded = Path(
-                  hf_hub_download(
-                      space,
-                      filename=relative,
-                      revision=deployed_revision,
-                      repo_type="space",
-                      token=token,
-                  )
-              )
-              if hashlib.sha256(downloaded.read_bytes()).digest() != hashlib.sha256((bundle / relative).read_bytes()).digest():
-                  raise SystemExit(f"canonical readback mismatch: {relative}")
-          provenance = json.loads((bundle / "BUILD_SOURCE.json").read_text(encoding="utf-8"))
-          if provenance.get("wrapper_source_commit") != os.environ["SOURCE_REF"]:
-              raise SystemExit("formal wrapper provenance does not match exact GitHub main input")
-          api.restart_space(space, factory_reboot=True)
-          deadline = time.monotonic() + 1800
-          while True:
-              runtime = api.get_space_runtime(space, token=token)
-              if runtime.stage == "RUNNING" and runtime.raw.get("sha") == deployed_revision:
-                  print(f"canonical runtime readback passed: repo_sha={deployed_revision}")
-                  break
-              if runtime.stage in {"BUILD_ERROR", "RUNTIME_ERROR"}:
-                  raise SystemExit(f"canonical Space failed after deploy: {runtime.stage}")
-              if time.monotonic() >= deadline:
-                  raise SystemExit(
-                      f"canonical runtime did not converge to deployed revision {deployed_revision}: "
-                      f"stage={runtime.stage} runtime_sha={runtime.raw.get('sha')}"
-                  )
-              time.sleep(15)
-          PY
+          python3 scripts/deploy_hfs_formal.py reboot \
+            --space "$FORMAL_SPACE" \
+            --deployed-revision "$DEPLOYED_REVISION" \
+            --confirm-factory-reboot "$CONFIRM_FACTORY_REBOOT"

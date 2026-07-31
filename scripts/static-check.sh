@@ -82,6 +82,7 @@ bash -n \
 require_executable scripts/admin-smoke.sh
 require_executable scripts/build.sh
 require_executable scripts/check-self-release-pins.py
+require_executable scripts/deploy_hfs_formal.py
 require_executable scripts/package-dify-runtime-artifact.py
 require_executable scripts/prepare-dify-artifact-manifest.py
 require_executable scripts/hf-space-smoke.sh
@@ -101,11 +102,14 @@ check_python_syntax \
   docker/dify_artifact_contract.py \
   docker/sandbox-selfcheck \
   scripts/check-self-release-pins.py \
+  scripts/deploy_hfs_formal.py \
   scripts/check_hfs_visibility.py \
   scripts/package-dify-runtime-artifact.py \
   scripts/prepare-dify-artifact-manifest.py \
   scripts/export_hfs_space_bundle.py \
+  scripts/tests/test_deploy_hfs_formal.py \
   scripts/tests/test_hfs_visibility.py \
+  scripts/tests/test_hfs_workflow_safety.py \
   docker/plugin_runtime_patches/sitecustomize.py
 python3 -B -m unittest discover -s docker/tests -p 'test_*.py'
 git diff --check
