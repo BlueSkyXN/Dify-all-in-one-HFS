@@ -7,12 +7,20 @@ on:
         description: Exact 40-character GitHub main commit to deploy
         required: true
         type: string
+      artifact_ref:
+        description: Exact 40-character Dify fork commit selected by the release manifest
+        required: true
+        type: string
       confirm_upload:
         description: Type PUBLISH_FORMAL to authorize the canonical Space repository write
         required: true
         type: string
       confirm_factory_reboot:
         description: Type FACTORY_REBOOT to separately authorize the canonical Space factory reboot
+        required: true
+        type: string
+      confirm_artifact_binding:
+        description: Type BIND_ARTIFACT to authorize the exact Space Variable update
         required: true
         type: string
 
@@ -43,12 +51,16 @@ jobs:
       - name: Authorize exact main
         env:
           SOURCE_REF: ${{ inputs.source_ref }}
+          ARTIFACT_REF: ${{ inputs.artifact_ref }}
           CONFIRM_UPLOAD: ${{ inputs.confirm_upload }}
+          CONFIRM_ARTIFACT_BINDING: ${{ inputs.confirm_artifact_binding }}
           CONFIRM_FACTORY_REBOOT: ${{ inputs.confirm_factory_reboot }}
         run: |
           set -euo pipefail
           [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ARTIFACT_REF" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CONFIRM_UPLOAD" == PUBLISH_FORMAL ]]
+          [[ "$CONFIRM_ARTIFACT_BINDING" == BIND_ARTIFACT ]]
           [[ "$CONFIRM_FACTORY_REBOOT" == FACTORY_REBOOT ]]
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" == "$SOURCE_REF" ]]
@@ -122,13 +134,28 @@ jobs:
             --space "$FORMAL_SPACE" \
             --space-variable-uri DIFY_ARTIFACT_MANIFEST_HF_URI
 
+      - name: Bind the exact verified release artifact before reboot
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DEPLOYED_REVISION: ${{ steps.upload.outputs.deployed_revision }}
+          ARTIFACT_REF: ${{ inputs.artifact_ref }}
+          CONFIRM_ARTIFACT_BINDING: ${{ inputs.confirm_artifact_binding }}
+        run: |
+          python3 scripts/deploy_hfs_formal.py bind-artifact \
+            --space "$FORMAL_SPACE" \
+            --deployed-revision "$DEPLOYED_REVISION" \
+            --artifact-ref "$ARTIFACT_REF" \
+            --confirm-artifact-binding "$CONFIRM_ARTIFACT_BINDING"
+
       - name: Factory-reboot the unchanged verified revision
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           DEPLOYED_REVISION: ${{ steps.upload.outputs.deployed_revision }}
+          ARTIFACT_REF: ${{ inputs.artifact_ref }}
           CONFIRM_FACTORY_REBOOT: ${{ inputs.confirm_factory_reboot }}
         run: |
           python3 scripts/deploy_hfs_formal.py reboot \
             --space "$FORMAL_SPACE" \
             --deployed-revision "$DEPLOYED_REVISION" \
+            --artifact-ref "$ARTIFACT_REF" \
             --confirm-factory-reboot "$CONFIRM_FACTORY_REBOOT"

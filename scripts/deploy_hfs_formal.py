@@ -12,12 +12,22 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
+MANIFEST_URI_RE = re.compile(
+    r"^hf://buckets/([A-Za-z0-9][A-Za-z0-9._-]*)/hfs-dist/"
+    r"dify-all-in-one/release/manifest\.json$"
+)
+EXPECTED_ARTIFACT_VARIABLE = "DIFY_ARTIFACT_EXPECTED_SOURCE_REF"
+MANIFEST_URI_VARIABLE = "DIFY_ARTIFACT_MANIFEST_HF_URI"
+MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 
 
 class FormalDeploymentError(RuntimeError):
@@ -86,6 +96,182 @@ def _verify_provenance(bundle: Path, source_ref: str) -> None:
 def _sha256(path: Path) -> bytes:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").digest()
+
+
+def _space_variable_value(variables: object, name: str) -> str:
+    if not isinstance(variables, dict):
+        raise FormalDeploymentError("Space Variable readback returned an invalid shape")
+    variable = variables.get(name)
+    value = getattr(variable, "value", None)
+    if not isinstance(value, str) or not value:
+        raise FormalDeploymentError(f"required Space Variable is missing: {name}")
+    return value
+
+
+def _current_space_sha(api: Any, *, token: str, space: str, label: str) -> str:
+    try:
+        return _require_git_sha(
+            getattr(api.space_info(space, token=token), "sha", None),
+            label,
+        )
+    except FormalDeploymentError:
+        raise
+    except Exception as exc:
+        raise FormalDeploymentError(
+            f"Space revision readback failed without response details: {type(exc).__name__}"
+        ) from None
+
+
+def _artifact_manifest(
+    api: Any, *, token: str, space: str, artifact_ref: str
+) -> dict[str, Any]:
+    try:
+        variables = api.get_space_variables(space, token=token)
+        manifest_uri = _space_variable_value(variables, MANIFEST_URI_VARIABLE)
+        match = MANIFEST_URI_RE.fullmatch(manifest_uri)
+        if match is None:
+            raise FormalDeploymentError(
+                "formal artifact manifest Variable must select the exact Private release lane"
+            )
+        bucket_id = f"{match.group(1)}/hfs-dist"
+        remote_path = "dify-all-in-one/release/manifest.json"
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest_path = Path(temporary) / "manifest.json"
+            api.download_bucket_files(
+                bucket_id,
+                [(remote_path, manifest_path)],
+                raise_on_missing_files=True,
+                token=token,
+            )
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except FormalDeploymentError:
+        raise
+    except Exception as exc:
+        raise FormalDeploymentError(
+            f"formal artifact manifest readback failed without response details: {type(exc).__name__}"
+        ) from None
+
+    artifact = f"dify-runtime-{artifact_ref}.tar.gz"
+    source_ref = payload.get("source_ref") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema_version") != 2
+        or payload.get("project") != "dify-all-in-one"
+        or payload.get("slot") != "release"
+        or payload.get("source_kind") != "tag"
+        or not isinstance(source_ref, str)
+        or source_ref in {"", "latest", "main", "edge", "release"}
+        or TAG_RE.fullmatch(source_ref) is None
+        or ".." in source_ref
+        or payload.get("artifact_ref") != artifact_ref
+        or payload.get("artifact") != artifact
+        or payload.get("artifact_key") != f"dify-all-in-one/release/{artifact}"
+        or payload.get("manifest_key") != "dify-all-in-one/release/manifest.json"
+        or not isinstance(payload.get("sha256"), str)
+        or SHA256_RE.fullmatch(payload["sha256"]) is None
+        or not isinstance(payload.get("runtime_lock_sha256"), str)
+        or SHA256_RE.fullmatch(payload["runtime_lock_sha256"]) is None
+        or type(payload.get("size_bytes")) is not int
+        or not 0 < payload["size_bytes"] <= MAX_ARCHIVE_BYTES
+        or type(payload.get("unpacked_size_bytes")) is not int
+        or payload["unpacked_size_bytes"] <= 0
+    ):
+        raise FormalDeploymentError(
+            "formal release manifest does not select the exact authorized artifact"
+        )
+    return payload
+
+
+def verify_formal_artifact_binding(
+    api: Any,
+    *,
+    token: str,
+    space: str,
+    deployed_revision: str,
+    artifact_ref: str,
+) -> None:
+    deployed_revision = _require_git_sha(deployed_revision, "deployed_revision")
+    artifact_ref = _require_git_sha(artifact_ref, "artifact_ref")
+    if (
+        _current_space_sha(
+            api,
+            token=token,
+            space=space,
+            label="current Space revision",
+        )
+        != deployed_revision
+    ):
+        raise FormalDeploymentError(
+            "Space main changed after verified upload; refusing artifact binding or reboot"
+        )
+    _artifact_manifest(api, token=token, space=space, artifact_ref=artifact_ref)
+    try:
+        variables = api.get_space_variables(space, token=token)
+        expected_ref = _space_variable_value(variables, EXPECTED_ARTIFACT_VARIABLE)
+    except FormalDeploymentError:
+        raise
+    except Exception as exc:
+        raise FormalDeploymentError(
+            f"artifact binding readback failed without response details: {type(exc).__name__}"
+        ) from None
+    if expected_ref != artifact_ref:
+        raise FormalDeploymentError(
+            "Space expected artifact Variable does not match the verified release manifest"
+        )
+
+
+def bind_formal_artifact(
+    api: Any,
+    *,
+    token: str,
+    space: str,
+    deployed_revision: str,
+    artifact_ref: str,
+    confirmation: str,
+) -> None:
+    deployed_revision = _require_git_sha(deployed_revision, "deployed_revision")
+    artifact_ref = _require_git_sha(artifact_ref, "artifact_ref")
+    if confirmation != "BIND_ARTIFACT":
+        raise FormalDeploymentError(
+            "artifact Variable update requires the exact BIND_ARTIFACT confirmation"
+        )
+    if (
+        _current_space_sha(
+            api,
+            token=token,
+            space=space,
+            label="current Space revision",
+        )
+        != deployed_revision
+    ):
+        raise FormalDeploymentError(
+            "Space main changed after verified upload; refusing artifact binding"
+        )
+    _artifact_manifest(api, token=token, space=space, artifact_ref=artifact_ref)
+    try:
+        variables = api.get_space_variables(space, token=token)
+        current_ref = _space_variable_value(variables, EXPECTED_ARTIFACT_VARIABLE)
+        if current_ref != artifact_ref:
+            api.add_space_variable(
+                space,
+                EXPECTED_ARTIFACT_VARIABLE,
+                artifact_ref,
+                description="Exact Dify runtime artifact commit selected by the formal release manifest.",
+                token=token,
+            )
+    except FormalDeploymentError:
+        raise
+    except Exception as exc:
+        raise FormalDeploymentError(
+            f"artifact binding update failed without response details: {type(exc).__name__}"
+        ) from None
+    verify_formal_artifact_binding(
+        api,
+        token=token,
+        space=space,
+        deployed_revision=deployed_revision,
+        artifact_ref=artifact_ref,
+    )
 
 
 def upload_formal_bundle(
@@ -196,6 +382,7 @@ def reboot_formal_space(
     token: str,
     space: str,
     deployed_revision: str,
+    artifact_ref: str,
     confirmation: str,
     timeout_seconds: float = 1800,
     poll_seconds: float = 15,
@@ -203,26 +390,19 @@ def reboot_formal_space(
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
     deployed_revision = _require_git_sha(deployed_revision, "deployed_revision")
+    artifact_ref = _require_git_sha(artifact_ref, "artifact_ref")
     if confirmation != "FACTORY_REBOOT":
         raise FormalDeploymentError(
             "factory reboot requires the exact FACTORY_REBOOT confirmation"
         )
 
-    try:
-        current_sha = _require_git_sha(
-            getattr(api.space_info(space, token=token), "sha", None),
-            "current Space revision",
-        )
-    except FormalDeploymentError:
-        raise
-    except Exception as exc:
-        raise FormalDeploymentError(
-            f"pre-reboot Space readback failed without response details: {type(exc).__name__}"
-        ) from None
-    if current_sha != deployed_revision:
-        raise FormalDeploymentError(
-            "Space main changed after verified upload; refusing factory reboot"
-        )
+    verify_formal_artifact_binding(
+        api,
+        token=token,
+        space=space,
+        deployed_revision=deployed_revision,
+        artifact_ref=artifact_ref,
+    )
 
     try:
         api.restart_space(space, token=token, factory_reboot=True)
@@ -279,9 +459,19 @@ def parse_args() -> argparse.Namespace:
     )
     reboot.add_argument("--space", required=True)
     reboot.add_argument("--deployed-revision", required=True)
+    reboot.add_argument("--artifact-ref", required=True)
     reboot.add_argument("--confirm-factory-reboot", required=True)
     reboot.add_argument("--timeout-seconds", type=float, default=1800)
     reboot.add_argument("--poll-seconds", type=float, default=15)
+
+    bind = subparsers.add_parser(
+        "bind-artifact",
+        help="Verify the release manifest and bind its exact artifact before reboot",
+    )
+    bind.add_argument("--space", required=True)
+    bind.add_argument("--deployed-revision", required=True)
+    bind.add_argument("--artifact-ref", required=True)
+    bind.add_argument("--confirm-artifact-binding", required=True)
     return parser.parse_args()
 
 
@@ -312,11 +502,24 @@ def main() -> int:
         print(f"PASS formal upload: deployed_revision={deployed_revision}")
         return 0
 
+    if args.command == "bind-artifact":
+        bind_formal_artifact(
+            api,
+            token=token,
+            space=args.space,
+            deployed_revision=args.deployed_revision,
+            artifact_ref=args.artifact_ref,
+            confirmation=args.confirm_artifact_binding,
+        )
+        print(f"PASS formal artifact binding: artifact_ref={args.artifact_ref}")
+        return 0
+
     reboot_formal_space(
         api,
         token=token,
         space=args.space,
         deployed_revision=args.deployed_revision,
+        artifact_ref=args.artifact_ref,
         confirmation=args.confirm_factory_reboot,
         timeout_seconds=args.timeout_seconds,
         poll_seconds=args.poll_seconds,

@@ -20,6 +20,9 @@ SPEC.loader.exec_module(formal)
 PREFLIGHT_SHA = "1" * 40
 DEPLOYED_SHA = "2" * 40
 SOURCE_REF = "3" * 40
+ARTIFACT_REF = "4" * 40
+OLD_ARTIFACT_REF = "5" * 40
+RELEASE_TAG = "hfs-artifact-9885d17ba8f4"
 
 
 class FakeApi:
@@ -29,6 +32,28 @@ class FakeApi:
         self.create_calls: list[dict[str, object]] = []
         self.restart_calls: list[tuple[str, str, bool]] = []
         self.runtime = SimpleNamespace(stage="RUNNING", raw={"sha": DEPLOYED_SHA})
+        self.variables = {
+            formal.MANIFEST_URI_VARIABLE: SimpleNamespace(
+                value="hf://buckets/BlueSkyXN/hfs-dist/dify-all-in-one/release/manifest.json"
+            ),
+            formal.EXPECTED_ARTIFACT_VARIABLE: SimpleNamespace(value=ARTIFACT_REF),
+        }
+        self.variable_updates: list[tuple[str, str, str]] = []
+        self.manifest = {
+            "schema_version": 2,
+            "project": "dify-all-in-one",
+            "slot": "release",
+            "source_kind": "tag",
+            "source_ref": RELEASE_TAG,
+            "artifact_ref": ARTIFACT_REF,
+            "artifact": f"dify-runtime-{ARTIFACT_REF}.tar.gz",
+            "sha256": "6" * 64,
+            "size_bytes": 1024,
+            "unpacked_size_bytes": 2048,
+            "runtime_lock_sha256": "7" * 64,
+            "artifact_key": f"dify-all-in-one/release/dify-runtime-{ARTIFACT_REF}.tar.gz",
+            "manifest_key": "dify-all-in-one/release/manifest.json",
+        }
 
     def space_info(self, _space: str, *, token: str):
         del token
@@ -57,6 +82,40 @@ class FakeApi:
     def get_space_runtime(self, _space: str, *, token: str):
         del token
         return self.runtime
+
+    def get_space_variables(self, _space: str, *, token: str):
+        del token
+        return dict(self.variables)
+
+    def add_space_variable(
+        self,
+        space: str,
+        key: str,
+        value: str,
+        *,
+        description: str,
+        token: str,
+    ):
+        del description, token
+        self.variable_updates.append((space, key, value))
+        self.variables[key] = SimpleNamespace(value=value)
+        return dict(self.variables)
+
+    def download_bucket_files(
+        self,
+        bucket_id: str,
+        files: list[tuple[str, Path]],
+        *,
+        raise_on_missing_files: bool,
+        token: str,
+    ) -> None:
+        del token
+        if bucket_id != "BlueSkyXN/hfs-dist" or not raise_on_missing_files:
+            raise AssertionError("unexpected formal Bucket download")
+        for remote, local in files:
+            if remote != "dify-all-in-one/release/manifest.json":
+                raise AssertionError("unexpected formal manifest path")
+            Path(local).write_text(json.dumps(self.manifest), encoding="utf-8")
 
 
 class FormalDeploymentTests(unittest.TestCase):
@@ -149,6 +208,7 @@ class FormalDeploymentTests(unittest.TestCase):
                 token="token",
                 space="BlueSkyXN/dify-all-in-one",
                 deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
                 confirmation="PUBLISH_FORMAL",
             )
         self.assertFalse(api.restart_calls)
@@ -163,6 +223,7 @@ class FormalDeploymentTests(unittest.TestCase):
                 token="token",
                 space="BlueSkyXN/dify-all-in-one",
                 deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
                 confirmation="FACTORY_REBOOT",
             )
         self.assertFalse(api.restart_calls)
@@ -175,6 +236,7 @@ class FormalDeploymentTests(unittest.TestCase):
             token="token",
             space="BlueSkyXN/dify-all-in-one",
             deployed_revision=DEPLOYED_SHA,
+            artifact_ref=ARTIFACT_REF,
             confirmation="FACTORY_REBOOT",
             monotonic=lambda: 0,
             sleep=lambda _seconds: None,
@@ -183,6 +245,85 @@ class FormalDeploymentTests(unittest.TestCase):
             api.restart_calls,
             [("BlueSkyXN/dify-all-in-one", "token", True)],
         )
+
+    def test_binding_requires_independent_confirmation_before_variable_write(
+        self,
+    ) -> None:
+        api = FakeApi()
+        api.current_sha = DEPLOYED_SHA
+        with self.assertRaisesRegex(formal.FormalDeploymentError, "BIND_ARTIFACT"):
+            formal.bind_formal_artifact(
+                api,
+                token="token",
+                space="BlueSkyXN/dify-all-in-one",
+                deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
+                confirmation="PUBLISH_FORMAL",
+            )
+        self.assertFalse(api.variable_updates)
+
+    def test_binding_verifies_release_manifest_then_updates_and_reads_back(
+        self,
+    ) -> None:
+        api = FakeApi()
+        api.current_sha = DEPLOYED_SHA
+        api.variables[formal.EXPECTED_ARTIFACT_VARIABLE] = SimpleNamespace(
+            value=OLD_ARTIFACT_REF
+        )
+        formal.bind_formal_artifact(
+            api,
+            token="token",
+            space="BlueSkyXN/dify-all-in-one",
+            deployed_revision=DEPLOYED_SHA,
+            artifact_ref=ARTIFACT_REF,
+            confirmation="BIND_ARTIFACT",
+        )
+        self.assertEqual(
+            api.variable_updates,
+            [
+                (
+                    "BlueSkyXN/dify-all-in-one",
+                    formal.EXPECTED_ARTIFACT_VARIABLE,
+                    ARTIFACT_REF,
+                )
+            ],
+        )
+
+    def test_binding_rejects_manifest_mismatch_before_variable_write(self) -> None:
+        api = FakeApi()
+        api.current_sha = DEPLOYED_SHA
+        api.manifest["artifact_ref"] = OLD_ARTIFACT_REF
+        with self.assertRaisesRegex(
+            formal.FormalDeploymentError, "exact authorized artifact"
+        ):
+            formal.bind_formal_artifact(
+                api,
+                token="token",
+                space="BlueSkyXN/dify-all-in-one",
+                deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
+                confirmation="BIND_ARTIFACT",
+            )
+        self.assertFalse(api.variable_updates)
+
+    def test_reboot_rejects_artifact_variable_drift(self) -> None:
+        api = FakeApi()
+        api.current_sha = DEPLOYED_SHA
+        api.variables[formal.EXPECTED_ARTIFACT_VARIABLE] = SimpleNamespace(
+            value=OLD_ARTIFACT_REF
+        )
+        with self.assertRaisesRegex(
+            formal.FormalDeploymentError, "expected artifact Variable"
+        ):
+            formal.reboot_formal_space(
+                api,
+                token="token",
+                space="BlueSkyXN/dify-all-in-one",
+                deployed_revision=DEPLOYED_SHA,
+                artifact_ref=ARTIFACT_REF,
+                confirmation="FACTORY_REBOOT",
+            )
+        self.assertFalse(api.restart_calls)
 
 
 if __name__ == "__main__":
