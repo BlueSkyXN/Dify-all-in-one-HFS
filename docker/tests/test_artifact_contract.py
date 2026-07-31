@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -9,11 +10,18 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_REF = "a" * 40
 IMAGE_REF = "example.invalid/component@sha256:" + "b" * 64
+CONTRACT_PATH = REPO_ROOT / "docker/dify_artifact_contract.py"
+CONTRACT_SPEC = importlib.util.spec_from_file_location("dify_artifact_contract_under_test", CONTRACT_PATH)
+if CONTRACT_SPEC is None or CONTRACT_SPEC.loader is None:
+    raise RuntimeError("cannot load artifact contract for tests")
+CONTRACT = importlib.util.module_from_spec(CONTRACT_SPEC)
+CONTRACT_SPEC.loader.exec_module(CONTRACT)
 
 
 class ArtifactContractTest(unittest.TestCase):
@@ -123,6 +131,24 @@ class ArtifactContractTest(unittest.TestCase):
             self.assertTrue(
                 (install_root / "usr/local/share/nltk_data/tokenizers/punkt_tab/fixture.txt").is_file()
             )
+            self.assertFalse(any(temporary_path.glob(".installed-legacy-*")))
+            first_release = install_root.resolve()
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "docker/dify_artifact_contract.py"),
+                    "--manifest", str(prepared),
+                    "--manifest-uri", "hf://buckets/example/hfs-dist/dify-all-in-one/edge/manifest.json",
+                    "--artifact", str(artifact),
+                    "--install-root", str(install_root),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertTrue(install_root.is_symlink())
+            self.assertNotEqual(install_root.resolve(), first_release)
+            self.assertFalse(first_release.exists())
             prepared_payload = json.loads(prepared.read_text(encoding="utf-8"))
             self.assertEqual(prepared_payload["artifact_ref"], SOURCE_REF)
 
@@ -261,6 +287,56 @@ class ArtifactContractTest(unittest.TestCase):
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
+    def test_activation_preserves_owned_looking_symlink_to_external_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            external = parent / "external-runtime"
+            external.mkdir()
+            marker = external / "keep"
+            marker.write_text("external", encoding="utf-8")
+            candidate = parent / f".installed-release-{SOURCE_REF}-{'b' * 32}"
+            candidate.symlink_to(external, target_is_directory=True)
+            install_root = parent / "installed"
+            install_root.symlink_to(candidate.name, target_is_directory=True)
+            extracted = parent / "extracted"
+            extracted.mkdir()
+
+            CONTRACT._atomically_activate_runtime(extracted, install_root, {"artifact_ref": SOURCE_REF})
+
+            self.assertTrue(install_root.is_symlink())
+            self.assertNotEqual(install_root.resolve(), external)
+            self.assertTrue(candidate.is_symlink())
+            self.assertEqual(marker.read_text(encoding="utf-8"), "external")
+
+    def test_activation_failure_restores_legacy_and_removes_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            install_root = parent / "installed"
+            install_root.mkdir()
+            marker = install_root / "keep"
+            marker.write_text("legacy", encoding="utf-8")
+            extracted = parent / "extracted"
+            extracted.mkdir()
+            real_replace = os.replace
+
+            def fail_final_swap(source: str | os.PathLike[str], destination: str | os.PathLike[str]) -> None:
+                source_path = Path(source)
+                destination_path = Path(destination)
+                if source_path.name.startswith(".installed-next-") and destination_path == install_root:
+                    raise OSError("injected final swap failure")
+                real_replace(source, destination)
+
+            with mock.patch.object(CONTRACT.os, "replace", side_effect=fail_final_swap):
+                with self.assertRaises(CONTRACT.ContractError):
+                    CONTRACT._atomically_activate_runtime(extracted, install_root, {"artifact_ref": SOURCE_REF})
+
+            self.assertTrue(install_root.is_dir())
+            self.assertFalse(install_root.is_symlink())
+            self.assertEqual(marker.read_text(encoding="utf-8"), "legacy")
+            self.assertFalse(any(parent.glob(".installed-release-*")))
+            self.assertFalse(any(parent.glob(".installed-legacy-*")))
+            self.assertFalse(any(parent.glob(".installed-next-*")))
 
 
 if __name__ == "__main__":

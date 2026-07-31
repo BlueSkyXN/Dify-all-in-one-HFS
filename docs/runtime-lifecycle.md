@@ -31,7 +31,7 @@ hf://buckets/<namespace>/hfs-dist/dify-all-in-one/<edge|release>/manifest.json
 
 它先验证 URI，再下载一次 schema v2 manifest；随后只下载 manifest 选择的 `dify-runtime-<40-char-commit>.tar.gz`。archive 必须匹配压缩与解包大小、SHA-256，并包含与 manifest hash 一致的 `runtime-lock.json`、API、Web、Agent、Plugin Daemon、Sandbox、`/conf` 和 `/dependencies` 所需路径。unsafe path、link escape、重复 member、缺组件、错误 source ref 或 component pin、错误 lock、解包失败、下载失败或缺凭据均非零退出；不会扫描 slot、读取 direct URL/PATH/S3、使用旧 OCI image 或继续启动旧的 `/app`。
 
-验证成功后 payload 原子安装到 `/opt/dify/runtime`，并恢复上游期望的路径：
+验证成功后 payload 通过同目录 release target 和 symlink swap 原子安装到固定的 `/opt/dify/runtime`。切换成功后会回收该 symlink 能证明由本合同创建的上一版 release target；首次从 image-owned runtime directory迁移时，原 directory只在新 symlink成功接管后作为 legacy runtime回收。该过程不会跟随或删除任意外部 symlink，也不会触碰 `/data` 或 `/persist`。随后恢复上游期望的路径：
 
 ```text
 /app                         -> /opt/dify/runtime/app

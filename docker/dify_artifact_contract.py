@@ -342,6 +342,23 @@ def _atomically_activate_runtime(extracted: Path, install_root: Path, provenance
     release_root = parent / f".{install_root.name}-release-{provenance['artifact_ref']}-{uuid.uuid4().hex}"
     link_path = parent / f".{install_root.name}-next-{uuid.uuid4().hex}"
     legacy_path: Path | None = None
+    previous_release: Path | None = None
+    activated = False
+    if install_root.is_symlink():
+        target = Path(os.readlink(install_root))
+        prefix = f".{install_root.name}-release-"
+        if not target.is_absolute() and len(target.parts) == 1 and target.name.startswith(prefix):
+            identity = target.name.removeprefix(prefix)
+            artifact_ref, separator, nonce = identity.partition("-")
+            candidate = parent / target
+            if (
+                separator
+                and GIT_SHA_RE.fullmatch(artifact_ref)
+                and re.fullmatch(r"[0-9a-f]{32}", nonce)
+                and candidate.is_dir()
+                and not candidate.is_symlink()
+            ):
+                previous_release = candidate
     try:
         os.replace(extracted, release_root)
         os.symlink(release_root.name, link_path)
@@ -355,6 +372,7 @@ def _atomically_activate_runtime(extracted: Path, install_root: Path, provenance
                 raise ContractError("artifact install root is not a directory or symlink")
         try:
             os.replace(link_path, install_root)
+            activated = True
         except OSError:
             if legacy_path is not None and legacy_path.exists() and not install_root.exists():
                 os.replace(legacy_path, install_root)
@@ -364,6 +382,13 @@ def _atomically_activate_runtime(extracted: Path, install_root: Path, provenance
     finally:
         if link_path.exists() or link_path.is_symlink():
             link_path.unlink(missing_ok=True)
+        if activated:
+            if legacy_path is not None:
+                shutil.rmtree(legacy_path, ignore_errors=True)
+            if previous_release is not None and previous_release != release_root:
+                shutil.rmtree(previous_release, ignore_errors=True)
+        else:
+            shutil.rmtree(release_root, ignore_errors=True)
 
 
 def validate_and_extract(
