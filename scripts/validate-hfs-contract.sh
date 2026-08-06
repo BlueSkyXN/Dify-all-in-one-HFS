@@ -222,6 +222,8 @@ require_grep 'punkt_tab' scripts/package-dify-runtime-artifact.py "runtime packa
 require_grep 'averaged_perceptron_tagger_eng' docker/dify_artifact_contract.py "artifact contract must validate NLTK 3.10 tagger data"
 require_grep '^export DISABLE_TELEMETRY=\$\{DISABLE_TELEMETRY:-true\}$' docker/dify.env.runtime "runtime defaults must keep Community Telemetry disabled"
 require_grep '^export DIFY_AGENT_RUNTIME_BACKEND=\$\{DIFY_AGENT_RUNTIME_BACKEND:-local\}$' docker/dify.env.runtime "runtime defaults must use the canonical local Agent backend"
+require_grep '^export DIFY_AGENT_SANDBOX_FILES_BASE_URL=\$\{DIFY_AGENT_SANDBOX_FILES_BASE_URL:-http://127\.0\.0\.1:5001\}$' docker/dify.env.runtime "runtime defaults must bind Agent Sandbox file URLs to the same-container API"
+require_grep '^  export DIFY_AGENT_SANDBOX_FILES_BASE_URL=\$\{DIFY_AGENT_SANDBOX_FILES_BASE_URL:-http://127\.0\.0\.1:5001\}$' docker/with-dify-env "Agent startup must preserve the Sandbox-reachable file API base"
 require_grep 'export AGENT_BACKEND_API_TOKEN=\$\{AGENT_BACKEND_API_TOKEN:-\$\{DIFY_AGENT_API_TOKEN:-\}\}' docker/with-dify-env "API and Agent backend must share the derived loopback bearer token"
 require_grep 'DIFY_ARTIFACT_MANIFEST_HF_URI' docs/configuration.md "configuration docs must list the manifest variable"
 require_grep 'manifest-last' docs/release-checklist.md "release checklist must require manifest-last evidence"
