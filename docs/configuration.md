@@ -101,10 +101,11 @@ AGENT_BACKEND_BASE_URL
 DIFY_AGENT_REDIS_URL
 DIFY_AGENT_PLUGIN_DAEMON_API_KEY
 DIFY_AGENT_INNER_API_KEY
+DIFY_AGENT_SANDBOX_FILES_BASE_URL
 DIFY_AGENT_STUB_API_BASE_URL
 ```
 
-其中 `SERVER_CONSOLE_API_URL` 在 all-in-one 容器内固定默认到 `http://127.0.0.1:5001`，供 Dify Web 的 server-side rendering 直接访问同容器 API；不要把它覆盖为 Hugging Face 公网域名。`CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生。`DIFY_AGENT_ENABLED=true` 时，`with-dify-env` 会派生 Agent backend base URL、Redis URL、Plugin Daemon key、Dify inner API key 和同容器 Agent Stub URL。formal clean profile 会显式设置 `SANDBOX_API_KEY`、`DIFY_AGENT_SERVER_SECRET_KEY` 和 `DIFY_AGENT_SHELLCTL_AUTH_TOKEN`；其他本地/demo profile 仍可沿用 generated fallback。
+其中 `SERVER_CONSOLE_API_URL` 在 all-in-one 容器内固定默认到 `http://127.0.0.1:5001`，供 Dify Web 的 server-side rendering 直接访问同容器 API；不要把它覆盖为 Hugging Face 公网域名。`CELERY_BROKER_URL` 会从 `REDIS_PASSWORD` 派生，`PGVECTOR_PASSWORD` 会从 `DB_PASSWORD` 派生，`INNER_API_KEY_FOR_PLUGIN` 会从 `PLUGIN_DIFY_INNER_API_KEY` 派生。`DIFY_AGENT_ENABLED=true` 时，`with-dify-env` 会派生 Agent backend base URL、Redis URL、Plugin Daemon key、Dify inner API key、Sandbox 文件传输 API base 和同容器 Agent Stub URL。formal clean profile 会显式设置 `SANDBOX_API_KEY`、`DIFY_AGENT_SERVER_SECRET_KEY` 和 `DIFY_AGENT_SHELLCTL_AUTH_TOKEN`；其他本地/demo profile 仍可沿用 generated fallback。
 
 ## Artifact Delivery
 
@@ -185,6 +186,7 @@ DIFY_AGENT_PLUGIN_DAEMON_URL=http://127.0.0.1:5002
 DIFY_AGENT_PLUGIN_DAEMON_API_KEY=${PLUGIN_DAEMON_KEY}
 DIFY_AGENT_INNER_API_URL=http://127.0.0.1:5001
 DIFY_AGENT_INNER_API_KEY=${INNER_API_KEY_FOR_PLUGIN}
+DIFY_AGENT_SANDBOX_FILES_BASE_URL=http://127.0.0.1:5001
 DIFY_AGENT_STUB_API_BASE_URL=http://127.0.0.1:5005/agent-stub
 DIFY_AGENT_SERVER_SECRET_KEY=<generated-in-/data/config/generated.env>
 DIFY_AGENT_API_TOKEN=<derived-from-DIFY_AGENT_SERVER_SECRET_KEY>
@@ -212,6 +214,7 @@ AGENT_BACKEND_API_TOKEN=${DIFY_AGENT_API_TOKEN}
 | `SHELLCTL_BINARY` | `/usr/local/bin/shellctl` | 从 self Agent runtime image 复制的 Go shellctl server；不从 Python virtualenv 启动 |
 | `AGENT_DRIVE_MANIFEST_ENABLED` | `true` | drive manifest 开关；让 Agent runtime 接收 Skills & Files drive manifest 声明 |
 | `DIFY_AGENT_INNER_API_URL` | `http://127.0.0.1:5001` | Agent backend 调用同容器 Dify `/inner/api/...` 的 canonical base URL |
+| `DIFY_AGENT_SANDBOX_FILES_BASE_URL` | `http://127.0.0.1:5001` | Sandbox 内 CLI 上传/下载文件时访问的 Dify API base；新版 Agent Stub 启用文件操作时必填，all-in-one 保持 loopback |
 | `DIFY_AGENT_STUB_API_BASE_URL` | `http://127.0.0.1:5005/agent-stub` | 注入 shell job 的同容器 Agent Stub API；只保持 loopback，不经 Nginx 暴露 |
 | `DIFY_AGENT_RUNTIME_BACKEND` | `local` | Agent Working Environment runtime backend；本 all-in-one 只使用同容器 local backend |
 | `DIFY_AGENT_LOCAL_SANDBOX_ENDPOINT` | `http://127.0.0.1:5004` | local runtime 的 shellctl endpoint；只能保持 loopback，不要暴露到 Nginx 或公网 |
