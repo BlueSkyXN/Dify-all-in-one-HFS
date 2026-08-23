@@ -51,12 +51,15 @@ for path in \
   README.md Dockerfile hfs-dev.toml hfs-dev.candidate.toml .dockerignore .gitignore .env.example \
   hfs-space-bundle.json .github/workflows/deploy-hfs-formal.yml \
   .github/workflows/publish-dify-runtime-artifact.yml \
+  .github/workflows/produce-dify-runtime.yml \
   docker/entrypoint.sh docker/dify-artifact-bootstrap docker/dify_artifact_contract.py \
   docker/sandbox-artifact-launcher.c docker/dify.env.runtime docker/dify.env.demo \
   docker/supervisord.conf docker/nginx.conf docker/healthcheck.sh \
-  scripts/package-dify-runtime-artifact.py scripts/prepare-dify-artifact-manifest.py scripts/export_hfs_space_bundle.py \
+  scripts/align_hfs_runtime_dependency_assertions.py scripts/package-dify-runtime-artifact.py \
+  scripts/prepare-dify-artifact-manifest.py scripts/export_hfs_space_bundle.py \
   scripts/check_hfs_visibility.py scripts/deploy_hfs_formal.py \
   scripts/tests/test_deploy_hfs_formal.py scripts/tests/test_hfs_visibility.py \
+  scripts/tests/test_align_hfs_runtime_dependency_assertions.py \
   scripts/tests/test_hfs_workflow_safety.py scripts/validate-hfs-contract.sh \
   scripts/static-check.sh scripts/hf-space-smoke.sh docs/hfs-alignment.md \
   docs/configuration.md docs/deployment.md docs/release-checklist.md; do
@@ -276,6 +279,14 @@ require_grep 'git rev-parse origin/main.*GITHUB_SHA' .github/workflows/publish-d
 require_grep '--bucket-uri "\$HF_ARTIFACT_BUCKET_URI"' .github/workflows/publish-dify-runtime-artifact.yml "artifact workflow must check the formal-use Bucket"
 artifact_visibility_checks=$(grep -c 'scripts/check_hfs_visibility\.py' .github/workflows/publish-dify-runtime-artifact.yml || true)
 [ "$artifact_visibility_checks" -ge 2 ] || fail "artifact workflow must check Private Buckets before and after publication"
+require_grep 'workflow_call:' .github/workflows/produce-dify-runtime.yml "runtime producer must be a reusable workflow"
+require_absent 'workflow_dispatch:' .github/workflows/produce-dify-runtime.yml "runtime producer must not own a second manual dispatch surface"
+require_grep 'contract_ref:' .github/workflows/produce-dify-runtime.yml "runtime producer must require an immutable consumer contract ref"
+require_grep 'upstream_base_ref:' .github/workflows/produce-dify-runtime.yml "runtime producer must require an exact upstream base ref"
+require_grep 'ref: \$\{\{ inputs\.contract_ref \}\}' .github/workflows/produce-dify-runtime.yml "runtime producer must checkout the caller-pinned consumer contract"
+require_grep 'consumer/scripts/align_hfs_runtime_dependency_assertions\.py' .github/workflows/produce-dify-runtime.yml "runtime producer must use consumer-owned alignment logic"
+require_grep 'merge-base --is-ancestor "\$DIFY_UPSTREAM_BASE_REF" "\$ARTIFACT_REF"' .github/workflows/produce-dify-runtime.yml "runtime producer must enforce upstream ancestry"
+require_absent 'secrets: inherit' .github/workflows/produce-dify-runtime.yml "runtime producer must not inherit caller secrets broadly"
 require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"
@@ -315,10 +326,12 @@ for raw_path in (
     "docker/dify_artifact_contract.py",
     "scripts/package-dify-runtime-artifact.py",
     "scripts/prepare-dify-artifact-manifest.py",
+    "scripts/align_hfs_runtime_dependency_assertions.py",
     "scripts/check_hfs_visibility.py",
     "scripts/deploy_hfs_formal.py",
     "scripts/tests/test_deploy_hfs_formal.py",
     "scripts/tests/test_hfs_visibility.py",
+    "scripts/tests/test_align_hfs_runtime_dependency_assertions.py",
     "scripts/tests/test_hfs_workflow_safety.py",
 ):
     path = Path(raw_path)
