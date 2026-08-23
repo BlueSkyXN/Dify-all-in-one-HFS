@@ -104,11 +104,13 @@ check_python_syntax \
   scripts/check-self-release-pins.py \
   scripts/deploy_hfs_formal.py \
   scripts/check_hfs_visibility.py \
+  scripts/align_hfs_runtime_dependency_assertions.py \
   scripts/package-dify-runtime-artifact.py \
   scripts/prepare-dify-artifact-manifest.py \
   scripts/export_hfs_space_bundle.py \
   scripts/tests/test_deploy_hfs_formal.py \
   scripts/tests/test_hfs_visibility.py \
+  scripts/tests/test_align_hfs_runtime_dependency_assertions.py \
   scripts/tests/test_hfs_workflow_safety.py \
   docker/plugin_runtime_patches/sitecustomize.py
 python3 -B -m unittest discover -s docker/tests -p 'test_*.py'
