@@ -104,6 +104,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                     "DIFY_AIO_BUILD_UV_VERSION": "0.11.21",
                     "DIFY_AIO_RUNTIME_DELIVERY": "manifest-first-artifact",
                     "DIFY_ARTIFACT_EXPECTED_SOURCE_REF": "a" * 40,
+                    "DIFY_VERSION": "1.17.0",
                 }
             )
             with patch.object(ops_service, "ARTIFACT_INSTALL_ROOT", root):
@@ -111,6 +112,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
 
         self.assertEqual(version["build"]["delivery"], "manifest-first-artifact")
         self.assertEqual(version["build"]["base_image_ref"], "python:3.12-slim-bookworm")
+        self.assertEqual(version["dify_version"], "1.17.0")
         self.assertEqual(version["artifact"]["status"], "verified")
         self.assertEqual(version["artifact"]["artifact_ref"], "a" * 40)
         self.assertNotIn("namespace", version["artifact"])

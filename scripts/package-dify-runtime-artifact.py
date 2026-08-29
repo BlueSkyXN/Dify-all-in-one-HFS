@@ -16,6 +16,7 @@ import re
 import shutil
 import tarfile
 import tempfile
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ PROJECT = "dify-all-in-one"
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 IMAGE_REF_RE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
+DIFY_VERSION_RE = re.compile(r"^[0-9][0-9A-Za-z.+_-]{0,63}$")
 SCHEMA_VERSION = 2
 PRODUCER_REPOSITORY = "https://github.com/BlueSkyXN/dify.git"
 
@@ -72,11 +74,27 @@ def validate_inputs(args: argparse.Namespace) -> None:
         raise ValueError("--sandbox-source-ref must be a full lowercase Git SHA")
 
 
-def build_lock(args: argparse.Namespace) -> dict[str, Any]:
+def load_dify_version(source: Path) -> str:
+    pyproject = require_path(source, "app/api/pyproject.toml")
+    try:
+        payload = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError("runtime payload app/api/pyproject.toml is invalid") from exc
+    project = payload.get("project")
+    if not isinstance(project, dict) or project.get("name") != "dify-api":
+        raise ValueError("runtime payload app/api/pyproject.toml must describe dify-api")
+    version = project.get("version")
+    if not isinstance(version, str) or not DIFY_VERSION_RE.fullmatch(version):
+        raise ValueError("runtime payload app/api/pyproject.toml has an invalid version")
+    return version
+
+
+def build_lock(args: argparse.Namespace, dify_version: str) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "project": PROJECT,
         "artifact_ref": args.source_ref,
+        "dify_version": dify_version,
         "source": {"kind": args.source_kind, "ref": args.source_name, "repository": args.source_repository},
         "components": {
             "api": {"source_ref": args.source_ref, "image_ref": args.api_image_ref},
@@ -153,6 +171,7 @@ def populate_runtime_tree(source: Path, destination: Path, lock: dict[str, Any],
                 f"source_kind={args.source_kind}",
                 f"source_ref={args.source_name}",
                 f"artifact_ref={args.source_ref}",
+                f"dify_version={lock['dify_version']}",
                 f"source_repository={args.source_repository}",
             )
         )
@@ -196,7 +215,7 @@ def package(args: argparse.Namespace) -> tuple[Path, Path]:
     with tempfile.TemporaryDirectory(prefix="dify-runtime-package-") as temp:
         staging_parent = Path(temp)
         staging_root = staging_parent / root_name
-        lock = build_lock(args)
+        lock = build_lock(args, load_dify_version(source))
         populate_runtime_tree(source, staging_root, lock, args)
         normalized_tar(staging_parent, root_name, artifact, args.source_date_epoch)
         lock_sha256 = sha256_file(staging_root / "runtime-lock.json")

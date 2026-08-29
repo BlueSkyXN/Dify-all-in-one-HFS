@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = ROOT / "docker" / "entrypoint.sh"
+DIFY_VERSION = "1.17.0"
 
 
 def run_entrypoint_function(script: str, *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -85,6 +86,31 @@ class PostgresRuntimeFallbackTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("must not be a symlink", result.stdout + result.stderr)
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep\n")
+
+
+class ArtifactRuntimeMetadataTests(unittest.TestCase):
+    def test_binds_dify_version_from_validated_runtime(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runtime_root = Path(tmpdir) / "runtime"
+            api_root = runtime_root / "app/api"
+            api_root.mkdir(parents=True)
+            (api_root / "pyproject.toml").write_text(
+                f'[project]\nname = "dify-api"\nversion = "{DIFY_VERSION}"\n',
+                encoding="utf-8",
+            )
+            (runtime_root / "runtime-lock.json").write_text(
+                '{"dify_version":"1.17.0"}\n', encoding="utf-8"
+            )
+
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(ROOT / "docker")
+            result = run_entrypoint_function(
+                f'bind_artifact_runtime_metadata "{runtime_root}"\nprintf "%s\\n" "$DIFY_VERSION"',
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), DIFY_VERSION)
 
 
 if __name__ == "__main__":

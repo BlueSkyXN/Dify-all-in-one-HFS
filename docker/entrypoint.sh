@@ -38,6 +38,28 @@ source_runtime_env() {
   set +a
 }
 
+bind_artifact_runtime_metadata() {
+  local runtime_root=${1:-/opt/dify/runtime}
+  local dify_version
+  dify_version=$(python3 - "$runtime_root" <<'PY'
+from pathlib import Path
+import sys
+
+sys.path.insert(0, "/usr/local/lib")
+from dify_artifact_contract import ContractError, installed_dify_version
+
+try:
+    print(installed_dify_version(Path(sys.argv[1])))
+except (ContractError, OSError):
+    raise SystemExit(64)
+PY
+  ) || {
+    log "Cannot bind DIFY_VERSION from the validated runtime artifact."
+    return 66
+  }
+  export DIFY_VERSION="$dify_version"
+}
+
 default_plugin_storage_root() {
   local runtime_root=${RUNTIME_ROOT:-/tmp/dify-aio}
   local persist_root=${PERSIST_ROOT:-/persist}
@@ -937,6 +959,7 @@ main() {
   # immutable runtime artifact. This must complete before any Dify wrapper,
   # migration, service, or health probe can access application paths.
   /usr/local/bin/dify-artifact-bootstrap
+  bind_artifact_runtime_metadata
   configure_plugin_storage_root
   write_generated_env
   source_runtime_env
