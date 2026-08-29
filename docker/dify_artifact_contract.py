@@ -11,6 +11,7 @@ import re
 import shutil
 import tarfile
 import tempfile
+import tomllib
 import uuid
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -26,6 +27,7 @@ TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 BUCKET_NAMESPACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 IMAGE_REF_RE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
+DIFY_VERSION_RE = re.compile(r"^[0-9][0-9A-Za-z.+_-]{0,63}$")
 MAX_ARCHIVE_MEMBER_COUNT = 100_000
 MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 32 * 1024 * 1024 * 1024
@@ -205,6 +207,7 @@ def _validate_runtime_lock(root: Path, provenance: dict[str, str]) -> None:
         raise ContractError("runtime-lock.json has an unsupported schema_version")
     if lock.get("project") != PROJECT or lock.get("artifact_ref") != provenance["artifact_ref"]:
         raise ContractError("runtime-lock.json provenance does not match the selected artifact")
+    _validated_dify_version(root, lock)
     source = lock.get("source")
     if not isinstance(source, dict) or source != {
         "kind": "commit",
@@ -251,6 +254,45 @@ def _validate_runtime_lock(root: Path, provenance: dict[str, str]) -> None:
         raise ContractError("runtime-lock.json sandbox must bind immutable source/image provenance and the fixed launcher")
 
 
+def _dify_version_from_pyproject(root: Path) -> str:
+    pyproject = root / "app/api/pyproject.toml"
+    if not pyproject.is_file() or pyproject.is_symlink():
+        raise ContractError("runtime payload requires a regular app/api/pyproject.toml")
+    try:
+        payload = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise ContractError("runtime payload app/api/pyproject.toml is invalid") from exc
+    project = payload.get("project")
+    if not isinstance(project, dict) or project.get("name") != "dify-api":
+        raise ContractError("runtime payload app/api/pyproject.toml must describe dify-api")
+    version = project.get("version")
+    if not isinstance(version, str) or not DIFY_VERSION_RE.fullmatch(version):
+        raise ContractError("runtime payload app/api/pyproject.toml has an invalid version")
+    return version
+
+
+def _validated_dify_version(root: Path, lock: dict[str, Any]) -> str:
+    lock_version = lock.get("dify_version")
+    if not isinstance(lock_version, str) or not DIFY_VERSION_RE.fullmatch(lock_version):
+        raise ContractError("runtime-lock.json requires a valid dify_version")
+    if lock_version != _dify_version_from_pyproject(root):
+        raise ContractError("runtime-lock.json dify_version does not match app/api/pyproject.toml")
+    return lock_version
+
+
+def installed_dify_version(root: Path) -> str:
+    lock_path = root / "runtime-lock.json"
+    if not lock_path.is_file() or lock_path.is_symlink():
+        raise ContractError("installed runtime-lock.json is missing or invalid")
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError("installed runtime-lock.json is not valid UTF-8 JSON") from exc
+    if not isinstance(lock, dict):
+        raise ContractError("installed runtime-lock.json must be an object")
+    return _validated_dify_version(root, lock)
+
+
 def _required_runtime_paths(root: Path) -> tuple[set[Path], set[Path]]:
     directories = {
         root / "app/targets/next",
@@ -290,7 +332,7 @@ def _is_valid_runtime_executable(root: Path, path: Path) -> bool:
 
 def _validate_runtime_layout(root: Path) -> None:
     directories, executables = _required_runtime_paths(root)
-    regular_files = {root / "BUILD_INFO.txt", root / "runtime-lock.json"}
+    regular_files = {root / "BUILD_INFO.txt", root / "runtime-lock.json", root / "app/api/pyproject.toml"}
     if any(not path.is_dir() or path.is_symlink() for path in directories):
         raise ContractError("artifact archive is missing required runtime directories")
     if any(not _is_valid_runtime_executable(root, path) for path in executables):
@@ -449,6 +491,9 @@ def self_test() -> None:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("ok", encoding="utf-8")
             path.chmod(0o755)
+        pyproject = root / "app/api/pyproject.toml"
+        pyproject.parent.mkdir(parents=True, exist_ok=True)
+        pyproject.write_text('[project]\nname = "dify-api"\nversion = "1.17.0"\n', encoding="utf-8")
         image_ref = "example.invalid/component@sha256:" + "b" * 64
         components = {
             "api": {"source_ref": source_ref, "image_ref": image_ref},
@@ -465,6 +510,7 @@ def self_test() -> None:
             "schema_version": SCHEMA_VERSION,
             "project": PROJECT,
             "artifact_ref": source_ref,
+            "dify_version": "1.17.0",
             "source": {"kind": "commit", "ref": source_ref, "repository": PRODUCER_REPOSITORY},
             "components": components,
         }

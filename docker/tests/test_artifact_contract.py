@@ -16,6 +16,7 @@ from unittest import mock
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_REF = "a" * 40
 IMAGE_REF = "example.invalid/component@sha256:" + "b" * 64
+DIFY_VERSION = "1.17.0"
 CONTRACT_PATH = REPO_ROOT / "docker/dify_artifact_contract.py"
 CONTRACT_SPEC = importlib.util.spec_from_file_location("dify_artifact_contract_under_test", CONTRACT_PATH)
 if CONTRACT_SPEC is None or CONTRACT_SPEC.loader is None:
@@ -59,6 +60,10 @@ class ArtifactContractTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
             path.chmod(0o755)
+        (root / "app/api/pyproject.toml").write_text(
+            f'[project]\nname = "dify-api"\nversion = "{DIFY_VERSION}"\n',
+            encoding="utf-8",
+        )
         agent_python = root / "opt/dify-agent/.venv/bin/python"
         agent_python.unlink()
         agent_python.symlink_to("/usr/local/bin/python3")
@@ -92,6 +97,11 @@ class ArtifactContractTest(unittest.TestCase):
             manifest = output / "manifest.json"
             self.assertTrue(artifact.is_file())
             self.assertTrue(manifest.is_file())
+            with tarfile.open(artifact, "r:gz") as archive:
+                lock_member = archive.extractfile(f"dify-runtime-{SOURCE_REF}/runtime-lock.json")
+                self.assertIsNotNone(lock_member)
+                lock = json.loads(lock_member.read())
+            self.assertEqual(lock["dify_version"], DIFY_VERSION)
 
             prepared = temporary_path / "prepared-manifest.json"
             subprocess.run(
@@ -128,6 +138,7 @@ class ArtifactContractTest(unittest.TestCase):
             )
             self.assertTrue(install_root.is_symlink())
             self.assertTrue((install_root / "MANIFEST_PROVENANCE.json").is_file())
+            self.assertEqual(CONTRACT.installed_dify_version(install_root), DIFY_VERSION)
             self.assertTrue(
                 (install_root / "usr/local/share/nltk_data/tokenizers/punkt_tab/fixture.txt").is_file()
             )
@@ -241,6 +252,17 @@ class ArtifactContractTest(unittest.TestCase):
             )
             self.assertNotEqual(mismatch.returncode, 0)
             self.assertEqual(install_root.resolve(), active_target)
+
+    def test_rejects_dify_version_that_does_not_match_api_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime = Path(temporary) / "runtime"
+            self._runtime_tree(runtime)
+            (runtime / "runtime-lock.json").write_text(
+                json.dumps({"dify_version": "1.16.0"}), encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(CONTRACT.ContractError, "does not match"):
+                CONTRACT.installed_dify_version(runtime)
 
     def test_rejects_archive_path_traversal_before_installation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
