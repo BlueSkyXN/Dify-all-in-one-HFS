@@ -28,7 +28,8 @@ BUCKET_NAMESPACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 IMAGE_REF_RE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
 DIFY_VERSION_RE = re.compile(r"^[0-9][0-9A-Za-z.+_-]{0,63}$")
-MAX_ARCHIVE_MEMBER_COUNT = 100_000
+# 完整 API/Web/Agent 产物已超过旧的 100k 预算；仍保留固定条目上限。
+MAX_ARCHIVE_MEMBER_COUNT = 200_000
 MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 32 * 1024 * 1024 * 1024
 PRODUCER_REPOSITORY = "https://github.com/BlueSkyXN/dify.git"

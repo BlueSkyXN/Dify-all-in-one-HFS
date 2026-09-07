@@ -24,7 +24,7 @@ from typing import Any
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docker"))
-from dify_artifact_contract import MAX_ARCHIVE_BYTES  # noqa: E402
+from dify_artifact_contract import MAX_ARCHIVE_BYTES, MAX_ARCHIVE_MEMBER_COUNT  # noqa: E402
 
 PROJECT = "dify-all-in-one"
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -181,8 +181,17 @@ def populate_runtime_tree(source: Path, destination: Path, lock: dict[str, Any],
 
 
 def normalized_tar(source_parent: Path, root_name: str, output: Path, epoch: int) -> None:
+    paths = sorted((source_parent / root_name).rglob("*"), key=lambda item: item.as_posix())
+    member_count = len(paths)
+    print(
+        json.dumps({"archive_member_count": member_count, "max_archive_member_count": MAX_ARCHIVE_MEMBER_COUNT}),
+        file=sys.stderr,
+        flush=True,
+    )
+    if member_count > MAX_ARCHIVE_MEMBER_COUNT:
+        raise ValueError(f"runtime archive member count {member_count} exceeds limit {MAX_ARCHIVE_MEMBER_COUNT}")
     with tarfile.open(output, "w:gz", format=tarfile.PAX_FORMAT) as archive:
-        for path in sorted((source_parent / root_name).rglob("*"), key=lambda item: item.as_posix()):
+        for path in paths:
             arcname = path.relative_to(source_parent).as_posix()
             info = archive.gettarinfo(path, arcname)
             info.uid = 0
