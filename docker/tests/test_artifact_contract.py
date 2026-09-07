@@ -24,8 +24,44 @@ if CONTRACT_SPEC is None or CONTRACT_SPEC.loader is None:
 CONTRACT = importlib.util.module_from_spec(CONTRACT_SPEC)
 CONTRACT_SPEC.loader.exec_module(CONTRACT)
 
+PACKAGER_SPEC = importlib.util.spec_from_file_location(
+    "runtime_packager_under_test", REPO_ROOT / "scripts/package-dify-runtime-artifact.py"
+)
+if PACKAGER_SPEC is None or PACKAGER_SPEC.loader is None:
+    raise RuntimeError("cannot load runtime packager for tests")
+PACKAGER = importlib.util.module_from_spec(PACKAGER_SPEC)
+PACKAGER_SPEC.loader.exec_module(PACKAGER)
+
 
 class ArtifactContractTest(unittest.TestCase):
+    def test_accepts_runtime_above_old_member_budget(self) -> None:
+        root = f"dify-runtime-{SOURCE_REF}"
+        members = (tarfile.TarInfo(f"{root}/app/api/module_{index}.py") for index in range(100_001))
+        validated = CONTRACT._read_validated_members(members, root, 0)
+        self.assertEqual(len(validated), 100_001)
+
+    def test_member_budget_remains_bounded(self) -> None:
+        root = f"dify-runtime-{SOURCE_REF}"
+        members = [tarfile.TarInfo(f"{root}/app/api/module_{index}.py") for index in range(3)]
+        with mock.patch.object(CONTRACT, "MAX_ARCHIVE_MEMBER_COUNT", 2):
+            self.assertEqual(len(CONTRACT._read_validated_members(members[:2], root, 0)), 2)
+            with self.assertRaisesRegex(CONTRACT.ContractError, "too many members"):
+                CONTRACT._read_validated_members(members, root, 0)
+
+    def test_packager_rejects_member_overflow_before_writing_archive(self) -> None:
+        self.assertEqual(PACKAGER.MAX_ARCHIVE_MEMBER_COUNT, CONTRACT.MAX_ARCHIVE_MEMBER_COUNT)
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / f"dify-runtime-{SOURCE_REF}"
+            root.mkdir()
+            for index in range(3):
+                (root / f"file_{index}").write_text("ok", encoding="utf-8")
+            output = parent / "runtime.tar.gz"
+            with mock.patch.object(PACKAGER, "MAX_ARCHIVE_MEMBER_COUNT", 2):
+                with self.assertRaisesRegex(ValueError, "member.*3.*2"):
+                    PACKAGER.normalized_tar(parent, root.name, output, 0)
+            self.assertFalse(output.exists())
+
     def _runtime_tree(self, root: Path) -> None:
         files = {
             "app/api/.venv/bin/flask",
