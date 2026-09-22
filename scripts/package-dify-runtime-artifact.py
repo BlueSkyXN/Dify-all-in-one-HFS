@@ -33,6 +33,8 @@ IMAGE_REF_RE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
 DIFY_VERSION_RE = re.compile(r"^[0-9][0-9A-Za-z.+_-]{0,63}$")
 SCHEMA_VERSION = 2
 PRODUCER_REPOSITORY = "https://github.com/BlueSkyXN/dify.git"
+OFFICIAL_PRODUCER_REPOSITORY = "https://github.com/langgenius/dify.git"
+ALLOWED_PRODUCER_REPOSITORIES = (PRODUCER_REPOSITORY, OFFICIAL_PRODUCER_REPOSITORY)
 
 
 def sha256_file(path: Path) -> str:
@@ -64,8 +66,8 @@ def validate_inputs(args: argparse.Namespace) -> None:
         or ".." in args.source_name
     ):
         raise ValueError("tag artifacts require an immutable, safe --source-name")
-    if args.source_repository != PRODUCER_REPOSITORY:
-        raise ValueError(f"--source-repository must be {PRODUCER_REPOSITORY}")
+    if args.source_repository not in ALLOWED_PRODUCER_REPOSITORIES:
+        raise ValueError(f"--source-repository must be one of {ALLOWED_PRODUCER_REPOSITORIES}")
     for name in ("api_image_ref", "web_image_ref", "agent_image_ref", "agent_runtime_image_ref", "plugin_daemon_image_ref", "sandbox_image_ref"):
         value = getattr(args, name)
         if not IMAGE_REF_RE.fullmatch(value):

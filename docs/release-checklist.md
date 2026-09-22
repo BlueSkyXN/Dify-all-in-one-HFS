@@ -77,6 +77,27 @@ Rollback GitHub Release tag:
 
 `edge` 可指向已验证 main commit；`release` 必须由显式 promote 选择 immutable tag。旧 slot object 删除不是本轮发布步骤。
 
+## 2a. 双源运行时与快速切换（fork ↔ official）
+
+runtime producer 支持两条车道，产物契约相同（schema v2、`--source-kind commit`），仅 `runtime-lock.json` 的 `source.repository` 不同：
+
+- **fork 车道**：`BlueSkyXN/dify` main 上的 reusable workflow，从 `ghcr.io/blueskyxn/*` 四镜像组装，Release 存放在 `BlueSkyXN/dify`。
+- **官方车道**：本仓 main 手工 dispatch `Produce Dify official runtime Release`（`confirm_publish=PUBLISH_DIFY_HFS_RUNTIME`），输入官方 release tag（如 `1.17.1`），从 `langgenius/dify` 官方四镜像组装；retained assembly 经 `docker/patches/legacy-wrapper-official-images.patch` overlay 适配官方镜像差异，Release 存放在本仓。
+
+快速切换 = 把 Space 所读 slot 的 manifest 指到另一车道已验证的 Release：
+
+1. 运行 `Publish Dify runtime artifact`，`producer_repository` 选择 artifact 所在仓库，`runtime_release_tag` / `source_ref` / `artifact_ref` 填该 Release 的三元组；manifest-last 语义不变。
+2. 若 Space Settings 已设置 `DIFY_ARTIFACT_EXPECTED_SOURCE_REF`，必须同步更新为新的 artifact commit（或按部署策略清空），否则启动 fail-closed。
+3. 首次切到更高 Dify 版本前确认 PostgreSQL 备份基线（§4）；官方版本可能引入 migration。回退按 §5 只回退 payload pointer，但已前滚的 DB schema 未必兼容旧 runtime——优先前滚修复而不是来回切换。
+
+```text
+Switch direction (fork→official / official→fork):
+Producer repository + Release tag:
+Artifact commit before / after:
+DIFY_ARTIFACT_EXPECTED_SOURCE_REF update:
+PostgreSQL backup baseline:
+```
+
 ## 3. Space Settings and deployment readback
 
 `hfs-dev.toml` 与 candidate manifest 必须显式声明：

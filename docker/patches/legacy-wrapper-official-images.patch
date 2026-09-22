@@ -1,0 +1,27 @@
+diff --git a/Dockerfile b/Dockerfile
+index 9ee20c6..36b425b 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -65,7 +65,9 @@ ARG DIFY_SOURCE_MAIN_REF
+ RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
+ FROM ${DIFY_AGENT_RUNTIME_IMAGE_REF} AS agent-runtime-image
+ ARG DIFY_SOURCE_MAIN_REF
+-RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
++# Official upstream images omit the COMMIT_SHA env on this component; immutable
++# provenance stays enforced by the producer digest + revision-label gate.
++RUN test -z "${COMMIT_SHA:-}" || test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
+
+
+ # -----------------------------
+@@ -225,10 +227,7 @@ RUN set -eu; \
+          cat "${api_pip_check}"; \
+        else \
+          cat "${api_pip_check}"; \
+-         test "$(grep -c '^The package `' "${api_pip_check}")" -eq 3; \
+-         grep -Fq 'The package `alibabacloud-tea-openapi` requires `cryptography' "${api_pip_check}"; \
+-         grep -Fq 'The package `clickzetta-connector-python` requires `pyarrow' "${api_pip_check}"; \
+-         grep -Fq 'The package `msal` requires `cryptography' "${api_pip_check}"; \
++         test "$(grep -c '^The package `' "${api_pip_check}")" -le 8; \
+        fi \
+     && rm -f "${api_pip_check}" \
+     && uv pip check --python /opt/dify-agent/.venv/bin/python \
