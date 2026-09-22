@@ -22,9 +22,16 @@ on:
         required: true
         type: string
       runtime_release_tag:
-        description: "GitHub Release tag in BlueSkyXN/dify that holds the runtime archive"
+        description: "GitHub Release tag that holds the runtime archive"
         required: true
         type: string
+      producer_repository:
+        description: "Repository holding the runtime Release"
+        required: true
+        type: choice
+        options:
+          - BlueSkyXN/dify
+          - BlueSkyXN/Dify-all-in-one-HFS
       confirm_publish:
         description: "Type PUBLISH after owner approval"
         required: true
@@ -50,8 +57,8 @@ jobs:
       SOURCE_REF: ${{ inputs.source_ref }}
       ARTIFACT_REF: ${{ inputs.artifact_ref }}
       RUNTIME_RELEASE_TAG: ${{ inputs.runtime_release_tag }}
+      DIFY_RUNTIME_PRODUCER_REPOSITORY: ${{ inputs.producer_repository }}
       SLOT: ${{ inputs.slot }}
-      DIFY_RUNTIME_PRODUCER_REPOSITORY: BlueSkyXN/dify
 
     steps:
       - name: Checkout wrapper revision
@@ -117,6 +124,11 @@ jobs:
           fi
           [[ "${RUNTIME_RELEASE_TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$ && "${RUNTIME_RELEASE_TAG}" != *..* ]] || {
             echo "runtime_release_tag must be a safe immutable release tag" >&2
+            exit 2
+          }
+          [[ "${DIFY_RUNTIME_PRODUCER_REPOSITORY}" == BlueSkyXN/dify \
+            || "${DIFY_RUNTIME_PRODUCER_REPOSITORY}" == BlueSkyXN/Dify-all-in-one-HFS ]] || {
+            echo "producer_repository must be an approved runtime producer" >&2
             exit 2
           }
           [[ -n "${HF_TOKEN}" ]] || { echo "HF_ARTIFACT_BUCKET_TOKEN is required" >&2; exit 2; }
@@ -188,6 +200,7 @@ jobs:
             echo "- slot: ${SLOT}"
             echo "- source kind/ref: ${SOURCE_KIND}/${SOURCE_REF}"
             echo "- artifact commit: ${ARTIFACT_REF}"
+            echo "- producer repository: ${DIFY_RUNTIME_PRODUCER_REPOSITORY}"
             echo "- archive/checksum readback: passed before manifest"
             echo "- manifest readback: passed"
             echo "- rollback source: exact GitHub Release asset ${RUNTIME_RELEASE_TAG}"

@@ -52,6 +52,8 @@ for path in \
   hfs-space-bundle.json .github/workflows/deploy-hfs-formal.yml \
   .github/workflows/publish-dify-runtime-artifact.yml \
   .github/workflows/produce-dify-runtime.yml \
+  .github/workflows/produce-dify-runtime-official.yml \
+  docker/patches/legacy-wrapper-official-images.patch \
   docker/entrypoint.sh docker/dify-artifact-bootstrap docker/dify_artifact_contract.py \
   docker/sandbox-artifact-launcher.c docker/dify.env.runtime docker/dify.env.demo \
   docker/supervisord.conf docker/nginx.conf docker/healthcheck.sh \
@@ -287,6 +289,17 @@ require_grep 'ref: \$\{\{ inputs\.contract_ref \}\}' .github/workflows/produce-d
 require_grep 'consumer/scripts/align_hfs_runtime_dependency_assertions\.py' .github/workflows/produce-dify-runtime.yml "runtime producer must use consumer-owned alignment logic"
 require_grep 'merge-base --is-ancestor "\$DIFY_UPSTREAM_BASE_REF" "\$ARTIFACT_REF"' .github/workflows/produce-dify-runtime.yml "runtime producer must enforce upstream ancestry"
 require_absent 'secrets: inherit' .github/workflows/produce-dify-runtime.yml "runtime producer must not inherit caller secrets broadly"
+require_grep 'workflow_dispatch:' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must own an explicit manual dispatch surface"
+require_absent 'workflow_call:' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must not be a reusable workflow"
+require_grep 'PUBLISH_DIFY_HFS_RUNTIME' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must require typed publication confirmation"
+require_grep 'contract_ref:' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must require an immutable consumer contract ref"
+require_grep 'langgenius/dify.git' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must pin the official source repository"
+require_grep 'legacy-wrapper-official-images\.patch' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must overlay the retained assembly for official images"
+require_grep 'resolve_official_image langgenius/dify-api' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must resolve official images by immutable digest"
+require_grep '\-\-source-repository "\$OFFICIAL_SOURCE_REPOSITORY"' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must record official source provenance"
+require_absent 'secrets: inherit' .github/workflows/produce-dify-runtime-official.yml "official runtime producer must not inherit secrets"
+require_grep 'producer_repository:' .github/workflows/publish-dify-runtime-artifact.yml "artifact publication must select the runtime producer repository"
+require_grep 'BlueSkyXN/Dify-all-in-one-HFS' .github/workflows/publish-dify-runtime-artifact.yml "artifact publication must accept official-lane releases from the consumer repository"
 require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"

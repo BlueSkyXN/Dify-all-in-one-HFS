@@ -33,6 +33,8 @@ MAX_ARCHIVE_MEMBER_COUNT = 200_000
 MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 32 * 1024 * 1024 * 1024
 PRODUCER_REPOSITORY = "https://github.com/BlueSkyXN/dify.git"
+OFFICIAL_PRODUCER_REPOSITORY = "https://github.com/langgenius/dify.git"
+ALLOWED_PRODUCER_REPOSITORIES = (PRODUCER_REPOSITORY, OFFICIAL_PRODUCER_REPOSITORY)
 ALLOWED_ABSOLUTE_SYMLINKS = {
     "/usr/local/bin/python",
     "/usr/local/bin/python3",
@@ -210,12 +212,10 @@ def _validate_runtime_lock(root: Path, provenance: dict[str, str]) -> None:
         raise ContractError("runtime-lock.json provenance does not match the selected artifact")
     _validated_dify_version(root, lock)
     source = lock.get("source")
-    if not isinstance(source, dict) or source != {
-        "kind": "commit",
-        "ref": provenance["artifact_ref"],
-        "repository": PRODUCER_REPOSITORY,
-    }:
+    if not isinstance(source, dict) or source.get("kind") != "commit" or source.get("ref") != provenance["artifact_ref"]:
         raise ContractError("runtime-lock.json source provenance does not match the immutable artifact commit")
+    if source.get("repository") not in ALLOWED_PRODUCER_REPOSITORIES:
+        raise ContractError("runtime-lock.json source repository is not an approved Dify producer")
     components = lock.get("components")
     if not isinstance(components, dict):
         raise ContractError("runtime-lock.json components must be an object")
@@ -475,12 +475,58 @@ def validate_and_extract(
     return provenance
 
 
+def _self_test_lock_repository_matrix(temp_path: Path) -> None:
+    artifact_ref = "a" * 40
+    image_ref = "example.invalid/component@sha256:" + "b" * 64
+    root = temp_path / "repository-matrix"
+    (root / "app/api").mkdir(parents=True, exist_ok=True)
+    (root / "app/api/pyproject.toml").write_text(
+        '[project]\nname = "dify-api"\nversion = "1.17.0"\n', encoding="utf-8"
+    )
+    lock_base = {
+        "schema_version": SCHEMA_VERSION,
+        "project": PROJECT,
+        "artifact_ref": artifact_ref,
+        "dify_version": "1.17.0",
+        "source": {"kind": "commit", "ref": artifact_ref},
+        "components": {
+            "api": {"source_ref": artifact_ref, "image_ref": image_ref},
+            "web": {"source_ref": artifact_ref, "image_ref": image_ref},
+            "agent": {"source_ref": artifact_ref, "image_ref": image_ref, "runtime_image_ref": image_ref},
+            "plugin_daemon": {"source_ref": image_ref, "image_ref": image_ref},
+            "sandbox": {
+                "source_ref": artifact_ref,
+                "image_ref": image_ref,
+                "privilege_launcher": "image-built root-owned setuid launcher",
+            },
+        },
+    }
+    lock_path = root / "runtime-lock.json"
+
+    def validate_with_repository(repository: str) -> None:
+        lock = dict(lock_base)
+        lock["source"] = {**lock_base["source"], "repository": repository}
+        lock_path.write_text(json.dumps(lock, sort_keys=True), encoding="utf-8")
+        provenance = {"artifact_ref": artifact_ref, "runtime_lock_sha256": sha256_file(lock_path)}
+        _validate_runtime_lock(root, provenance)
+
+    for repository in ALLOWED_PRODUCER_REPOSITORIES:
+        validate_with_repository(repository)
+    try:
+        validate_with_repository("https://github.com/example/unapproved.git")
+    except ContractError:
+        pass
+    else:
+        raise AssertionError("unapproved producer repository was accepted")
+
+
 def self_test() -> None:
     source_ref = "a" * 40
     root_name = _runtime_root(source_ref)
     uri = "hf://buckets/example/hfs-dist/dify-all-in-one/edge/manifest.json"
     with tempfile.TemporaryDirectory() as temp:
         temp_path = Path(temp)
+        _self_test_lock_repository_matrix(temp_path)
         root = temp_path / root_name
         directories, executables = _required_runtime_paths(root)
         for path in directories:

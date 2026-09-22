@@ -35,7 +35,7 @@ Space image 只包含 Debian/Python、PostgreSQL、Redis、Nginx、Supervisor、
 4. 仅在完整验证后以原子 runtime pointer 切换到 `/opt/dify/runtime`；不会扫描目录、使用直接 URL/PATH/S3、回退旧 image assembly，也不会把产品 payload 写入 `/data`。
 5. 恢复原有 `/app`、`/opt/dify/plugin-daemon`、`/conf`、`/dependencies` 的路径语义后，才继续 PostgreSQL、Redis、Dify migration 和 Supervisor 启动。
 
-`runtime-lock.json` 必须覆盖 API、Web、Agent、Plugin Daemon 与 Sandbox；API/Web/Agent 必须绑定同一 immutable fork commit。Sandbox server 是 artifact 内容，但 root-owned setuid launcher 在 wrapper image 构建期固定提供，避免把 bootstrap 提权或把容器改为 root runtime。
+`runtime-lock.json` 必须覆盖 API、Web、Agent、Plugin Daemon 与 Sandbox；API/Web/Agent 必须绑定同一 immutable producer commit。producer repository 只允许 `BlueSkyXN/dify`（fork 车道）与 `langgenius/dify`（官方车道），lock 的 `source.repository` 记录实际车道。Sandbox server 是 artifact 内容，但 root-owned setuid launcher 在 wrapper image 构建期固定提供，避免把 bootstrap 提权或把容器改为 root runtime。
 
 ## 发布与回退
 
@@ -49,9 +49,11 @@ hfs-dist/dify-all-in-one/
   release/dify-runtime-<commit>.tar.gz
 ```
 
-发布顺序严格为 artifact 与 `SHA256SUMS.txt` 上传并 readback，最后才覆盖 manifest 并 readback。`edge` 对应已验证 main commit；`release` 只由显式、owner 批准的 promote 选择 immutable Git tag。历史 artifact 和 manifest 由 `BlueSkyXN/dify` 的 GitHub Release 保存；slot 中旧对象的清理不属于发布动作。
+发布顺序严格为 artifact 与 `SHA256SUMS.txt` 上传并 readback，最后才覆盖 manifest 并 readback。`edge` 对应已验证 main commit；`release` 只由显式、owner 批准的 promote 选择 immutable Git tag。历史 artifact 和 manifest 由 GitHub Release 保存：fork 车道存放在 `BlueSkyXN/dify`，官方车道存放在本仓；slot 中旧对象的清理不属于发布动作。
 
-本仓的 `Publish Dify runtime artifact` workflow 只可从 GitHub `main` 手工触发，要求 `confirm_publish=PUBLISH`，并由 `dify-runtime-artifact-publish` Environment 的 main-only deployment policy 在平台侧限制 ref。它从 fork 的指定 Release 下载精确 archive，在首次 Bucket 写入前和 manifest-last 写入后确认所有登记 Bucket 及 `HF_ARTIFACT_BUCKET_URI` 指向的 formal-use Bucket 都是 Private；发布时不使用 credential-bearing Git URL、不 force-push Space、不重启实例。完成后输出 archive/manifest readback 证据。回退是选择已验证 GitHub Release 的 exact archive 并再次走 artifact-first / manifest-last，不回滚 `/data`。
+runtime producer 有两条车道。fork 车道沿用 `BlueSkyXN/dify` main 上的 reusable workflow，从 `ghcr.io/blueskyxn/*` 四镜像组装。官方车道是本仓 main 上的 `Produce Dify official runtime Release` 手工 dispatch workflow：输入一个 immutable 官方 release tag（如 `1.17.1`），从 `langgenius/dify` 官方四镜像按 tag 解析 digest 与 revision label 组装，retained assembly 通过 `docker/patches/legacy-wrapper-official-images.patch` overlay 适配官方镜像差异（`dify-agent-local-sandbox` 不带 `COMMIT_SHA` env、`uv pip check` 已知冲突计数改用上界），Release 发在本仓。两车道产物都走同一 schema v2 契约与 `--source-kind commit` 打包，仅 `runtime-lock.json` 的 `source.repository` 不同。
+
+本仓的 `Publish Dify runtime artifact` workflow 只可从 GitHub `main` 手工触发，要求 `confirm_publish=PUBLISH`，并由 `dify-runtime-artifact-publish` Environment 的 main-only deployment policy 在平台侧限制 ref。它按 `producer_repository` 输入从指定车道（`BlueSkyXN/dify` 或本仓）的指定 Release 下载精确 archive，在首次 Bucket 写入前和 manifest-last 写入后确认所有登记 Bucket 及 `HF_ARTIFACT_BUCKET_URI` 指向的 formal-use Bucket 都是 Private；发布时不使用 credential-bearing Git URL、不 force-push Space、不重启实例。完成后输出 archive/manifest readback 证据。双源快速切换就是把同一 slot 的 manifest 指到另一车道已验证的 Release，再按需更新 `DIFY_ARTIFACT_EXPECTED_SOURCE_REF`；流程本身仍是 artifact-first / manifest-last。回退是选择已验证 GitHub Release 的 exact archive 并再次走 artifact-first / manifest-last，不回滚 `/data`。
 
 `Deploy canonical HFS wrapper` 使用 Python 3.11、`huggingface_hub==1.25.1` 与
 `click==8.4.2`。它在首次 Space 写入前和 wrapper upload 后，通过

@@ -43,6 +43,8 @@ POSTGRES_BUCKET_FAILURE_MODE=exit
 
 `DIFY_ARTIFACT_MANIFEST_HF_URI` 是唯一 runtime delivery 输入；缺失、错误或 manifest/archive/lock 不一致会让启动 fail-closed。不要设置 direct artifact URL、路径、S3 fallback，也不要将 hfs-dist 挂载到 `/persist`。
 
+`DIFY_ARTIFACT_EXPECTED_SOURCE_REF` 如果填写，会把启动 pin 在一个精确 artifact commit 上；在 fork 车道与官方车道之间切换 slot 内容时，必须同步更新或清空该 Variable（formal 流程经 `bind-artifact` 步骤完成），否则新 manifest 会被 fail-closed 拒绝。
+
 建议 Secrets：
 
 ```env
