@@ -31,6 +31,7 @@ env:
   CONSUMER_REPOSITORY: BlueSkyXN/Dify-all-in-one-HFS
   OFFICIAL_SOURCE_REPOSITORY: https://github.com/langgenius/dify.git
   OFFICIAL_SOURCE_REPOSITORY_SLUG: langgenius/dify
+  CONTRACT_REF: ${{ inputs.contract_ref }}
   LEGACY_BUILD_COMMIT: 1d5ce9343ec09f5d95a837816e312bc0256a1ebc
   # linux/amd64 child digest for upstream's 0.6.10-local multi-arch tag.
   PLUGIN_DAEMON_IMAGE_REF: langgenius/dify-plugin-daemon@sha256:0b8f1f1e766826352d868aaf8c9eeeee8e37a3a3b023044ed8ab0d145f853cdf
