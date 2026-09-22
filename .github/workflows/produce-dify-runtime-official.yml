@@ -137,10 +137,9 @@ jobs:
           set -euo pipefail
           test "$(git -C legacy-wrapper rev-parse HEAD)" = "$LEGACY_BUILD_COMMIT"
           test "$(git -C consumer-contract rev-parse HEAD)" = "$CONTRACT_REF"
-          git -C legacy-wrapper apply --check \
-            consumer-contract/docker/patches/legacy-wrapper-official-images.patch
-          git -C legacy-wrapper apply \
-            consumer-contract/docker/patches/legacy-wrapper-official-images.patch
+          official_overlay="$GITHUB_WORKSPACE/consumer-contract/docker/patches/legacy-wrapper-official-images.patch"
+          git -C legacy-wrapper apply --check "$official_overlay"
+          git -C legacy-wrapper apply "$official_overlay"
           unexpected="$(git -C legacy-wrapper status --porcelain=v1 --untracked-files=all \
             | grep -v '^ M Dockerfile$' || true)"
           test -z "$unexpected"
