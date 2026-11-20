@@ -123,6 +123,7 @@ class ArtifactContractTest(unittest.TestCase):
                 "--source-date-epoch", "0",
                 "--api-image-ref", IMAGE_REF,
                 "--web-image-ref", IMAGE_REF,
+                "--web-vinext",
                 "--agent-image-ref", IMAGE_REF,
                 "--agent-runtime-image-ref", IMAGE_REF,
                 "--plugin-daemon-image-ref", IMAGE_REF,
@@ -172,7 +173,7 @@ class ArtifactContractTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue(install_root.is_symlink())
             self.assertTrue((install_root / "MANIFEST_PROVENANCE.json").is_file())
             self.assertEqual(CONTRACT.installed_dify_version(install_root), DIFY_VERSION)
