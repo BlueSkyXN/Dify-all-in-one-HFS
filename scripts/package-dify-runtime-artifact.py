@@ -100,7 +100,11 @@ def build_lock(args: argparse.Namespace, dify_version: str) -> dict[str, Any]:
         "source": {"kind": args.source_kind, "ref": args.source_name, "repository": args.source_repository},
         "components": {
             "api": {"source_ref": args.source_ref, "image_ref": args.api_image_ref},
-            "web": {"source_ref": args.source_ref, "image_ref": args.web_image_ref},
+            "web": {
+                "source_ref": args.source_ref,
+                "image_ref": args.web_image_ref,
+                "includes_vinext": args.web_vinext,
+            },
             "agent": {
                 "source_ref": args.source_ref,
                 "image_ref": args.agent_image_ref,
@@ -156,7 +160,8 @@ def populate_runtime_tree(source: Path, destination: Path, lock: dict[str, Any],
     for item in executable:
         require_path(destination, item, executable=True)
     require_path(destination, "app/targets/next")
-    require_path(destination, "app/targets/vinext")
+    if lock["components"]["web"]["includes_vinext"]:
+        require_path(destination, "app/targets/vinext")
     for item in (
         "usr/local/share/nltk_data/tokenizers/punkt_tab",
         "usr/local/share/nltk_data/taggers/averaged_perceptron_tagger_eng",
@@ -266,6 +271,12 @@ def main() -> int:
     parser.add_argument("--source-date-epoch", type=int, required=True)
     parser.add_argument("--api-image-ref", required=True)
     parser.add_argument("--web-image-ref", required=True)
+    parser.add_argument(
+        "--web-vinext",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="require and package the optional Dify vinext target",
+    )
     parser.add_argument("--agent-image-ref", required=True)
     parser.add_argument("--agent-runtime-image-ref", required=True)
     parser.add_argument("--plugin-daemon-image-ref", required=True)

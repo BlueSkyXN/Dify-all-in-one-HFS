@@ -228,6 +228,12 @@ def _validate_runtime_lock(root: Path, provenance: dict[str, str]) -> None:
         if not isinstance(item, dict) or item.get("source_ref") != provenance["artifact_ref"] or not IMAGE_REF_RE.fullmatch(str(item.get("image_ref", ""))):
             raise ContractError(f"runtime-lock.json {name} must bind the artifact commit and an immutable image digest")
 
+    includes_vinext = components["web"].get("includes_vinext", True)
+    if not isinstance(includes_vinext, bool):
+        raise ContractError("runtime-lock.json web includes_vinext must be boolean")
+    if (root / "app/targets/vinext").is_dir() != includes_vinext:
+        raise ContractError("runtime-lock.json web vinext layout does not match the artifact")
+
     agent = components["agent"]
     if (
         not isinstance(agent, dict)
@@ -297,7 +303,6 @@ def installed_dify_version(root: Path) -> str:
 def _required_runtime_paths(root: Path) -> tuple[set[Path], set[Path]]:
     directories = {
         root / "app/targets/next",
-        root / "app/targets/vinext",
         root / "conf",
         root / "dependencies",
         root / "usr/local/share/nltk_data/tokenizers/punkt_tab",
@@ -458,7 +463,7 @@ def validate_and_extract(
             stage.mkdir(mode=0o700, parents=True)
             for member in members:
                 # Members were fully checked above, including each symlink target.
-                archive.extract(member, stage)
+                archive.extract(member, stage, filter="fully_trusted")
         extracted = stage / artifact_root
         if not extracted.is_dir():
             raise ContractError("artifact archive root is missing")
@@ -491,7 +496,11 @@ def _self_test_lock_repository_matrix(temp_path: Path) -> None:
         "source": {"kind": "commit", "ref": artifact_ref},
         "components": {
             "api": {"source_ref": artifact_ref, "image_ref": image_ref},
-            "web": {"source_ref": artifact_ref, "image_ref": image_ref},
+            "web": {
+                "source_ref": artifact_ref,
+                "image_ref": image_ref,
+                "includes_vinext": False,
+            },
             "agent": {"source_ref": artifact_ref, "image_ref": image_ref, "runtime_image_ref": image_ref},
             "plugin_daemon": {"source_ref": image_ref, "image_ref": image_ref},
             "sandbox": {
@@ -544,7 +553,11 @@ def self_test() -> None:
         image_ref = "example.invalid/component@sha256:" + "b" * 64
         components = {
             "api": {"source_ref": source_ref, "image_ref": image_ref},
-            "web": {"source_ref": source_ref, "image_ref": image_ref},
+            "web": {
+                "source_ref": source_ref,
+                "image_ref": image_ref,
+                "includes_vinext": False,
+            },
             "agent": {"source_ref": source_ref, "image_ref": image_ref, "runtime_image_ref": image_ref},
             "plugin_daemon": {"source_ref": image_ref, "image_ref": image_ref},
             "sandbox": {

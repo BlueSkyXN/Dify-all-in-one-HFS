@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import importlib.util
 import json
@@ -122,6 +123,7 @@ class ArtifactContractTest(unittest.TestCase):
                 "--source-date-epoch", "0",
                 "--api-image-ref", IMAGE_REF,
                 "--web-image-ref", IMAGE_REF,
+                "--web-vinext",
                 "--agent-image-ref", IMAGE_REF,
                 "--agent-runtime-image-ref", IMAGE_REF,
                 "--plugin-daemon-image-ref", IMAGE_REF,
@@ -159,7 +161,7 @@ class ArtifactContractTest(unittest.TestCase):
             install_root = temporary_path / "installed"
             install_root.mkdir()
             (install_root / "legacy-runtime-marker").write_text("legacy", encoding="utf-8")
-            subprocess.run(
+            result = subprocess.run(
                 [
                     sys.executable,
                     str(REPO_ROOT / "docker/dify_artifact_contract.py"),
@@ -168,10 +170,10 @@ class ArtifactContractTest(unittest.TestCase):
                     "--artifact", str(artifact),
                     "--install-root", str(install_root),
                 ],
-                check=True,
                 capture_output=True,
                 text=True,
             )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue(install_root.is_symlink())
             self.assertTrue((install_root / "MANIFEST_PROVENANCE.json").is_file())
             self.assertEqual(CONTRACT.installed_dify_version(install_root), DIFY_VERSION)
@@ -299,6 +301,40 @@ class ArtifactContractTest(unittest.TestCase):
 
             with self.assertRaisesRegex(CONTRACT.ContractError, "does not match"):
                 CONTRACT.installed_dify_version(runtime)
+
+    def test_official_runtime_without_vinext_matches_lock_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_path = Path(temporary)
+            runtime = temporary_path / "runtime"
+            staging = temporary_path / "staging"
+            self._runtime_tree(runtime)
+            (runtime / "app/targets/vinext").rmdir()
+            args = argparse.Namespace(
+                source_ref=SOURCE_REF,
+                source_kind="commit",
+                source_name=SOURCE_REF,
+                source_repository=PACKAGER.OFFICIAL_PRODUCER_REPOSITORY,
+                api_image_ref=IMAGE_REF,
+                web_image_ref=IMAGE_REF,
+                agent_image_ref=IMAGE_REF,
+                agent_runtime_image_ref=IMAGE_REF,
+                plugin_daemon_image_ref=IMAGE_REF,
+                sandbox_image_ref=IMAGE_REF,
+                sandbox_source_ref=SOURCE_REF,
+                web_vinext=False,
+            )
+            lock = PACKAGER.build_lock(args, DIFY_VERSION)
+            PACKAGER.populate_runtime_tree(runtime, staging, lock, args)
+            provenance = {
+                "artifact_ref": SOURCE_REF,
+                "runtime_lock_sha256": hashlib.sha256(
+                    (staging / "runtime-lock.json").read_bytes()
+                ).hexdigest(),
+            }
+            CONTRACT._validate_runtime_layout(staging)
+            CONTRACT._validate_runtime_lock(staging, provenance)
+            self.assertFalse((staging / "app/targets/vinext").exists())
+            self.assertIs(lock["components"]["web"]["includes_vinext"], False)
 
     def test_rejects_archive_path_traversal_before_installation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
