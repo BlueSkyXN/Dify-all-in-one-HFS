@@ -4,8 +4,8 @@
 # Product runtime files are deliberately absent from this build context and are
 # installed once at startup from a manifest-selected, immutable artifact.
 
-ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
-ARG UV_VERSION=0.11.21
+ARG BASE_IMAGE_REF=python:3.13-slim-bookworm
+ARG UV_VERSION=0.13.4
 
 # The sandbox server needs a root-owned setuid boundary, but the downloaded
 # runtime artifact is installed by UID 1000. Compile only the fixed launcher at

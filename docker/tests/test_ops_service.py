@@ -100,8 +100,8 @@ class OpsServicePureFunctionTests(unittest.TestCase):
             )
             os.environ.update(
                 {
-                    "DIFY_AIO_BUILD_BASE_IMAGE_REF": "python:3.12-slim-bookworm",
-                    "DIFY_AIO_BUILD_UV_VERSION": "0.11.21",
+                    "DIFY_AIO_BUILD_BASE_IMAGE_REF": "python:3.13-slim-bookworm",
+                    "DIFY_AIO_BUILD_UV_VERSION": "0.13.4",
                     "DIFY_AIO_RUNTIME_DELIVERY": "manifest-first-artifact",
                     "DIFY_ARTIFACT_EXPECTED_SOURCE_REF": "a" * 40,
                     "DIFY_VERSION": "1.17.0",
@@ -111,7 +111,7 @@ class OpsServicePureFunctionTests(unittest.TestCase):
                 version = ops_service.version_payload()
 
         self.assertEqual(version["build"]["delivery"], "manifest-first-artifact")
-        self.assertEqual(version["build"]["base_image_ref"], "python:3.12-slim-bookworm")
+        self.assertEqual(version["build"]["base_image_ref"], "python:3.13-slim-bookworm")
         self.assertEqual(version["dify_version"], "1.17.0")
         self.assertEqual(version["artifact"]["status"], "verified")
         self.assertEqual(version["artifact"]["artifact_ref"], "a" * 40)

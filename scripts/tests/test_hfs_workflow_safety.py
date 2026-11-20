@@ -122,14 +122,22 @@ class OfficialProducerWorkflowSafetyTests(unittest.TestCase):
         patch = OFFICIAL_OVERLAY_PATCH.read_text(encoding="utf-8")
         self.assertIn('RUN test -z "${COMMIT_SHA:-}" || test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"', patch)
         self.assertIn("+ARG BASE_IMAGE_REF=python:3.13-slim-bookworm", patch)
+        self.assertIn("+ARG UV_VERSION=0.13.4", patch)
         self.assertIn(" RUN test -d /app/targets/next \\", patch)
         self.assertIn('-    && test -d /app/targets/vinext \\', patch)
         self.assertNotIn("+    && test -d /app/targets/vinext \\", patch)
         self.assertIn('")" -le 8; \\', patch)
+        self.assertIn("agent_pip_check=/tmp/dify-agent-uv-pip-check.txt", patch)
+        self.assertIn('")" -le 2; \\', patch)
         self.assertFalse(
             [line for line in patch.splitlines() if line.startswith("+") and "-eq 3" in line],
             "overlay must not add the fork-specific exact pip-check count",
         )
+
+    def test_consumer_base_matches_official_python_and_uv(self) -> None:
+        dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("ARG BASE_IMAGE_REF=python:3.13-slim-bookworm", dockerfile)
+        self.assertIn("ARG UV_VERSION=0.13.4", dockerfile)
 
     def test_official_producer_validates_before_creating_release(self) -> None:
         package = self.official.index("Package and execute the complete consumer contract")

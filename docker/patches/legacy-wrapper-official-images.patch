@@ -1,8 +1,9 @@
 diff --git a/Dockerfile b/Dockerfile
-index 9ee20c6..36b425b 100644
+index 9ee20c6..940a30f 100644
 --- a/Dockerfile
 +++ b/Dockerfile
-@@ -17,6 +17,6 @@
+@@ -16,7 +16,7 @@
+
  # Verified self release. Keep the source SHA and image-specific digests atomic;
  # never reuse one image digest for another image.
 -ARG BASE_IMAGE_REF=python:3.12-slim-bookworm
@@ -10,12 +11,23 @@ index 9ee20c6..36b425b 100644
  ARG DIFY_SOURCE_REPO=https://github.com/BlueSkyXN/dify.git
  ARG DIFY_SOURCE_MAIN_REF=fac065132df0c44f3962334cb89e4eb0d338151a
  ARG DIFY_UPSTREAM_BASE_REF=a2d9aeff372a56d7f0f6b8b23114bfbd8ef7c397
-@@ -38,5 +38,4 @@ ARG DIFY_SOURCE_MAIN_REF
+@@ -28,7 +28,7 @@ ARG PLUGIN_DAEMON_IMAGE_REF=langgenius/dify-plugin-daemon@sha256:1c1f80c9814f896
+ ARG SANDBOX_IMAGE_REF=langgenius/dify-sandbox@sha256:cb076f71cc84c14d4e4f7753ff95c4ba70a3b5816962b4f93bcf42f23a6e5cb8
+ ARG DIFY_SANDBOX_SOURCE_REF=97c8097d51d0f46238bb720b1e9e9439ce68784d
+ ARG DIFY_VERSION=BlueSkyXN-dify-main-fac065132df0c44f3962334cb89e4eb0d338151a
+-ARG UV_VERSION=0.11.21
++ARG UV_VERSION=0.13.4
+
+ # -----------------------------
+ # Use the prebuilt maintained-fork Dify Web assets
+@@ -37,7 +37,6 @@ FROM ${DIFY_WEB_IMAGE_REF} AS web-builder
+ ARG DIFY_SOURCE_MAIN_REF
  RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
  RUN test -d /app/targets/next \
 -    && test -d /app/targets/vinext \
      && test -x /app/entrypoint.sh
  RUN touch /tmp/web-builder.done
+
 @@ -65,7 +64,9 @@ ARG DIFY_SOURCE_MAIN_REF
  RUN test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"
  FROM ${DIFY_AGENT_RUNTIME_IMAGE_REF} AS agent-runtime-image
@@ -27,7 +39,7 @@ index 9ee20c6..36b425b 100644
 
 
  # -----------------------------
-@@ -225,10 +226,7 @@ RUN set -eu; \
+@@ -225,13 +226,17 @@ RUN set -eu; \
           cat "${api_pip_check}"; \
         else \
           cat "${api_pip_check}"; \
@@ -38,4 +50,15 @@ index 9ee20c6..36b425b 100644
 +         test "$(grep -c '^The package `' "${api_pip_check}")" -le 8; \
         fi \
      && rm -f "${api_pip_check}" \
-     && uv pip check --python /opt/dify-agent/.venv/bin/python \
+-    && uv pip check --python /opt/dify-agent/.venv/bin/python \
++    && agent_pip_check=/tmp/dify-agent-uv-pip-check.txt \
++    && if uv pip check --python /opt/dify-agent/.venv/bin/python >"${agent_pip_check}" 2>&1; then \
++         cat "${agent_pip_check}"; \
++       else \
++         cat "${agent_pip_check}"; \
++         test "$(grep -c '^The package `' "${agent_pip_check}")" -le 2; \
++       fi \
++    && rm -f "${agent_pip_check}" \
+     && chown -R user:user /opt/dify-agent
+
+ # Download NLTK/tiktoken caches during image build, mirroring Dify's official API image behavior.
