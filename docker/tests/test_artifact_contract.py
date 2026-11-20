@@ -160,7 +160,7 @@ class ArtifactContractTest(unittest.TestCase):
             install_root = temporary_path / "installed"
             install_root.mkdir()
             (install_root / "legacy-runtime-marker").write_text("legacy", encoding="utf-8")
-            subprocess.run(
+            result = subprocess.run(
                 [
                     sys.executable,
                     str(REPO_ROOT / "docker/dify_artifact_contract.py"),
@@ -169,10 +169,10 @@ class ArtifactContractTest(unittest.TestCase):
                     "--artifact", str(artifact),
                     "--install-root", str(install_root),
                 ],
-                check=True,
                 capture_output=True,
                 text=True,
             )
+            self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(install_root.is_symlink())
             self.assertTrue((install_root / "MANIFEST_PROVENANCE.json").is_file())
             self.assertEqual(CONTRACT.installed_dify_version(install_root), DIFY_VERSION)
