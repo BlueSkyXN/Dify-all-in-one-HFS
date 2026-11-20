@@ -301,6 +301,7 @@ jobs:
             --source-date-epoch "$source_date_epoch" \
             --api-image-ref "$DIFY_API_IMAGE_REF" \
             --web-image-ref "$DIFY_WEB_IMAGE_REF" \
+            --no-web-vinext \
             --agent-image-ref "$DIFY_AGENT_IMAGE_REF" \
             --agent-runtime-image-ref "$DIFY_AGENT_RUNTIME_IMAGE_REF" \
             --plugin-daemon-image-ref "$PLUGIN_DAEMON_IMAGE_REF" \
