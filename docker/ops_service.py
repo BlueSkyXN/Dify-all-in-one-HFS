@@ -257,7 +257,7 @@ PROCESS_ENV_SAFE_KEYS = [
 ]
 
 PLUGIN_RUNTIME_COMMAND_HINTS = ("python", "main")
-PLUGIN_RUNTIME_COMM_NAMES = {"python", "python3", "python3.12"}
+PLUGIN_RUNTIME_COMM_NAMES = {"python", "python3", "python3.12", "python3.13"}
 
 ERROR_PATTERNS = [
     "Permission denied",

@@ -13,7 +13,7 @@
 | 类别 | 引入方式 | 组件 |
 | --- | --- | --- |
 | Dify runtime artifact | fork producer 发布的 `dify-runtime-<commit>.tar.gz`；manifest 与 `runtime-lock.json` 绑定同一个 immutable commit、archive hash 和 component pins | API `/app/api`、Web `/app/targets`、独立 Agent venv/Go runtime、Plugin Daemon、Sandbox server、`/conf`、`/dependencies` |
-| 基础设施层 | `python:3.12-slim-bookworm` 上 `apt-get install` 与 `pip install` | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `pgvector`、`nodejs 22`、`tini`、`uv`、`tmux` |
+| 基础设施层 | `python:3.13-slim-bookworm` 上 `apt-get install` 与 `pip install` | `nginx`、`supervisor`、`redis-server`、`postgresql-15` + `pgvector`、`nodejs 22`、`tini`、`uv`、`tmux` |
 | Sandbox privilege boundary | wrapper image 的固定 root-owned setuid launcher 仅 exec artifact 内已验证 server binary | 维持 rootless Space runtime 和现有 Sandbox chroot/seccomp 调用边界，不让 bootstrap 获得 root |
 | 本仓库自维护胶水 | Dockerfile 仅 COPY `docker/` runtime glue；artifact bootstrap 在业务初始化前完成 | `entrypoint.sh`、artifact verifier/bootstrap、`supervisord.conf`、`nginx.conf`、`with-{dify,plugin,sandbox}-env`、ops/admin、healthcheck、env defaults、scripts |
 
