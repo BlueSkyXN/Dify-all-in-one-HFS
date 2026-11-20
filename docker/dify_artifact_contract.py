@@ -39,6 +39,7 @@ ALLOWED_ABSOLUTE_SYMLINKS = {
     "/usr/local/bin/python",
     "/usr/local/bin/python3",
     "/usr/local/bin/python3.12",
+    "/usr/local/bin/python3.13",
 }
 ALLOWED_EXECUTABLE_SYMLINK_PATHS = {
     "opt/dify-agent/.venv/bin/python",

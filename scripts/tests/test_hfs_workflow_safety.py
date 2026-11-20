@@ -121,6 +121,7 @@ class OfficialProducerWorkflowSafetyTests(unittest.TestCase):
     def test_official_overlay_patch_is_reviewable_and_bounded(self) -> None:
         patch = OFFICIAL_OVERLAY_PATCH.read_text(encoding="utf-8")
         self.assertIn('RUN test -z "${COMMIT_SHA:-}" || test "${COMMIT_SHA}" = "${DIFY_SOURCE_MAIN_REF}"', patch)
+        self.assertIn("+ARG BASE_IMAGE_REF=python:3.13-slim-bookworm", patch)
         self.assertIn(" RUN test -d /app/targets/next \\", patch)
         self.assertIn('-    && test -d /app/targets/vinext \\', patch)
         self.assertNotIn("+    && test -d /app/targets/vinext \\", patch)
