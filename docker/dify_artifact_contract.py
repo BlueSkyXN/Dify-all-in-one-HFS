@@ -463,7 +463,7 @@ def validate_and_extract(
             stage.mkdir(mode=0o700, parents=True)
             for member in members:
                 # Members were fully checked above, including each symlink target.
-                archive.extract(member, stage)
+                archive.extract(member, stage, filter="fully_trusted")
         extracted = stage / artifact_root
         if not extracted.is_dir():
             raise ContractError("artifact archive root is missing")
